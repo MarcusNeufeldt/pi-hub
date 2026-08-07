@@ -150,6 +150,22 @@ export interface UseAgentSessionOptions {
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsPanelOpen?: () => void;
   setToolPreset?: (preset: "none" | "default" | "full") => void;
+  /**
+   * Fires once per prompt run when it reaches a terminal state (success via
+   * `prompt_done`, or failure via `prompt_error`). Used by the chat layer to
+   * dispatch external notifications (e.g. Telegram). The first terminal event
+   * for a given run wins, so retries that eventually succeed do not
+   * double-fire.
+   */
+  onPromptFinished?: (info: {
+    runId: number;
+    status: "success" | "failed";
+    sessionId: string | null;
+    userPrompt: string | null;
+    startedAt: number | null;
+    finishedAt: number;
+    errorMessage?: string | null;
+  }) => void;
 }
 
 export type ThinkingLevelOption = "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -338,6 +354,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    onPromptFinished,
   } = opts;
 
   const isNew = session === null && newSessionCwd !== null;
@@ -414,6 +431,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const thinkingLevelOverrideRef = useRef<Exclude<ThinkingLevelOption, "auto"> | null>(null);
   const promptRunIdRef = useRef(0);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
+  /** Prompt text of the in-flight run (for completion notifications). */
+  const currentRunPromptRef = useRef<string | null>(null);
+  /** Epoch ms when the in-flight run started. */
+  const currentRunStartedAtRef = useRef<number | null>(null);
+  /** Run id already surfaced via onPromptFinished (once-per-run guard). */
+  const notifiedRunFinishedRef = useRef(-1);
 
   const setToolPresetState = opts.setToolPreset ?? setToolPreset;
 
@@ -852,6 +875,29 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     return true;
   }, [onAgentEnd]);
 
+  /**
+   * Surfaces a run's terminal outcome once (for external notifications). The
+   * first terminal event for a run id wins, so an error followed by an
+   * auto-retry success does not fire twice. The prompt text/start-time come
+   * from refs captured at send time.
+   */
+  const firePromptFinished = useCallback(
+    (runId: number, status: "success" | "failed", errorMessage?: string | null) => {
+      if (notifiedRunFinishedRef.current === runId) return;
+      notifiedRunFinishedRef.current = runId;
+      onPromptFinished?.({
+        runId,
+        status,
+        sessionId: sessionIdRef.current,
+        userPrompt: currentRunPromptRef.current,
+        startedAt: currentRunStartedAtRef.current,
+        finishedAt: Date.now(),
+        errorMessage,
+      });
+    },
+    [onPromptFinished],
+  );
+
   const scheduleEventStreamClose = useCallback((sid: string) => {
     cancelEventStreamGrace();
     eventStreamGraceActiveRef.current = true;
@@ -1105,6 +1151,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           rpcPromptPendingRef.current = false;
           optimisticUserMessageKeyRef.current = null;
           const firstNotification = notifyPromptStage(runId);
+          firePromptFinished(runId, "success");
           if (!promptWasPending && !firstNotification) break;
 
           const sid = sessionIdRef.current;
@@ -1119,6 +1166,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         break;
       case "prompt_error":
+        firePromptFinished(promptRunIdRef.current, "failed", (event.errorMessage as string | undefined) ?? "Command failed");
         addNotice({ type: "error", message: (event.errorMessage as string | undefined) ?? "Command failed" });
         break;
       case "extension_error":
@@ -1237,7 +1285,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as ExtensionUiRequest);
         break;
     }
-  }, [addNotice, cancelEventStreamGrace, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
+  }, [addNotice, cancelEventStreamGrace, firePromptFinished, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -1270,6 +1318,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setMessages((prev) => [...prev, userMsg]);
     optimisticUserMessageKeyRef.current = userMessageKey(userMsg);
     promptRunIdRef.current = promptRunId;
+    currentRunPromptRef.current = trimmedMessage || null;
+    currentRunStartedAtRef.current = Date.now();
+    notifiedRunFinishedRef.current = promptRunId - 1;
     agentRunningRef.current = true;
     setAgentRunning(true);
     setAgentPhase(isSlashCommandPrompt ? { kind: "running_command" } : { kind: "waiting_model" });

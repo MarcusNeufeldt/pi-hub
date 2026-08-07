@@ -326,11 +326,13 @@ export class SchedulerRuntime {
  * Migration/DB failures are caught and reported via the runtime's status
  * (the web server keeps running, §9.3).
  */
-export async function startSchedulerRuntime(): Promise<SchedulerRuntime> {
+export async function startSchedulerRuntime(options?: {
+  notifier?: TaskNotifier;
+}): Promise<SchedulerRuntime> {
   if (!globalThis.__piHubSchedulerRuntime) {
     const runtime = new SchedulerRuntime();
     try {
-      await runtime.start();
+      await runtime.start(options?.notifier ? { notifier: options.notifier } : undefined);
       globalThis.__piHubSchedulerRuntime = runtime;
     } catch (error) {
       // Record the error but keep a runtime instance so status reflects it.

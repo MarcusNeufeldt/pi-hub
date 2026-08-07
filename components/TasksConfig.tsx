@@ -975,10 +975,13 @@ function CreateTaskView({
   const [timeoutSeconds, setTimeoutSeconds] = useState(
     editing?.execution.timeoutSeconds ?? 7200,
   );
-  // Notification toggles are not user-editable in V1 UI, but preserve any
-  // previously-saved values when editing so a round-trip doesn't reset them.
-  const notifySuccess = editing?.execution.notifyOnSuccess ?? false;
-  const notifyFailure = editing?.execution.notifyOnFailure ?? true;
+  // Telegram completion-notification preferences for this task.
+  const [notifySuccess, setNotifySuccess] = useState(
+    editing?.execution.notifyOnSuccess ?? false,
+  );
+  const [notifyFailure, setNotifyFailure] = useState(
+    editing?.execution.notifyOnFailure ?? true,
+  );
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -1228,6 +1231,24 @@ function CreateTaskView({
                     label={tool}
                   />
                 ))}
+              </div>
+            </div>
+            <div>
+              <FieldCaption>{t("task.create.notifyTitle")}</FieldCaption>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 4 }}>
+                <CheckboxOption
+                  checked={notifySuccess}
+                  onClick={() => setNotifySuccess((v) => !v)}
+                  label={t("task.create.notifySuccess")}
+                />
+                <CheckboxOption
+                  checked={notifyFailure}
+                  onClick={() => setNotifyFailure((v) => !v)}
+                  label={t("task.create.notifyFailure")}
+                />
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>
+                {t("task.create.notifyHint")}
               </div>
             </div>
           </div>

@@ -12,6 +12,8 @@ import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+import { notifyTelegramManualRun } from "@/lib/telegram-client";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -173,6 +175,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { mes
 export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
   const { t } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
+  const { notifyEnabled, notifyEnabledRef, onNotifyToggle, telegramConfigured } = useTelegramNotify();
   const isMobile = useIsMobile();
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
@@ -190,6 +193,28 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     }
     onAgentEnd?.();
   }, [onAgentEnd]);
+
+  // Dispatch a Telegram notification when a user-driven run reaches a
+  // terminal state and the toggle is on. Fire-and-forget: a flaky Telegram
+  // integration must never disturb the chat. Reads the ref so toggling the
+  // preference mid-run does not retroactively fire.
+  const wrappedOnPromptFinished = useCallback(
+    (info: { status: "success" | "failed"; sessionId: string | null; userPrompt: string | null; startedAt: number | null; finishedAt: number; errorMessage?: string | null }) => {
+      if (!notifyEnabledRef.current) return;
+      if (!info.sessionId) return;
+      void notifyTelegramManualRun({
+        sessionId: info.sessionId,
+        status: info.status,
+        prompt: info.userPrompt ?? undefined,
+        errorMessage: info.errorMessage ?? undefined,
+        startedAt: info.startedAt ?? undefined,
+        finishedAt: info.finishedAt,
+      }).catch((e) => {
+        console.warn("Telegram notify-run failed", e instanceof Error ? e.message : e);
+      });
+    },
+    [notifyEnabledRef],
+  );
 
   // 稳定化 onEditContent 引用，配合 React.memo 防止历史消息重渲染
   const handleEditContent = useCallback((message: UserMessage) => {
@@ -216,6 +241,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
   } = useAgentSession({
     session, newSessionCwd, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    onPromptFinished: wrappedOnPromptFinished,
   });
   const sessionBusy = agentRunning || bashRunning;
 
@@ -495,6 +521,9 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       soundEnabled={soundEnabled}
       onSoundToggle={onSoundToggle}
       onAudioUnlock={unlockAudio}
+      notifyTelegramEnabled={notifyEnabled}
+      onNotifyTelegramToggle={onNotifyToggle}
+      telegramConfigured={telegramConfigured}
       draftKey={session?.id ?? (newSessionCwd ? `new:${newSessionCwd}` : undefined)}
       cwd={session?.cwd ?? newSessionCwd}
     />

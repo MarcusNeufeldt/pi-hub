@@ -11,6 +11,7 @@ import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { TasksConfig } from "./TasksConfig";
+import { TelegramSettings } from "./telegram/TelegramSettings";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
@@ -71,6 +72,7 @@ export function AppShell() {
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
   const [tasksConfigOpen, setTasksConfigOpen] = useState(false);
+  const [telegramOpen, setTelegramOpen] = useState(false);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
@@ -685,6 +687,16 @@ export function AppShell() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="9" />
                 <path d="M12 7v5l3 2" />
+              </svg>
+            ),
+          },
+          {
+             label: translate("common.telegram"),
+            onClick: () => setTelegramOpen(true),
+            disabled: false,
+            icon: (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.5 4.5 2.5 11.8l5.6 1.8 2.1 6.1 3-3.4 4.3 3.2z" />
               </svg>
             ),
           },
@@ -1675,6 +1687,9 @@ export function AppShell() {
         activeCwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null}
         onClose={() => setTasksConfigOpen(false)}
       />
+    )}
+    {telegramOpen && (
+      <TelegramSettings onClose={() => setTelegramOpen(false)} />
     )}
     </>
   );

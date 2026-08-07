@@ -48,6 +48,22 @@ export async function getAllowedFileRoots(): Promise<Set<string>> {
 
   for (const root of getAdditionalAllowedRoots()) roots.add(root);
 
+  // Pi Hub scheduled tasks: their cwds must be browsable so users can open the
+  // generated Pi session files and inspect task workspaces (AGENTS.local.md §8).
+  // Wrapped so a missing/failed scheduler never breaks file access.
+  try {
+    const scheduler = await import("@/modules/scheduler");
+    const runtime = scheduler.getSchedulerRuntime();
+    const store = runtime?.getStore();
+    if (store) {
+      for (const cwd of store.listTaskCwds()) {
+        roots.add(normalizeSlashes(cwd));
+      }
+    }
+  } catch {
+    // scheduler unavailable — skip; file access still works for sessions
+  }
+
   globalThis.__piAllowedRootsCache = { roots, expiresAt: now + ALLOWED_ROOTS_TTL_MS };
   return roots;
 }

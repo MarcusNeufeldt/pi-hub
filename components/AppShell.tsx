@@ -6,6 +6,8 @@ import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
+import { PerTurnDiffView } from "./PerTurnDiffView";
+import type { TurnChanges } from "@/lib/session-changes";
 import { TabBar, type Tab } from "./TabBar";
 import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
@@ -79,6 +81,19 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+
+  // Per-turn diffs shown in the right panel; auto-opens when a new turn
+  // changes files.
+  const [turnChanges, setTurnChanges] = useState<TurnChanges[]>([]);
+  const turnChangesSigRef = useRef("");
+  const handleTurnChangesChange = useCallback((turns: TurnChanges[]) => {
+    setTurnChanges(turns);
+    const sig = turns.map((t) => `${t.turnId}:${t.files.length}`).join(",");
+    if (sig && sig !== turnChangesSigRef.current) {
+      turnChangesSigRef.current = sig;
+      setRightPanelOpen(true);
+    }
+  }, []);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
   const rightPanelWidthRef = useRef(RIGHT_PANEL_FALLBACK_WIDTH);
@@ -1516,6 +1531,7 @@ export function AppShell() {
               onBranchDataChange={handleBranchDataChange}
               onSystemPromptChange={handleSystemPromptChange}
               onSessionStatsChange={handleSessionStatsChange}
+              onTurnChangesChange={handleTurnChangesChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
@@ -1613,7 +1629,7 @@ export function AppShell() {
 
         </div>
 
-        {/* File content */}
+        {/* Panel content: open file, or per-turn diffs */}
         <div style={{ flex: 1, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
           {activeFileTab?.filePath ? (
             <FileViewer
@@ -1630,9 +1646,10 @@ export function AppShell() {
               )}
             />
           ) : (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
-               {translate("files.noneOpen")}
-            </div>
+            <PerTurnDiffView
+              turns={turnChanges}
+              onOpenFile={(filePath, fileName) => handleOpenFile(filePath, fileName, {})}
+            />
           )}
         </div>
       </div>

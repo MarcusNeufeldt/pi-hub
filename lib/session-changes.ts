@@ -71,3 +71,70 @@ export function extractSessionChanges(messages: AgentMessage[]): SessionChange[]
   }
   return [...byFile.values()];
 }
+
+/** One agent turn: anchored by its user message, with the files it changed. */
+export interface TurnChanges {
+  turnId: string;
+  anchorTime: number; // epoch ms of the anchoring user message
+  files: SessionChange[];
+}
+
+function isTurnAnchor(m: AgentMessage): boolean {
+  if (m.role === "user") return true;
+  if (m.role === "custom" && (m as { customType?: string }).customType === "compaction") {
+    return true;
+  }
+  return false;
+}
+
+/** Session changes grouped by turn (user-message anchored), oldest first. */
+export function extractTurnChanges(messages: AgentMessage[]): TurnChanges[] {
+  const results = new Map<string, ToolResultMessage>();
+  for (const m of messages) {
+    if (m.role === "toolResult") {
+      results.set((m as ToolResultMessage).toolCallId, m as ToolResultMessage);
+    }
+  }
+
+  const turns: TurnChanges[] = [];
+  let current: TurnChanges | null = null;
+  const byFile = new Map<string, SessionChange>();
+
+  const flush = () => {
+    if (current && byFile.size > 0) {
+      turns.push({ ...current, files: [...byFile.values()] });
+    }
+    byFile.clear();
+  };
+
+  for (const m of messages) {
+    if (isTurnAnchor(m)) {
+      flush();
+      current = {
+        turnId: m.id ?? String(m.timestamp ?? Date.now()),
+        anchorTime: m.timestamp ?? Date.now(),
+        files: [],
+      };
+      continue;
+    }
+    if (!current) continue;
+    if (m.role !== "assistant") continue;
+    for (const block of (m as AssistantMessage).content ?? []) {
+      if (block.type !== "toolCall") continue;
+      const tc = block as ToolCallContent;
+      if (!isEditToolName(tc.toolName)) continue;
+      const result = results.get(tc.toolCallId);
+      if (!result || result.isError) continue;
+      const diff = getResultDiff(result);
+      if (!diff) continue;
+      const input = isRecord(tc.input) ? tc.input : {};
+      const file =
+        (typeof input.file_path === "string" && input.file_path) ||
+        (typeof input.path === "string" && input.path) ||
+        tc.toolName;
+      byFile.set(file, { file, tool: tc.toolName, diff: diff.text });
+    }
+  }
+  flush();
+  return turns;
+}

@@ -10,8 +10,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { SubagentPanel } from "./SubagentPanel";
 import { SpeakButton } from "./SpeakButton";
-import { SplitPatchView } from "./MessageView";
-import { extractSessionChanges, type SessionChange } from "@/lib/session-changes";
+import { extractTurnChanges, type TurnChanges } from "@/lib/session-changes";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentDelegation } from "@/hooks/useAgentSession";
@@ -40,6 +39,7 @@ interface Props {
   onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
+  onTurnChangesChange?: (turns: TurnChanges[]) => void;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
@@ -176,7 +176,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { mes
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onTurnChangesChange }: Props) {
   const { t } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const { notifyEnabled, notifyEnabledRef, onNotifyToggle, telegramConfigured } = useTelegramNotify();
@@ -261,17 +261,10 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     wasRunningSubagentsRef.current = runningSubagents;
   }, [runningSubagents]);
 
-  // --- Changes panel: files edited this session (git-independent) ---------
-  const [sessionChanges, setSessionChanges] = useState<SessionChange[]>([]);
-  const [changesOpen, setChangesOpen] = useState(false);
-
+  // --- Per-turn changes pushed to the right panel (AppShell) ---------------
   useEffect(() => {
-    if (agentRunning) {
-      setChangesOpen(false);
-      return;
-    }
-    const changes = extractSessionChanges(messages);
-    setSessionChanges(changes);
+    onTurnChangesChange?.(extractTurnChanges(messages));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentRunning, messages]);
   // Shows the last assistant text as a speak button; hides when a new run
   // starts.
@@ -718,96 +711,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
               }}
             />
           </div>
-        )}
-        {sessionChanges.length > 0 && !agentRunning && (
-          <>
-            <button
-              onClick={() => setChangesOpen((v) => !v)}
-              title={t("changes.title")}
-              style={{
-                position: "absolute",
-                right: 14,
-                bottom: 185,
-                zIndex: 55,
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                padding: "7px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: 999,
-                background: changesOpen ? "var(--bg-selected)" : "var(--bg-panel)",
-                color: "var(--text)",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="16 18 22 12 16 6" />
-                <polyline points="8 6 2 12 8 18" />
-              </svg>
-              {t("changes.title")} ({sessionChanges.length})
-            </button>
-            {changesOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 14,
-                  bottom: 225,
-                  zIndex: 56,
-                  width: "min(520px, calc(100vw - 28px))",
-                  maxHeight: "min(420px, calc(100vh - 260px))",
-                  display: "flex",
-                  flexDirection: "column",
-                  background: "var(--bg-panel)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
-                  overflow: "hidden",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text)", flex: 1 }}>
-                    {t("changes.title")} ({sessionChanges.length})
-                  </span>
-                  <button
-                    onClick={() => setChangesOpen(false)}
-                    title={t("changes.close")}
-                    aria-label={t("changes.close")}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      width: 22, height: 22, padding: 0,
-                      background: "none", border: "none",
-                      color: "var(--text-dim)", cursor: "pointer", borderRadius: 5,
-                    }}
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-                <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
-                  {sessionChanges.map((c) => (
-                    <div key={c.file} style={{ marginBottom: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }} title={c.file}>
-                          {c.file}
-                        </span>
-                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
-                          {c.tool}
-                        </span>
-                      </div>
-                      <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-                        <SplitPatchView text={c.diff} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
         )}
         <div
           style={{

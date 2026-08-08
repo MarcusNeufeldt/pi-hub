@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { TurnChanges } from "@/lib/session-changes";
+import { diffStats } from "@/lib/patch";
 import { SplitPatchView } from "./MessageView";
 
 function formatTurnTime(ms: number): string {
@@ -34,6 +35,24 @@ export function PerTurnDiffView({
   const [selectedIndex, setSelectedIndex] = useState(() =>
     turns.length > 0 ? turns.length - 1 : -1,
   );
+  // Diff visibility: expanded by default; "collapse all" shows +/− stats
+  // rows with per-file expand.
+  const [collapsedAll, setCollapsedAll] = useState(false);
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+
+  // Reset per-file expansion when switching turns.
+  useEffect(() => {
+    setExpandedFiles(new Set());
+  }, [selectedIndex]);
+
+  const toggleFile = (file: string) => {
+    setExpandedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(file)) next.delete(file);
+      else next.add(file);
+      return next;
+    });
+  };
 
   // Snap back to the last turn when a new turn arrives.
   const latestTurnId = turns.length > 0 ? turns[turns.length - 1].turnId : null;
@@ -68,6 +87,37 @@ export function PerTurnDiffView({
           {t("changes.title")} ({totalFiles})
         </span>
         <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setCollapsedAll((v) => !v)}
+          title={collapsedAll ? t("changes.expandAll") : t("changes.collapseAll")}
+          aria-label={collapsedAll ? t("changes.expandAll") : t("changes.collapseAll")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 26,
+            height: 24,
+            padding: 0,
+            background: "none",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          {collapsedAll ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="7 13 12 18 17 13" />
+              <polyline points="7 6 12 11 17 6" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="17 11 12 6 7 11" />
+              <polyline points="17 18 12 13 7 18" />
+            </svg>
+          )}
+        </button>
         <select
           value={selectedIndex}
           onChange={(e) => setSelectedIndex(Number(e.target.value))}
@@ -101,47 +151,87 @@ export function PerTurnDiffView({
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
         {selected && (
           <>
-            {selected.files.map((c) => (
-              <div key={c.file} style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, padding: "0 4px" }}>
-                  <button
-                    onClick={() => onOpenFile?.(c.file, getFileName(c.file))}
-                    title={c.file}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      color: "var(--accent)",
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      textAlign: "left",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {getFileName(c.file)}
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.7 }}>
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </button>
-                  <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
-                    {c.tool}
-                  </span>
+            {selected.files.map((c) => {
+              const stats = diffStats(c.diff);
+              const fileExpanded = !collapsedAll || expandedFiles.has(c.file);
+              return (
+                <div key={c.file} style={{ marginBottom: fileExpanded ? 10 : 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: fileExpanded ? 4 : 0, padding: "0 4px" }}>
+                    {collapsedAll && (
+                      <button
+                        onClick={() => toggleFile(c.file)}
+                        title={fileExpanded ? t("changes.collapse") : t("changes.expand")}
+                        aria-label={fileExpanded ? t("changes.collapse") : t("changes.expand")}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 16,
+                          height: 16,
+                          padding: 0,
+                          background: "none",
+                          border: "none",
+                          color: "var(--text-dim)",
+                          cursor: "pointer",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ transform: fileExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+                          <polyline points="3 2 7 5 3 8" />
+                        </svg>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onOpenFile?.(c.file, getFileName(c.file))}
+                      title={c.file}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        color: "var(--accent)",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        fontFamily: "var(--font-mono)",
+                        textAlign: "left",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {getFileName(c.file)}
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.7 }}>
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                    </button>
+                    {stats.add > 0 && (
+                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#16a34a", flexShrink: 0 }}>
+                        +{stats.add}
+                      </span>
+                    )}
+                    {stats.del > 0 && (
+                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#ef4444", flexShrink: 0 }}>
+                        −{stats.del}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
+                      {c.tool}
+                    </span>
+                  </div>
+                  {fileExpanded && (
+                    <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                      <SplitPatchView text={c.diff} />
+                    </div>
+                  )}
                 </div>
-                <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-                  <SplitPatchView text={c.diff} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {selected.files.length === 0 && (
               <div style={{ padding: "14px 8px", fontSize: 11, color: "var(--text-dim)" }}>
                 {t("changes.empty")}

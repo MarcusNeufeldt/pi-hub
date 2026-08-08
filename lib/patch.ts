@@ -21,6 +21,18 @@ interface PendingChangeLine {
   text: string;
 }
 
+/** Count added/removed lines in a unified diff (excluding file headers). */
+export function diffStats(text: string): { add: number; del: number } {
+  let add = 0;
+  let del = 0;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) add++;
+    else if (line.startsWith("-")) del++;
+  }
+  return { add, del };
+}
+
 export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
   const files: SplitDiffFile[] = [];
   let current: SplitDiffFile | null = null;

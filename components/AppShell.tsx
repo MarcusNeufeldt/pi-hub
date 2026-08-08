@@ -409,6 +409,19 @@ export function AppShell() {
     }
   }, [router, isMobile]);
 
+  // Open a worker's session from the Subagents tab (transcript).
+  const handleOpenTranscript = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch("/api/sessions");
+      if (!res.ok) return;
+      const data = (await res.json()) as { sessions?: SessionInfo[] };
+      const info = data.sessions?.find((s) => s.id === sessionId);
+      if (info) handleSelectSession(info);
+    } catch {
+      // ignore
+    }
+  }, [handleSelectSession]);
+
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
@@ -1706,7 +1719,10 @@ export function AppShell() {
               )}
             />
           ) : rightView === "subagents" ? (
-            <SubagentsView delegations={subagents} />
+            <SubagentsView
+              delegations={subagents}
+              onOpenTranscript={handleOpenTranscript}
+            />
           ) : (
             <PerTurnDiffView
               turns={turnChanges}

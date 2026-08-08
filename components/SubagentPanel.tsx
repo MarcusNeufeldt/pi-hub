@@ -215,7 +215,13 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
 }
 
 /** Embedded subagent fleet view for the right panel. */
-export function SubagentsView({ delegations }: { delegations: SubagentDelegation[] }) {
+export function SubagentsView({
+  delegations,
+  onOpenTranscript,
+}: {
+  delegations: SubagentDelegation[];
+  onOpenTranscript?: (sessionId: string) => void;
+}) {
   const { t } = useI18n();
   const runningChildren = delegations.reduce(
     (n, d) => n + d.children.filter((c) => c.status === "running").length,
@@ -243,9 +249,40 @@ export function SubagentsView({ delegations }: { delegations: SubagentDelegation
         )}
         {delegations.map((d) => (
           <div key={d.toolCallId} style={{ marginBottom: 4 }}>
-            {d.children.length > 1 && d.task && (
-              <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", marginBottom: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.task}>
-                {d.task}
+            {(d.children.length > 1 || d.task) && d.task && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5, padding: "0 2px" }}>
+                <div style={{ flex: 1, minWidth: 0, fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.task}>
+                  {d.task}
+                </div>
+                {d.transcriptSessionId && onOpenTranscript && (
+                  <button
+                    onClick={() => onOpenTranscript(d.transcriptSessionId!)}
+                    title={t("subagents.transcript")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      flexShrink: 0,
+                      padding: "2px 7px",
+                      background: "var(--bg-hover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 5,
+                      color: "var(--accent)",
+                      cursor: "pointer",
+                      fontSize: 9,
+                      fontWeight: 600,
+                      letterSpacing: "0.03em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {t("subagents.transcript")}
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </button>
+                )}
               </div>
             )}
             {d.children.map((c) => (

@@ -377,6 +377,11 @@ export interface SubagentDelegation {
   task?: string;
   running: boolean;
   children: SubagentChild[];
+  /** Async-run directory (pi-subagents) — polled for live status.json. */
+  asyncDir?: string;
+  runId?: string;
+  /** Worker session id (from status.json artifactPaths) — opens transcript. */
+  transcriptSessionId?: string;
 }
 
 /**
@@ -498,6 +503,8 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
       const details = isRecord((result as { details?: unknown }).details)
         ? (result as { details: Record<string, unknown> }).details
         : undefined;
+      const asyncDir = typeof details?.asyncDir === "string" ? details.asyncDir : undefined;
+      const runId = typeof details?.runId === "string" ? details.runId : undefined;
       const rrows = Array.isArray(details?.results) ? (details.results as Array<Record<string, unknown>>) : [];
       const prog = Array.isArray(details?.progress) ? (details.progress as Array<Record<string, unknown>>) : [];
       let finalChildren: SubagentChild[];
@@ -550,7 +557,14 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
           recentOutputLines: c.recentOutputLines ?? resultOutputLines,
         }));
       }
-      delegations.push({ toolCallId: tc.toolCallId, task, running: false, children: finalChildren });
+      delegations.push({
+        toolCallId: tc.toolCallId,
+        task,
+        running: false,
+        children: finalChildren,
+        asyncDir,
+        runId,
+      });
     }
   }
   return delegations;
@@ -606,6 +620,85 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
   const [subagents, setSubagents] = useState<SubagentDelegation[]>([]);
+
+  // --- Async-run polling: detached runs publish status.json; poll it so the
+  // cards show real state, output, and the worker's transcript session. -----
+  useEffect(() => {
+    const targets = subagents.filter((d) => d.running && d.asyncDir);
+    if (targets.length === 0) return;
+    const id = setInterval(() => {
+      for (const d of targets) {
+        void (async () => {
+          try {
+            const res = await fetch(`/api/subagent-run?dir=${encodeURIComponent(d.asyncDir!)}`);
+            if (!res.ok) return;
+            const status = (await res.json()) as {
+              state?: string;
+              workflow?: {
+                value?: {
+                  output?: string;
+                  artifactPaths?: string[];
+                  results?: Array<Record<string, unknown>>;
+                };
+              };
+            };
+            const value = status.workflow?.value;
+            const output = value?.output ?? "";
+            const artifact = value?.artifactPaths?.[0];
+            const transcriptSessionId =
+              typeof artifact === "string"
+                ? (artifact.split(/[\\/]/).pop() ?? "").replace(/^.*?_([0-9a-f-]+)\.jsonl$/, "$1")
+                : undefined;
+            const done = status.state === "complete";
+            setSubagents((prev) =>
+              prev.map((del) => {
+                if (del.toolCallId !== d.toolCallId) return del;
+                const rows = value?.results ?? [];
+                const children: SubagentChild[] =
+                  rows.length > 0
+                    ? rows
+                        .map((r) => {
+                          const agent = typeof r.agent === "string" ? r.agent : undefined;
+                          if (!agent) return null;
+                          const existing = del.children.find((c) => c.agent === agent);
+                          return {
+                            ...existing,
+                            agent,
+                            task: typeof r.task === "string" ? r.task : existing?.task ?? del.task,
+                            status: done ? "completed" : "running",
+                            recentOutput: output || existing?.recentOutput,
+                            recentOutputLines: output
+                              ? output.split("\n").slice(-10)
+                              : existing?.recentOutputLines,
+                            durationMs:
+                              typeof r.durationMs === "number" ? r.durationMs : existing?.durationMs,
+                          } as SubagentChild;
+                        })
+                        .filter((c): c is SubagentChild => c !== null)
+                    : del.children.map((c) => ({
+                        ...c,
+                        status: done ? "completed" : "running",
+                        recentOutput: output || c.recentOutput,
+                        recentOutputLines: output
+                          ? output.split("\n").slice(-10)
+                          : c.recentOutputLines,
+                      }));
+                return {
+                  ...del,
+                  children,
+                  running: !done,
+                  transcriptSessionId: transcriptSessionId ?? del.transcriptSessionId,
+                };
+              }),
+            );
+          } catch {
+            // transient — keep polling
+          }
+        })();
+      }
+    }, 2500);
+    return () => clearInterval(id);
+  }, [subagents]);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const eventSourceSessionIdRef = useRef<string | null>(null);
@@ -1591,6 +1684,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               if (d.toolCallId !== id) return d;
               const details =
                 typeof result === "object" && result?.details ? result.details : undefined;
+              const asyncDir = typeof details?.asyncDir === "string" ? details.asyncDir : undefined;
+              const runId = typeof details?.runId === "string" ? details.runId : undefined;
               const results = details?.results ?? [];
               const progress = details?.progress ?? [];
               let children: SubagentChild[];
@@ -1656,7 +1751,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                   recentOutputLines: c.recentOutputLines ?? resultOutputLines,
                 }));
               }
-              return { ...d, children, running: false };
+              return {
+                ...d,
+                children,
+                running: false,
+                asyncDir: d.asyncDir ?? asyncDir,
+                runId: d.runId ?? runId,
+              };
             }),
           );
         }

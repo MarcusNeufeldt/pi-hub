@@ -263,6 +263,8 @@ export const zhCNLocale: LocalePlugin = {
     "changes.close": "关闭更改面板",
     "changes.empty": "暂无更改——agent 编辑的文件会显示在这里。",
     "changes.turn": "回合",
+    "changes.lastTurn": "最新回合",
+    "changes.selectTurn": "选择回合",
     "changes.file": "个文件",
     "changes.files": "个文件",
     "i18n.copied": "已复制",

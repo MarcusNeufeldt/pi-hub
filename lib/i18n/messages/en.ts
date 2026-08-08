@@ -261,6 +261,8 @@ export const enLocale: LocalePlugin = {
     "changes.close": "Close changes panel",
     "changes.empty": "No changes yet — files the agent edits will appear here.",
     "changes.turn": "Turn",
+    "changes.lastTurn": "Last Turn",
+    "changes.selectTurn": "Select turn",
     "changes.file": "file",
     "changes.files": "files",
     "i18n.speak": "Read aloud",

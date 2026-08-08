@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
     "@earendil-works/pi-ai",
     "@earendil-works/pi-tui",
   ],
-  allowedDevOrigins: ['192.168.*.*'],
+  allowedDevOrigins: ['192.168.*.*', '*.tail*.ts.net', '*.ts.net', 'vita.tail914baa.ts.net'],
   async headers() {
     return [
       {

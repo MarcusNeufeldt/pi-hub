@@ -209,6 +209,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.steer": "引导",
     "chat.followUp": "后续消息",
     "chat.send": "发送",
+    "chat.micStart": "录制语音",
+    "chat.micStop": "停止录制",
     "chat.attachImage": "附加图片",
     "chat.filterModels": "筛选模型…",
     "chat.noMatchingModels": "没有匹配的模型",

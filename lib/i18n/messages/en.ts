@@ -209,6 +209,8 @@ export const enLocale: LocalePlugin = {
     "chat.steer": "Steer",
     "chat.followUp": "Follow-up",
     "chat.send": "Send",
+    "chat.micStart": "Record voice",
+    "chat.micStop": "Stop recording",
     "chat.attachImage": "Attach image",
     "chat.filterModels": "Filter models…",
     "chat.noMatchingModels": "No matching models",

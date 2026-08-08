@@ -398,6 +398,73 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     : {};
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // --- Voice input ----------------------------------------------------------
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+
+  const stopRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }, []);
+
+  useEffect(() => () => stopRecording(), [stopRecording]);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : undefined;
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        setRecording(false);
+        const blob = new Blob(audioChunksRef.current, { type: mime ?? "audio/webm" });
+        audioChunksRef.current = [];
+        if (blob.size === 0) return;
+        setTranscribing(true);
+        try {
+          const form = new FormData();
+          form.append("audio", blob, "voice.webm");
+          const res = await fetch("/api/transcribe", { method: "POST", body: form });
+          const data = (await res.json()) as { text?: string; error?: string };
+          if (!res.ok || !data.text) {
+            console.error("transcribe failed:", data.error ?? res.status);
+            return;
+          }
+          setValue((prev) => (prev.trim() ? `${prev.trim()} ${data.text}` : data.text ?? ""));
+          textareaRef.current?.focus();
+        } catch (err) {
+          console.error("transcribe error:", err);
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      mediaRecorderRef.current = recorder;
+      mediaStreamRef.current = stream;
+      recorder.start();
+      setRecording(true);
+    } catch (err) {
+      console.error("mic error:", err);
+    }
+  }, []);
+
+  const toggleRecording = useCallback(() => {
+    if (recording) stopRecording();
+    else void startRecording();
+  }, [recording, startRecording, stopRecording]);
+  // --- /Voice input ---------------------------------------------------------
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const toolDropdownRef = useRef<HTMLDivElement>(null);
@@ -1789,32 +1856,67 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               )}
             </div>
           ) : (
-            <button
-              onClick={handleSend}
-              disabled={!value.trim() && !attachedImages.length}
-              style={{
-                flexShrink: 0,
-                alignSelf: "flex-end",
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px",
-                background: (value.trim() || attachedImages.length) ? "var(--accent)" : "var(--bg-panel)",
-                border: "none",
-                borderRadius: 8,
-                color: (value.trim() || attachedImages.length) ? "#fff" : "var(--text-dim)",
-                cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
-                fontSize: 13,
-                fontWeight: 600,
-                letterSpacing: "-0.01em",
-                boxShadow: (value.trim() || attachedImages.length) ? "0 1px 3px rgba(37,99,235,0.25)" : "none",
-                transition: "background 0.15s, box-shadow 0.15s",
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="2" y1="7" x2="11" y2="7" />
-                <polyline points="7.5 3 12 7 7.5 11" />
-              </svg>
-              {t("chat.send")}
-            </button>
+            <>
+              <button
+                onClick={toggleRecording}
+                disabled={transcribing}
+                title={recording ? t("chat.micStop") : t("chat.micStart")}
+                aria-label={recording ? t("chat.micStop") : t("chat.micStart")}
+                style={{
+                  flexShrink: 0,
+                  alignSelf: "flex-end",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 30, height: 30, padding: 0,
+                  background: recording ? "rgba(239,68,68,0.15)" : "var(--bg-panel)",
+                  border: recording ? "1px solid rgba(239,68,68,0.5)" : "1px solid var(--border)",
+                  borderRadius: 8,
+                  color: recording ? "#ef4444" : transcribing ? "var(--text-dim)" : "var(--text-muted)",
+                  cursor: transcribing ? "wait" : "pointer",
+                  transition: "background 0.15s, color 0.15s",
+                }}
+              >
+                {transcribing ? (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <g>
+                      <path d="M21 12a9 9 0 1 1-3.8-7.4" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+                      <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite" />
+                    </g>
+                  </svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="22" />
+                  </svg>
+                )}
+              </button>
+              <button
+                onClick={handleSend}
+                disabled={!value.trim() && !attachedImages.length}
+                style={{
+                  flexShrink: 0,
+                  alignSelf: "flex-end",
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "7px 14px",
+                  background: (value.trim() || attachedImages.length) ? "var(--accent)" : "var(--bg-panel)",
+                  border: "none",
+                  borderRadius: 8,
+                  color: (value.trim() || attachedImages.length) ? "#fff" : "var(--text-dim)",
+                  cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  boxShadow: (value.trim() || attachedImages.length) ? "0 1px 3px rgba(37,99,235,0.25)" : "none",
+                  transition: "background 0.15s, box-shadow 0.15s",
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="2" y1="7" x2="11" y2="7" />
+                  <polyline points="7.5 3 12 7 7.5 11" />
+                </svg>
+                {t("chat.send")}
+              </button>
+            </>
           )}
           </div>
         </div>

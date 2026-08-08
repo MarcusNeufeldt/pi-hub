@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
   if (key) {
     const voiceId = process.env.ELEVENLABS_TTS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb"; // Rachel
     try {
+    try {
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: "POST",
         headers: { "xi-api-key": key, "Content-Type": "application/json" },

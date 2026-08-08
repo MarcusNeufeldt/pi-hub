@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import {
   deleteTelegramConversation,
@@ -52,34 +53,61 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 5,
   color: "var(--text)",
   fontSize: 12,
+  outline: "none",
   width: "100%",
   boxSizing: "border-box",
-};
-
-const btn: React.CSSProperties = {
-  padding: "6px 12px",
-  background: "var(--accent)",
-  color: "#fff",
-  border: "none",
-  borderRadius: 5,
-  cursor: "pointer",
-  fontSize: 12,
-};
-
-const btnGhost: React.CSSProperties = {
-  ...btn,
-  background: "var(--bg-panel)",
-  color: "var(--text)",
-  border: "1px solid var(--border)",
 };
 
 const card: React.CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: 8,
-  padding: 12,
+  padding: 14,
   background: "var(--bg-panel)",
   marginBottom: 12,
 };
+
+function primaryButtonStyle(disabled?: boolean): React.CSSProperties {
+  return {
+    padding: "6px 14px",
+    background: "var(--accent)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontSize: 13,
+    fontWeight: 600,
+    opacity: disabled ? 0.5 : 1,
+  };
+}
+
+function secondaryButtonStyle(disabled?: boolean): React.CSSProperties {
+  return {
+    padding: "6px 14px",
+    background: "none",
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    color: "var(--text-muted)",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontSize: 13,
+    opacity: disabled ? 0.5 : 1,
+  };
+}
+
+function CardTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <strong
+      style={{
+        display: "block",
+        fontSize: 13,
+        fontWeight: 600,
+        color: "var(--text)",
+        marginBottom: 8,
+      }}
+    >
+      {children}
+    </strong>
+  );
+}
 
 const STATUS_LABEL: Record<TelegramStatusDto["runtime"]["status"], string> = {
   disabled: "未启用",
@@ -92,6 +120,7 @@ const STATUS_LABEL: Record<TelegramStatusDto["runtime"]["status"], string> = {
 
 export function TelegramSettings({ onClose }: Props) {
   const { t } = useI18n();
+  const isMobile = useIsMobile();
   const [status, setStatus] = useState<TelegramStatusDto | null>(null);
   const [config, setConfig] = useState<TelegramConfigDto | null>(null);
   const [users, setUsers] = useState<TelegramUserDto[]>([]);
@@ -127,15 +156,17 @@ export function TelegramSettings({ onClose }: Props) {
 
   return (
     <div
-      onClick={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 1000,
-        background: "rgba(0,0,0,0.5)",
+        background: "rgba(0,0,0,0.35)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
       }}
       role="dialog"
       aria-modal="true"
@@ -143,19 +174,22 @@ export function TelegramSettings({ onClose }: Props) {
     >
       <div
         style={{
-          width: "min(820px, 94vw)",
-          maxHeight: "86vh",
+          width: isMobile ? "calc(100vw - 16px)" : 860,
+          maxWidth: "calc(100vw - 16px)",
+          height: isMobile ? "calc(100dvh - 16px)" : "78vh",
+          maxHeight: "calc(100dvh - 16px)",
           background: "var(--bg)",
           border: "1px solid var(--border)",
           borderRadius: 10,
           display: "flex",
           flexDirection: "column",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
           overflow: "hidden",
         }}
       >
         <Header onClose={onClose} />
         <Tabs tab={tab} setTab={setTab} />
-        <div style={{ overflow: "auto", padding: "12px 16px", flex: 1 }}>
+        <div style={{ overflow: "auto", padding: 20, flex: 1 }}>
           {error && <Banner kind="error">{error}</Banner>}
           {!config || !status ? (
             <div style={{ color: "var(--text-muted)", padding: 24, textAlign: "center" }}>
@@ -202,15 +236,27 @@ function Header({ onClose }: { onClose: () => void }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "12px 16px",
+        padding: "12px 18px",
         borderBottom: "1px solid var(--border)",
+        flexShrink: 0,
       }}
     >
-      <strong style={{ fontSize: 14 }}>
+      <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
         {t("common.telegram")} · {t("common.integrations")}
-      </strong>
-      <button style={btnGhost} onClick={onClose}>
-        ✕
+      </span>
+      <button
+        onClick={onClose}
+        style={{
+          background: "none",
+          border: "none",
+          color: "var(--text-muted)",
+          cursor: "pointer",
+          fontSize: 20,
+          lineHeight: 1,
+          padding: "2px 6px",
+        }}
+      >
+        ×
       </button>
     </div>
   );
@@ -236,13 +282,14 @@ function Tabs({
           onClick={() => setTab(it.key)}
           style={{
             flex: 1,
-            padding: "8px",
-            background: tab === it.key ? "var(--bg-selected)" : "transparent",
+            padding: "10px 8px",
+            background: "transparent",
             border: "none",
             borderBottom: tab === it.key ? "2px solid var(--accent)" : "2px solid transparent",
-            color: "var(--text)",
+            color: tab === it.key ? "var(--text)" : "var(--text-muted)",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: 13,
+            fontWeight: tab === it.key ? 600 : 400,
           }}
         >
           {it.label}
@@ -254,8 +301,12 @@ function Tabs({
 
 function Banner({ kind, children }: { kind: "error" | "success" | "warn"; children: React.ReactNode }) {
   const bg =
-    kind === "error" ? "rgba(220,53,69,0.12)" : kind === "success" ? "rgba(40,167,69,0.12)" : "rgba(255,193,7,0.14)";
-  const color = kind === "error" ? "#c0392b" : kind === "success" ? "#1e8449" : "#9a6700";
+    kind === "error"
+      ? "rgba(239,68,68,0.08)"
+      : kind === "success"
+        ? "rgba(22,163,74,0.1)"
+        : "rgba(217,119,6,0.1)";
+  const color = kind === "error" ? "#ef4444" : kind === "success" ? "#16a34a" : "#d97706";
   return (
     <div style={{ background: bg, color, padding: "8px 10px", borderRadius: 6, marginBottom: 10, fontSize: 12 }}>
       {children}
@@ -285,6 +336,8 @@ function SetupTab(props: {
   const [tokenInput, setTokenInput] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [selfHostedRoot, setSelfHostedRoot] = useState(config.botApi.mode === "self-hosted" ? config.botApi.apiRoot : "");
+  const selfHostedInputRef = useRef<HTMLInputElement>(null);
+  const [editingSelfHosted, setEditingSelfHosted] = useState(false);
   const [migrateRoot, setMigrateRoot] = useState("");
   const [testApiRoot, setTestApiRoot] = useState("");
   const [confirmMigrate, setConfirmMigrate] = useState(false);
@@ -382,7 +435,15 @@ function SetupTab(props: {
     }
   };
 
+  const doSwitchSelfHosted = () => {
+    // Mode is only persisted once an address is saved. Reveal the self-hosted
+    // form so the user can fill it in, then focus the address input.
+    setEditingSelfHosted(true);
+    requestAnimationFrame(() => selfHostedInputRef.current?.focus());
+  };
+
   const doSwitchOfficial = async () => {
+    setEditingSelfHosted(false);
     onBusy(true);
     onError(null);
     try {
@@ -439,7 +500,7 @@ function SetupTab(props: {
             {status.runtime.errorCode}
             {status.runtime.error ? `：${status.runtime.error}` : ""}
             <div style={{ marginTop: 6 }}>
-              <button style={btnGhost} onClick={doRestart} disabled={busy}>
+              <button style={secondaryButtonStyle(busy)} onClick={doRestart} disabled={busy}>
                 重新启动
               </button>
             </div>
@@ -449,7 +510,7 @@ function SetupTab(props: {
 
       {/* Token card */}
       <div style={card}>
-        <strong style={{ display: "block", marginBottom: 8 }}>Bot Token</strong>
+        <CardTitle>Bot Token</CardTitle>
         {status.tokenManagedByEnv ? (
           <Banner kind="warn">Bot Token 由环境变量 PI_HUB_TELEGRAM_BOT_TOKEN 管理，无法在此修改。</Banner>
         ) : (
@@ -462,20 +523,28 @@ function SetupTab(props: {
                 value={tokenInput}
                 onChange={(e) => setTokenInput(e.target.value)}
               />
-              <button style={btnGhost} onClick={() => setShowToken((v) => !v)}>
+              <button style={secondaryButtonStyle()} onClick={() => setShowToken((v) => !v)}>
                 {showToken ? "隐藏" : "显示"}
               </button>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button style={btn} onClick={doSaveToken} disabled={busy || !tokenInput.trim()}>
+              <button
+                style={primaryButtonStyle(busy || !tokenInput.trim())}
+                onClick={doSaveToken}
+                disabled={busy || !tokenInput.trim()}
+              >
                 保存
               </button>
               {status.tokenSource === "local" && (
-                <button style={btnGhost} onClick={doDeleteToken} disabled={busy}>
+                <button style={secondaryButtonStyle(busy)} onClick={doDeleteToken} disabled={busy}>
                   清除
                 </button>
               )}
-              <button style={btnGhost} onClick={doTest} disabled={busy || !status.configured}>
+              <button
+                style={secondaryButtonStyle(busy || !status.configured)}
+                onClick={doTest}
+                disabled={busy || !status.configured}
+              >
                 测试连接
               </button>
             </div>
@@ -491,7 +560,7 @@ function SetupTab(props: {
 
       {/* Bot API Server card */}
       <div style={card}>
-        <strong style={{ display: "block", marginBottom: 8 }}>Telegram Bot API 服务</strong>
+        <CardTitle>Telegram Bot API 服务</CardTitle>
         <div style={{ marginBottom: 8 }}>
           <label style={{ marginRight: 16, fontSize: 12 }}>
             <input
@@ -503,21 +572,32 @@ function SetupTab(props: {
             Telegram 官方服务
           </label>
           <label style={{ fontSize: 12 }}>
-            <input type="radio" checked={config.botApi.mode === "self-hosted"} disabled={busy} /> 自建 Bot API Server
+            <input
+              type="radio"
+              checked={config.botApi.mode === "self-hosted"}
+              onChange={doSwitchSelfHosted}
+              disabled={busy}
+            />{" "}
+            自建 Bot API Server
           </label>
         </div>
-        {config.botApi.mode === "official" ? (
+        {config.botApi.mode === "official" && !editingSelfHosted ? (
           <input style={inputStyle} value="https://api.telegram.org" readOnly />
         ) : (
           <>
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
               <input
+                ref={selfHostedInputRef}
                 style={inputStyle}
                 placeholder="https://tg-api.example.com"
                 value={selfHostedRoot}
                 onChange={(e) => setSelfHostedRoot(e.target.value)}
               />
-              <button style={btnGhost} onClick={doSaveBotApi} disabled={busy || !selfHostedRoot.trim()}>
+              <button
+                style={secondaryButtonStyle(busy || !selfHostedRoot.trim())}
+                onClick={doSaveBotApi}
+                disabled={busy || !selfHostedRoot.trim()}
+              >
                 保存地址
               </button>
             </div>
@@ -528,7 +608,7 @@ function SetupTab(props: {
                 value={testApiRoot}
                 onChange={(e) => setTestApiRoot(e.target.value)}
               />
-              <button style={btnGhost} onClick={doTest} disabled={busy}>
+              <button style={secondaryButtonStyle(busy)} onClick={doTest} disabled={busy}>
                 测试
               </button>
             </div>
@@ -545,7 +625,7 @@ function SetupTab(props: {
                   onChange={(e) => setMigrateRoot(e.target.value)}
                 />
                 <button
-                  style={btn}
+                  style={primaryButtonStyle(busy || !migrateRoot.trim() || !status.configured)}
                   onClick={() => setConfirmMigrate(true)}
                   disabled={busy || !migrateRoot.trim() || !status.configured}
                 >
@@ -559,10 +639,10 @@ function SetupTab(props: {
                     接管。请确认自建服务已经启动。
                   </Banner>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button style={btn} onClick={doMigrate} disabled={busy}>
+                    <button style={primaryButtonStyle(busy)} onClick={doMigrate} disabled={busy}>
                       确认迁移
                     </button>
-                    <button style={btnGhost} onClick={() => setConfirmMigrate(false)} disabled={busy}>
+                    <button style={secondaryButtonStyle(busy)} onClick={() => setConfirmMigrate(false)} disabled={busy}>
                       取消
                     </button>
                   </div>
@@ -575,8 +655,8 @@ function SetupTab(props: {
 
       {/* Pairing card */}
       <div style={card}>
-        <strong style={{ display: "block", marginBottom: 8 }}>用户配对</strong>
-        <button style={btn} onClick={doIssuePairing} disabled={busy}>
+        <CardTitle>用户配对</CardTitle>
+        <button style={primaryButtonStyle(busy)} onClick={doIssuePairing} disabled={busy}>
           生成配对码
         </button>
         {pairing && (
@@ -607,11 +687,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function StatusBadge({ status }: { status: TelegramStatusDto["runtime"]["status"] }) {
   const color =
     status === "running"
-      ? "#1e8449"
+      ? "#16a34a"
       : status === "error"
-        ? "#c0392b"
+        ? "#ef4444"
         : status === "standby"
-          ? "#9a6700"
+          ? "#d97706"
           : "var(--text-muted)";
   return (
     <span style={{ padding: "2px 8px", borderRadius: 10, background: `${color}22`, color, fontSize: 11 }}>
@@ -723,7 +803,11 @@ function UserRow({
           <option value="viewer">viewer</option>
         </select>
         {role !== u.role && (
-          <button style={{ ...btnGhost, marginLeft: 4, padding: "2px 6px" }} onClick={saveRole} disabled={busy}>
+          <button
+            style={{ ...secondaryButtonStyle(busy), marginLeft: 4, padding: "2px 6px", fontSize: 12 }}
+            onClick={saveRole}
+            disabled={busy}
+          >
             保存
           </button>
         )}
@@ -732,7 +816,11 @@ function UserRow({
         <input type="checkbox" checked={u.enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={busy} />
       </td>
       <td style={td}>
-        <button style={{ ...btnGhost, padding: "2px 6px" }} onClick={remove} disabled={busy}>
+        <button
+          style={{ ...secondaryButtonStyle(busy), padding: "2px 6px", fontSize: 12 }}
+          onClick={remove}
+          disabled={busy}
+        >
           删除
         </button>
       </td>
@@ -784,7 +872,7 @@ function ConversationsTab({
               <td style={td}>{new Date(c.updatedAt).toLocaleString()}</td>
               <td style={td}>
                 <button
-                  style={{ ...btnGhost, padding: "2px 6px" }}
+                  style={{ ...secondaryButtonStyle(busy), padding: "2px 6px", fontSize: 12 }}
                   disabled={busy}
                   onClick={async () => {
                     onBusy(true);

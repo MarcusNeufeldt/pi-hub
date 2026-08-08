@@ -580,11 +580,16 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
           recentOutputLines: c.recentOutputLines ?? resultOutputLines,
         }));
       }
+      // Detached async runs: the tool result is just the detach notice — keep
+      // them running so the status.json poller resumes after a refresh.
+      const detached = Boolean(asyncDir) && !resultOutput && rrows.length === 0 && prog.length === 0;
       delegations.push({
         toolCallId: tc.toolCallId,
         task,
-        running: false,
-        children: finalChildren,
+        running: detached ? true : false,
+        children: detached
+          ? finalChildren.map((c) => ({ ...c, status: "running" }))
+          : finalChildren,
         asyncDir,
         runId,
       });
@@ -673,6 +678,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                 ? (artifact.split(/[\\/]/).pop() ?? "").replace(/^.*?_([0-9a-f-]+)\.jsonl$/, "$1")
                 : undefined;
             const done = status.state === "complete";
+            const durationMs =
+              typeof status.lastUpdate === "number" && typeof status.startedAt === "number"
+                ? status.lastUpdate - status.startedAt
+                : undefined;
             setSubagents((prev) =>
               prev.map((del) => {
                 if (del.toolCallId !== d.toolCallId) return del;
@@ -694,7 +703,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                               ? output.split("\n").slice(-10)
                               : existing?.recentOutputLines,
                             durationMs:
-                              typeof r.durationMs === "number" ? r.durationMs : existing?.durationMs,
+                              typeof r.durationMs === "number"
+                                ? r.durationMs
+                                : existing?.durationMs ?? durationMs,
                           } as SubagentChild;
                         })
                         .filter((c): c is SubagentChild => c !== null)
@@ -705,6 +716,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                         recentOutputLines: output
                           ? output.split("\n").slice(-10)
                           : c.recentOutputLines,
+                        durationMs: c.durationMs ?? durationMs,
                       }));
                 return {
                   ...del,
@@ -1778,10 +1790,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                   recentOutputLines: c.recentOutputLines ?? resultOutputLines,
                 }));
               }
+              // Detached async runs return instantly — the tool's own end is
+              // NOT the real completion. Stay running; the status.json poller
+              // flips to completed when the background run actually finishes.
+              const detached = Boolean(asyncDir);
               return {
                 ...d,
-                children,
-                running: false,
+                children: detached
+                  ? children.map((c) => ({ ...c, status: "running" }))
+                  : children,
+                running: detached ? true : false,
                 asyncDir: d.asyncDir ?? asyncDir,
                 runId: d.runId ?? runId,
               };

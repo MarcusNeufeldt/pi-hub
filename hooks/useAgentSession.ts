@@ -357,6 +357,9 @@ export interface SubagentChild {
   currentTool?: string;
   currentToolArgs?: string;
   recentOutput?: string;
+  recentOutputLines?: string[];
+  recentTools?: Array<{ tool: string; args?: string }>;
+  thinking?: string;
   toolCount?: number;
   tokens?: number;
   model?: string;
@@ -1303,6 +1306,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               const output = Array.isArray(p.recentOutput)
                 ? (p.recentOutput[p.recentOutput.length - 1] as string | undefined)
                 : undefined;
+              const outputLines = Array.isArray(p.recentOutput)
+                ? (p.recentOutput as string[]).slice(-10)
+                : existing?.recentOutputLines;
+              const recentTools = Array.isArray(p.recentTools)
+                ? (p.recentTools as Array<Record<string, unknown>>).slice(-6).map((t) => ({
+                    tool: typeof t.tool === "string" ? t.tool : "tool",
+                    args: typeof t.args === "string" ? t.args : undefined,
+                  }))
+                : existing?.recentTools;
+              const thinking = typeof p.thinking === "string" ? p.thinking : existing?.thinking;
               return {
                 agent,
                 task:
@@ -1314,6 +1327,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                 currentToolArgs:
                   typeof p.currentToolArgs === "string" ? p.currentToolArgs : existing?.currentToolArgs,
                 recentOutput: output ?? existing?.recentOutput,
+                recentOutputLines: outputLines ?? existing?.recentOutputLines,
+                recentTools: recentTools ?? existing?.recentTools,
+                thinking,
                 toolCount: typeof p.toolCount === "number" ? p.toolCount : existing?.toolCount,
                 tokens: typeof p.tokens === "number" ? p.tokens : existing?.tokens,
                 model: typeof p.model === "string" ? p.model : existing?.model,

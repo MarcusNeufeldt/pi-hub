@@ -406,7 +406,7 @@ function buildSubagentChildren(args: Record<string, unknown> | undefined): Subag
             : `task ${i + 1}`;
       const task =
         typeof item.task === "string"
-          ? item.task
+          ? cleanTaskLabel(item.task)
           : typeof item.label === "string"
             ? item.label
             : undefined;
@@ -421,14 +421,20 @@ function buildSubagentChildren(args: Record<string, unknown> | undefined): Subag
         typeof item === "string" ? item : typeof item.agent === "string" ? item.agent : `agent ${i + 1}`;
       children.push({
         agent,
-        task: typeof item.task === "string" ? item.task : undefined,
+        task: cleanTaskLabel(typeof item.task === "string" ? item.task : undefined),
         status: "running",
       });
     });
     return children;
   }
   const agent = typeof args.agent === "string" ? args.agent : undefined;
-  const task = typeof args.task === "string" ? args.task : undefined;
+  const task = cleanTaskLabel(
+    typeof args.task === "string"
+      ? args.task
+      : typeof args.workflowScript === "string"
+        ? args.workflowScript
+        : undefined,
+  );
   if (agent || task || typeof args.workflowScript === "string") {
     children.push({
       agent: agent ?? (typeof args.workflowScript === "string" ? "workflow" : "subagent"),
@@ -450,6 +456,21 @@ function cleanSubagentOutput(text: string | undefined): string | undefined {
   if (!text) return undefined;
   if (text.length < 700 && DETACH_BOILERPLATE.test(text)) return undefined;
   return text;
+}
+
+/**
+ * Task labels get polluted with the workflowScript body ("return runs.run(...)").
+ * Strip the script and, when the label IS the script, pull out the quoted task.
+ */
+function cleanTaskLabel(task: string | undefined): string | undefined {
+  if (!task) return undefined;
+  const cleaned = task.replace(/\n?return\s+runs\.run\b[\s\S]*$/, "").trim();
+  if (/^return\s+runs\.run\b/.test(cleaned)) {
+    const m = cleaned.match(/task:\s*["']([^"']+)["']/);
+    if (m) return m[1].trim();
+    return undefined;
+  }
+  return cleaned || undefined;
 }
 
 /**
@@ -482,9 +503,9 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
       if (children.length === 0) continue;
       const task =
         typeof args.task === "string"
-          ? args.task
+          ? cleanTaskLabel(args.task)
           : typeof args.workflowScript === "string"
-            ? args.workflowScript.slice(0, 140)
+            ? cleanTaskLabel(args.workflowScript)
             : undefined;
       const result = results.get(tc.toolCallId);
       if (!result || result.isError) {
@@ -525,7 +546,9 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
             return {
               ...existing,
               agent,
-              task: typeof r.task === "string" ? r.task : existing?.task ?? task,
+              task: cleanTaskLabel(
+                typeof r.task === "string" ? r.task : existing?.task ?? task,
+              ),
               status,
               exitCode: typeof r.exitCode === "number" ? r.exitCode : undefined,
               recentOutput: existing?.recentOutput ?? resultOutput,
@@ -540,7 +563,7 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
           return {
             ...existing,
             agent,
-            task: existing?.task ?? task,
+            task: cleanTaskLabel(existing?.task ?? task),
             status: typeof p.status === "string" ? p.status : "completed",
             recentOutput: existing?.recentOutput ?? resultOutput,
             recentOutputLines: existing?.recentOutputLines ?? resultOutputLines,
@@ -1578,13 +1601,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             if (d.toolCallId !== callId) return d;
             // Snapshot text output lives in content[].text — always capture it.
             const contentText =
-              typeof partial === "string"
-                ? partial
-                : (partial?.content ?? [])
-                    .filter((b) => b?.type === "text" && b.text)
-                    .map((b) => b.text ?? "")
-                    .join("\n")
-                    .trim();
+              cleanSubagentOutput(
+                typeof partial === "string"
+                  ? partial
+                  : (partial?.content ?? [])
+                      .filter((b) => b?.type === "text" && b.text)
+                      .map((b) => b.text ?? "")
+                      .join("\n")
+                      .trim(),
+              ) ?? "";
             const progress = typeof partial === "object" ? partial?.details?.progress ?? [] : [];
             if (progress.length === 0) {
               if (!contentText) return d;
@@ -1706,7 +1731,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                     return {
                       ...existing,
                       agent,
-                      task: typeof r.task === "string" ? r.task : existing?.task ?? d.task,
+                      task: cleanTaskLabel(
+                        typeof r.task === "string" ? r.task : existing?.task ?? d.task,
+                      ),
                       status,
                       exitCode: typeof r.exitCode === "number" ? r.exitCode : existing?.exitCode,
                       recentOutput: existing?.recentOutput ?? resultOutput,
@@ -1723,7 +1750,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                   return {
                     ...existing,
                     agent,
-                    task: existing?.task ?? d.task,
+                    task: cleanTaskLabel(existing?.task ?? d.task),
                     status: typeof p.status === "string" ? p.status : "completed",
                     currentTool:
                       typeof p.currentTool === "string" ? p.currentTool : existing?.currentTool,

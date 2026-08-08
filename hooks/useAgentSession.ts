@@ -435,6 +435,19 @@ function buildSubagentChildren(args: Record<string, unknown> | undefined): Subag
 }
 
 /**
+ * pi-subagents async runs return immediately with detach boilerplate instead
+ * of real output — strip it so cards show substance or nothing.
+ */
+const DETACH_BOILERPLATE =
+  /Async workflow \[[0-9a-f-]+\]|Direct execution was removed|The async run is detached and running in the background|do not run sleep\/polling loops|You are in an interactive session/;
+
+function cleanSubagentOutput(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  if (text.length < 700 && DETACH_BOILERPLATE.test(text)) return undefined;
+  return text;
+}
+
+/**
  * Rebuilds delegations from loaded session messages — so a page refresh
  * restores the fleet (completed runs from their results, in-flight runs
  * from their tool args; live updates then merge in).
@@ -473,11 +486,13 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
         delegations.push({ toolCallId: tc.toolCallId, task, running: true, children });
         continue;
       }
-      const resultText = result.content
-        .filter((b): b is { type: "text"; text: string } => b.type === "text" && b.text)
-        .map((b) => b.text)
-        .join("\n")
-        .trim();
+      const resultText = cleanSubagentOutput(
+        result.content
+          .filter((b): b is { type: "text"; text: string } => b.type === "text" && b.text)
+          .map((b) => b.text)
+          .join("\n")
+          .trim(),
+      ) ?? "";
       const resultOutput = resultText ? resultText.slice(0, 500) : undefined;
       const resultOutputLines = resultText ? resultText.split("\n").slice(-10) : undefined;
       const details = isRecord((result as { details?: unknown }).details)
@@ -1560,14 +1575,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             | string
             | undefined;
           // Final output of the delegation (what the subagent produced).
-          const resultText =
+          const resultText = cleanSubagentOutput(
             typeof result === "string"
               ? result
               : (result?.content ?? [])
                   .filter((b) => b?.type === "text" && b.text)
                   .map((b) => b.text ?? "")
                   .join("\n")
-                  .trim();
+                  .trim(),
+          ) ?? "";
           const resultOutput = resultText ? resultText.slice(0, 500) : undefined;
           const resultOutputLines = resultText ? resultText.split("\n").slice(-10) : undefined;
           setSubagents((prev) =>

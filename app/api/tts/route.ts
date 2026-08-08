@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { readFile, rm, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { recordTtsFeedback } from "@/lib/tts-feedback";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,6 +38,15 @@ export async function POST(req: NextRequest) {
       });
       if (res.ok) {
         const audio = Buffer.from(await res.arrayBuffer());
+        // Feedback loop: re-transcribe what we spoke and log the WER.
+        // Fire-and-forget — never blocks the audio response.
+        void recordTtsFeedback({
+          originalText: text,
+          audio,
+          provider: "elevenlabs",
+          model: process.env.ELEVENLABS_TTS_MODEL ?? "eleven_flash_v2",
+          voiceId,
+        });
         return new NextResponse(new Uint8Array(audio), {
           headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
         });

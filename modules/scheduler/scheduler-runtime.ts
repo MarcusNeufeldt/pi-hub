@@ -385,23 +385,33 @@ export class SchedulerRuntime {
           finishedAt: Date.now(),
         });
         const finished = inner.store.getRun(run.id);
-        if (finished) {
-          // Recoverable-failure auto-reschedule: reset the counter on success;
-          // on a recoverable failure (SESSION_BUSY or rate-limit), reactivate
-          // a once task for a retry (resume §9 / §11) — even though the claim
-          // already marked it completed.
-          if (finished.taskId) {
-            if (finalStatus === "success") {
-              inner.store.resetAttemptCount(finished.taskId);
-            } else if (finalStatus === "failed") {
-              this.maybeRescheduleForRecovery(inner, finished);
-            }
+        if (!finished) return;
+        if (finalStatus === "success") {
+          if (finished.taskId) inner.store.resetAttemptCount(finished.taskId);
+          void safeNotify(inner.notifier, "onRunSucceeded", {
+            run: finished,
+            taskName: finished.taskNameSnapshot,
+          });
+        } else if (finalStatus === "failed") {
+          // Recoverable-failure auto-reschedule (resume §9 / §11). Decide +
+          // persist FIRST, then notify: a deferred (rescheduled) run emits
+          // onRunDeferred (a soft "retrying" notice) instead of onRunFailed,
+          // so the user isn't told the task terminally failed while it is
+          // actually being retried. Only a terminal failure notifies failed.
+          const decision = this.maybeRescheduleForRecovery(inner, finished);
+          if (decision) {
+            void safeNotify(inner.notifier, "onRunDeferred", {
+              run: finished,
+              taskName: finished.taskNameSnapshot,
+              nextRunAt: decision.nextRunAt,
+              reason: decision.reason,
+            });
+          } else {
+            void safeNotify(inner.notifier, "onRunFailed", {
+              run: finished,
+              taskName: finished.taskNameSnapshot,
+            });
           }
-          void safeNotify(
-            inner.notifier,
-            finalStatus === "success" ? "onRunSucceeded" : "onRunFailed",
-            { run: finished, taskName: finished.taskNameSnapshot },
-          );
         }
       },
     };
@@ -429,18 +439,20 @@ export class SchedulerRuntime {
   /**
    * Recoverable-failure auto-reschedule (resume §9 + §11). Delegates the
    * decision to the pure {@link computeRecovery} so it is unit-testable, then
-   * persists it. A null decision (non-recoverable error, cap reached, or a
-   * recurring task) leaves the run failed and the task as the claim left it.
+   * persists it. Returns the decision so the caller can emit an
+   * {@link TaskNotifier.onRunDeferred} notification; returns null for a
+   * non-recoverable error, a reached cap, or a recurring/manual run (those
+   * leave the run failed and notify onRunFailed).
    */
   private maybeRescheduleForRecovery(
     inner: RuntimeInternals,
     run: TaskRun,
-  ): void {
-    if (!run.taskId) return;
+  ): RecoveryDecision | null {
+    if (!run.taskId) return null;
     const task = inner.store.getTask(run.taskId);
-    if (!task) return;
+    if (!task) return null;
     const decision = computeRecovery(task, run, Date.now());
-    if (!decision) return;
+    if (!decision) return null;
     inner.store.rescheduleTask(
       run.taskId,
       decision.nextRunAt,
@@ -449,6 +461,7 @@ export class SchedulerRuntime {
     console.info(
       `[pi-hub:scheduler] task ${run.taskId} rescheduled (${decision.reason}; attempt ${decision.attemptCount}/${decision.cap})`,
     );
+    return decision;
   }
 }
 

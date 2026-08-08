@@ -163,6 +163,7 @@ export type OutboxEventType =
   | "task_started"
   | "task_success"
   | "task_failure"
+  | "task_deferred"
   | "test"
   | "runtime_warning";
 

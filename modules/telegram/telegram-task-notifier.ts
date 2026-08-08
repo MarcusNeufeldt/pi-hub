@@ -18,7 +18,7 @@
  * never change a task run's outcome (§18.3, safeNotify contract).
  */
 
-import type { TaskNotifier, TaskRunNotification } from "@/modules/scheduler/task-notifier";
+import type { TaskNotifier, TaskRunNotification, TaskRunDeferredNotification } from "@/modules/scheduler/task-notifier";
 
 import type { ExecutionOptions, TaskRun } from "@/modules/scheduler/types";
 
@@ -66,6 +66,16 @@ export class TelegramTaskNotifier implements TaskNotifier {
     if (!parseExecutionOptions(event.run).notifyOnFailure) return;
     await this.notify(event, "task_failure", (run, taskName) =>
       renderFailed(run, taskName, this.resolvePublicUrl?.() ?? null, (taskId) => this.rerunButton(taskId)),
+    );
+  }
+
+  async onRunDeferred(event: TaskRunDeferredNotification): Promise<void> {
+    // Deferred is failure-adjacent — only ping users who opted into failure
+    // notifications. (A task with both flags off stays fully silent.) Unlike
+    // onRunFailed, no rerun button is attached: a retry is already queued.
+    if (!parseExecutionOptions(event.run).notifyOnFailure) return;
+    await this.notify(event, "task_deferred", (run, taskName) =>
+      renderDeferred(run, taskName, event.reason, event.nextRunAt),
     );
   }
 
@@ -209,6 +219,8 @@ function eventTypeKey(eventType: OutboxEventType, runId: string): string {
       return `task-run:${runId}:success`;
     case "task_failure":
       return `task-run:${runId}:failed`;
+    case "task_deferred":
+      return `task-run:${runId}:deferred`;
     default:
       return `task-run:${runId}:${eventType}`;
   }
@@ -278,6 +290,34 @@ function renderFailed(
   }
   const buttons = buildFooterButtons(publicUrl, run.sessionId, run.taskId, rerun);
   return { text: lines.filter(Boolean).join("\n"), buttons };
+}
+
+/** Renders a transient-failure notice: the run did NOT terminally fail — it
+ *  was auto-rescheduled. Worded as "retrying" with the next attempt time, and
+ *  carries no rerun button (a retry is already queued). */
+function renderDeferred(
+  run: TaskRun,
+  taskName: string,
+  reason: "session_busy" | "rate_limit",
+  nextRunAt: number,
+): { text: string } {
+  const headline =
+    reason === "session_busy"
+      ? "⏳ 会话被占用，稍后自动重试"
+      : "⏳ 触发限额，稍后自动重试";
+  const lines = [
+    headline,
+    "",
+    `<b>任务：</b>${esc(taskName)}`,
+    `<b>下次重试：</b>${fmtTime(nextRunAt)}`,
+  ];
+  if (run.errorCode) {
+    lines.push(`<b>原因：</b><code>${esc(run.errorCode)}</code>`);
+  }
+  if (run.sessionId) {
+    lines.push("", `<b>Session：</b><code>${esc(run.sessionId)}</code>`);
+  }
+  return { text: lines.filter(Boolean).join("\n") };
 }
 
 function buildFooterButtons(

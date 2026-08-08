@@ -47,4 +47,9 @@ export type {
 } from "./types";
 
 export type { TaskStore } from "./task-store";
-export type { TaskNotifier, TaskRunNotification } from "./task-notifier";
+export type {
+  TaskNotifier,
+  TaskRunNotification,
+  TaskRunDeferredNotification,
+  TaskNotifierHook,
+} from "./task-notifier";

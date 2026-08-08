@@ -581,14 +581,15 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
         }));
       }
       // Detached async runs: the tool result is just the detach notice — keep
-      // them running so the status.json poller resumes after a refresh.
-      const detached = Boolean(asyncDir) && !resultOutput && rrows.length === 0 && prog.length === 0;
+      // them running so the status.json poller resumes after a refresh. Stale
+      // progress rows are not real completion evidence when a run dir exists.
+      const detached = Boolean(asyncDir) && !resultOutput && rrows.length === 0;
       delegations.push({
         toolCallId: tc.toolCallId,
         task,
         running: detached ? true : false,
         children: detached
-          ? finalChildren.map((c) => ({ ...c, status: "running" }))
+          ? children.map((c) => ({ ...c, status: "running" }))
           : finalChildren,
         asyncDir,
         runId,
@@ -652,7 +653,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // --- Async-run polling: detached runs publish status.json; poll it so the
   // cards show real state, output, and the worker's transcript session. -----
   useEffect(() => {
-    const targets = subagents.filter((d) => d.running && d.asyncDir);
+    // Poll every asyncDir delegation until its status.json has been consumed
+    // (running ones for live state, completed-but-unconsumed ones to attach
+    // the real output + transcript after a rebuild).
+    const targets = subagents.filter((d) => d.asyncDir && (d.running || !d.transcriptSessionId));
     if (targets.length === 0) return;
     const id = setInterval(() => {
       for (const d of targets) {

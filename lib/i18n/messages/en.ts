@@ -534,6 +534,7 @@ export const enLocale: LocalePlugin = {
     "subagents.transcript": "Transcript",
     "subagents.clear": "Clear",
     "subagents.notifyTitle": "Background task completed",
+    "subagents.toastTitle": "{agent} finished",
     "task.create.date": "Date",
     "task.create.timezone": "Timezone",
     "task.create.preview": "Preview",

@@ -278,6 +278,44 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
   }, [agentRunning, messages]);
   // Shows the last assistant text as a speak button; hides when a new run
   // starts.
+  // --- Completion toast: raised by the poller when a delegation flips to
+  // done while the page is open (the notify message only lands in the file).
+  const [completionToast, setCompletionToast] = useState<{
+    toolCallId: string;
+    agent: string;
+    output: string;
+    transcriptId?: string;
+  } | null>(null);
+  const knownCompletedRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (knownCompletedRef.current === null) {
+      // First sight: mark everything already done as known (no toast spam on
+      // session load / rebuild).
+      knownCompletedRef.current = new Set(
+        subagents.filter((d) => !d.running).map((d) => d.toolCallId),
+      );
+      return;
+    }
+    for (const d of subagents) {
+      if (d.running || knownCompletedRef.current.has(d.toolCallId)) continue;
+      knownCompletedRef.current.add(d.toolCallId);
+      const child = d.children[0];
+      setCompletionToast({
+        toolCallId: d.toolCallId,
+        agent: child?.agent ?? "worker",
+        output: child?.recentOutput ?? "",
+        transcriptId: d.transcriptSessionId,
+      });
+      break;
+    }
+  }, [subagents]);
+
+  useEffect(() => {
+    if (!completionToast) return;
+    const id = setTimeout(() => setCompletionToast(null), 12000);
+    return () => clearTimeout(id);
+  }, [completionToast]);
+
   const [showSpeakPill, setShowSpeakPill] = useState(false);
   const lastSpeakTextRef = useRef("");
   const prevRunningRef = useRef(agentRunning);
@@ -714,6 +752,83 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
               }}
             />
+          </div>
+        )}
+        {completionToast && (
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              transform: "translateX(-50%)",
+              bottom: 24,
+              zIndex: 70,
+              maxWidth: "min(520px, calc(100vw - 28px))",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 12px",
+              background: "var(--bg-panel)",
+              border: "1px solid rgba(34,197,94,0.4)",
+              borderRadius: 10,
+              boxShadow: "0 8px 30px rgba(0,0,0,0.18)",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)" }}>
+                {t("subagents.toastTitle", { agent: completionToast.agent })}
+              </div>
+              {completionToast.output && (
+                <div style={{ fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={completionToast.output}>
+                  {completionToast.output.slice(0, 140)}
+                </div>
+              )}
+            </div>
+            {completionToast.transcriptId && (
+              <button
+                onClick={() => onOpenTranscript?.(completionToast.transcriptId!)}
+                style={{
+                  flexShrink: 0,
+                  padding: "3px 8px",
+                  background: "var(--bg-hover)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 5,
+                  color: "var(--accent)",
+                  cursor: "pointer",
+                  fontSize: 9,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.03em",
+                }}
+              >
+                {t("subagents.transcript")}
+              </button>
+            )}
+            <button
+              onClick={() => setCompletionToast(null)}
+              title={t("changes.close")}
+              style={{
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 20,
+                height: 20,
+                padding: 0,
+                background: "none",
+                border: "none",
+                color: "var(--text-dim)",
+                cursor: "pointer",
+                borderRadius: 4,
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
           </div>
         )}
         <div

@@ -534,6 +534,7 @@ export const zhCNLocale: LocalePlugin = {
     "subagents.transcript": "Transcript",
     "subagents.clear": "清除",
     "subagents.notifyTitle": "后台任务已完成",
+    "subagents.toastTitle": "{agent} 已完成",
     "task.create.date": "日期",
     "task.create.timezone": "时区",
     "task.create.preview": "预览",

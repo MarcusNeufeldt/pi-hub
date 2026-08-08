@@ -7,6 +7,8 @@ import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
 import { PerTurnDiffView } from "./PerTurnDiffView";
+import { SubagentsView } from "./SubagentPanel";
+import type { SubagentDelegation } from "./SubagentPanel";
 import type { TurnChanges } from "@/lib/session-changes";
 import { TabBar, type Tab } from "./TabBar";
 import { ModelsConfig } from "./ModelsConfig";
@@ -81,6 +83,26 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+
+  // Right panel view tabs: "review" (per-turn diffs) | "subagents" (fleet).
+  const [rightView, setRightView] = useState<"review" | "subagents">("review");
+
+  // Subagent fleet state, lifted from ChatWindow.
+  const [subagents, setSubagents] = useState<SubagentDelegation[]>([]);
+  const prevRunningSubagentsRef = useRef(0);
+  const handleSubagentsChange = useCallback((delegations: SubagentDelegation[]) => {
+    setSubagents(delegations);
+    const running = delegations.reduce(
+      (n, d) => n + d.children.filter((c) => c.status === "running").length,
+      0,
+    );
+    // Auto-switch to the Subagents tab when a new delegation spawns.
+    if (running > prevRunningSubagentsRef.current) {
+      setRightView("subagents");
+      setRightPanelOpen(true);
+    }
+    prevRunningSubagentsRef.current = running;
+  }, []);
 
   // Per-turn diffs shown in the right panel; auto-opens when a new turn
   // changes files.
@@ -1532,6 +1554,7 @@ export function AppShell() {
               onSystemPromptChange={handleSystemPromptChange}
               onSessionStatsChange={handleSessionStatsChange}
               onTurnChangesChange={handleTurnChangesChange}
+              onSubagentsChange={handleSubagentsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
@@ -1608,28 +1631,65 @@ export function AppShell() {
           background: "var(--bg)",
         } as React.CSSProperties}
       >
-        {/* Right panel tab bar */}
+        {/* Right panel view tabs: Subagents | Review */}
         <div style={{
           display: "flex",
           alignItems: "center",
+          gap: 4,
           flexShrink: 0,
           height: "calc(36px + env(safe-area-inset-top))",
           paddingTop: "env(safe-area-inset-top)",
+          paddingLeft: 8,
+          paddingRight: 8,
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
         }}>
-          <div style={{ flex: 1, overflow: "hidden" }}>
-            <TabBar
-              tabs={fileTabs}
-              activeTabId={activeFileTabId ?? ""}
-              onSelectTab={setActiveFileTabId}
-              onCloseTab={handleCloseFileTab}
-            />
-          </div>
-
+          {(["review", "subagents"] as const).map((view) => (
+            <button
+              key={view}
+              onClick={() => {
+                setRightView(view);
+                setActiveFileTabId(null);
+              }}
+              style={{
+                flex: 1,
+                height: 26,
+                borderRadius: 6,
+                border: "none",
+                background: rightView === view ? "var(--bg-selected)" : "none",
+                color: rightView === view ? "var(--text)" : "var(--text-muted)",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: "0.02em",
+              }}
+            >
+              {view === "review" ? translate("panel.review") : translate("panel.subagents")}
+            </button>
+          ))}
         </div>
 
-        {/* Panel content: open file, or per-turn diffs */}
+        {/* File tabs — shown when files are open */}
+        {fileTabs.length > 0 && (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+            background: "var(--bg-panel)",
+            borderBottom: "1px solid var(--border)",
+          }}>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <TabBar
+                tabs={fileTabs}
+                activeTabId={activeFileTabId ?? ""}
+                onSelectTab={setActiveFileTabId}
+                onCloseTab={handleCloseFileTab}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Panel content: open file, or active view (review diffs / subagents) */}
         <div style={{ flex: 1, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
           {activeFileTab?.filePath ? (
             <FileViewer
@@ -1645,6 +1705,8 @@ export function AppShell() {
                 { sourceSessionId: activeFileTab.sourceSessionId },
               )}
             />
+          ) : rightView === "subagents" ? (
+            <SubagentsView delegations={subagents} />
           ) : (
             <PerTurnDiffView
               turns={turnChanges}

@@ -177,77 +177,18 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
   );
 }
 
-export function SubagentPanel({
-  delegations,
-  open,
-  onOpenChange,
-  isMobile,
-}: {
-  delegations: SubagentDelegation[];
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  isMobile: boolean;
-}) {
+/** Embedded subagent fleet view for the right panel. */
+export function SubagentsView({ delegations }: { delegations: SubagentDelegation[] }) {
   const { t } = useI18n();
   const runningChildren = delegations.reduce(
     (n, d) => n + d.children.filter((c) => c.status === "running").length,
     0,
   );
-  const totalChildren = delegations.reduce((n, d) => n + d.children.length, 0);
-
-  if (!open) {
-    if (totalChildren === 0) return null;
-    return (
-      <button
-        onClick={() => onOpenChange(true)}
-        style={{
-          position: "absolute",
-          right: 14,
-          bottom: 90,
-          zIndex: 55,
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          padding: "7px 12px",
-          border: "1px solid var(--border)",
-          borderRadius: 999,
-          background: "var(--bg-panel)",
-          color: "var(--text)",
-          fontSize: 11,
-          fontWeight: 600,
-          cursor: "pointer",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-        }}
-      >
-        <StatusIndicator status={runningChildren > 0 ? "running" : "completed"} />
-        {t("subagents.title")}
-        {runningChildren > 0 ? (
-          <span style={{ color: "var(--accent)" }}>{runningChildren} {t("subagents.running")}</span>
-        ) : (
-          <span style={{ color: "var(--text-dim)" }}>({totalChildren})</span>
-        )}
-      </button>
-    );
-  }
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: isMobile ? "min(85vw, 320px)" : 300,
-        background: "var(--bg-panel)",
-        borderLeft: "1px solid var(--border)",
-        zIndex: 60,
-        display: "flex",
-        flexDirection: "column",
-        boxShadow: "-8px 0 24px rgba(0,0,0,0.08)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text)", flex: 1 }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)" }}>
           {t("subagents.title")}
         </span>
         {runningChildren > 0 && (
@@ -256,23 +197,6 @@ export function SubagentPanel({
             {runningChildren} {t("subagents.running")}
           </span>
         )}
-        <button
-          onClick={() => onOpenChange(false)}
-          title={t("subagents.close")}
-          aria-label={t("subagents.close")}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: 24, height: 24, padding: 0,
-            background: "none", border: "none",
-            color: "var(--text-dim)", cursor: "pointer",
-            borderRadius: 5, flexShrink: 0,
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 10px 4px" }}>
         {delegations.length === 0 && (
@@ -293,9 +217,9 @@ export function SubagentPanel({
           </div>
         ))}
       </div>
-      <div style={{ padding: "6px 12px", borderTop: "1px solid var(--border)", fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>
-        {t("subagents.footer")}
-      </div>
     </div>
   );
 }
+
+// re-export for the hook's state type usage in AppShell
+export type { SubagentDelegation };

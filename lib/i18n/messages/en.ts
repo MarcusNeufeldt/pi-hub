@@ -268,6 +268,8 @@ export const enLocale: LocalePlugin = {
     "changes.expand": "Show diff",
     "changes.collapse": "Hide diff",
     "changes.openFile": "Open file",
+    "panel.review": "Review",
+    "panel.subagents": "Subagents",
     "changes.file": "file",
     "changes.files": "files",
     "i18n.speak": "Read aloud",

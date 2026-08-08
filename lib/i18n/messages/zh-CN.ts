@@ -270,6 +270,8 @@ export const zhCNLocale: LocalePlugin = {
     "changes.expand": "显示 diff",
     "changes.collapse": "隐藏 diff",
     "changes.openFile": "打开文件",
+    "panel.review": "审查",
+    "panel.subagents": "Subagents",
     "changes.file": "个文件",
     "changes.files": "个文件",
     "i18n.copied": "已复制",

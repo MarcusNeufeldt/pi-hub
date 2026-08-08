@@ -8,7 +8,7 @@ import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantB
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
-import { SubagentPanel } from "./SubagentPanel";
+import { SubagentsView, type SubagentDelegation } from "./SubagentPanel";
 import { SpeakButton } from "./SpeakButton";
 import { extractTurnChanges, type TurnChanges } from "@/lib/session-changes";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
@@ -40,6 +40,7 @@ interface Props {
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onTurnChangesChange?: (turns: TurnChanges[]) => void;
+  onSubagentsChange?: (delegations: SubagentDelegation[]) => void;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
@@ -176,7 +177,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { mes
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onTurnChangesChange }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onTurnChangesChange, onSubagentsChange }: Props) {
   const { t } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const { notifyEnabled, notifyEnabledRef, onNotifyToggle, telegramConfigured } = useTelegramNotify();
@@ -250,16 +251,17 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
   });
   const sessionBusy = agentRunning || bashRunning;
 
-  // --- Live subagent panel -------------------------------------------------
-  // Auto-opens when a new delegation starts (0 → n running transition), so a
-  // manual close is respected until the next batch spawns.
-  const runningSubagents = subagents.filter((d) => d.running).length;
-  const wasRunningSubagentsRef = useRef(0);
-  const [subagentPanelOpen, setSubagentPanelOpen] = useState(false);
+  // --- Subagents pushed to the right panel (AppShell) ----------------------
+  const subagentsSigRef = useRef("");
   useEffect(() => {
-    if (runningSubagents > wasRunningSubagentsRef.current) setSubagentPanelOpen(true);
-    wasRunningSubagentsRef.current = runningSubagents;
-  }, [runningSubagents]);
+    const sig = subagents
+      .map((d) => `${d.toolCallId}:${d.running}:${d.children.map((c) => `${c.agent}:${c.status}`).join(",")}`)
+      .join(";");
+    if (sig !== subagentsSigRef.current) {
+      subagentsSigRef.current = sig;
+      onSubagentsChange?.(subagents);
+    }
+  }, [subagents, onSubagentsChange]);
 
   // --- Per-turn changes pushed to the right panel (AppShell) ---------------
   useEffect(() => {
@@ -689,12 +691,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       ) : (
       <>
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
-        <SubagentPanel
-          delegations={subagents}
-          open={subagentPanelOpen}
-          onOpenChange={setSubagentPanelOpen}
-          isMobile={isMobile}
-        />
         {showSpeakPill && lastSpeakTextRef.current && (
           <div style={{ position: "absolute", right: 14, bottom: 140, zIndex: 55 }}>
             <SpeakButton

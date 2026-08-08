@@ -35,9 +35,8 @@ export function PerTurnDiffView({
   const [selectedIndex, setSelectedIndex] = useState(() =>
     turns.length > 0 ? turns.length - 1 : -1,
   );
-  // Diff visibility: expanded by default; "collapse all" shows +/− stats
-  // rows with per-file expand.
-  const [collapsedAll, setCollapsedAll] = useState(false);
+  // Diff visibility: collapsed by default (+/− stats rows, per-file expand).
+  const [collapsedAll, setCollapsedAll] = useState(true);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
   // Reset per-file expansion when switching turns.

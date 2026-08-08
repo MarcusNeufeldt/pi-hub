@@ -3,11 +3,14 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useReducer } from "react";
 import type {
   AgentMessage,
+  AssistantMessage,
   ExtensionStatusItem,
   ExtensionUiRequest,
   ExtensionWidgetItem,
   SessionInfo,
   SessionTreeNode,
+  ToolCallContent,
+  ToolResultMessage,
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { sendAgentCommand } from "@/lib/agent-client";
@@ -431,6 +434,113 @@ function buildSubagentChildren(args: Record<string, unknown> | undefined): Subag
   return children;
 }
 
+/**
+ * Rebuilds delegations from loaded session messages — so a page refresh
+ * restores the fleet (completed runs from their results, in-flight runs
+ * from their tool args; live updates then merge in).
+ */
+function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
+  const results = new Map<string, ToolResultMessage>();
+  for (const m of messages) {
+    if (m.role === "toolResult") {
+      results.set((m as ToolResultMessage).toolCallId, m as ToolResultMessage);
+    }
+  }
+  const delegations: SubagentDelegation[] = [];
+  const seen = new Set<string>();
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+  for (const m of messages) {
+    if (m.role !== "assistant") continue;
+    for (const block of (m as AssistantMessage).content ?? []) {
+      if (block.type !== "toolCall") continue;
+      const tc = block as ToolCallContent;
+      if (tc.toolName !== "subagent") continue;
+      if (seen.has(tc.toolCallId)) continue;
+      seen.add(tc.toolCallId);
+      const args = isRecord(tc.input) ? tc.input : {};
+      if (typeof args.action === "string") continue; // management call
+      const children = buildSubagentChildren(args);
+      if (children.length === 0) continue;
+      const task =
+        typeof args.task === "string"
+          ? args.task
+          : typeof args.workflowScript === "string"
+            ? args.workflowScript.slice(0, 140)
+            : undefined;
+      const result = results.get(tc.toolCallId);
+      if (!result || result.isError) {
+        delegations.push({ toolCallId: tc.toolCallId, task, running: true, children });
+        continue;
+      }
+      const resultText = result.content
+        .filter((b): b is { type: "text"; text: string } => b.type === "text" && b.text)
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
+      const resultOutput = resultText ? resultText.slice(0, 500) : undefined;
+      const resultOutputLines = resultText ? resultText.split("\n").slice(-10) : undefined;
+      const details = isRecord((result as { details?: unknown }).details)
+        ? (result as { details: Record<string, unknown> }).details
+        : undefined;
+      const rrows = Array.isArray(details?.results) ? (details.results as Array<Record<string, unknown>>) : [];
+      const prog = Array.isArray(details?.progress) ? (details.progress as Array<Record<string, unknown>>) : [];
+      let finalChildren: SubagentChild[];
+      if (rrows.length > 0) {
+        finalChildren = rrows
+          .map((r) => {
+            const agent = typeof r.agent === "string" ? r.agent : undefined;
+            if (!agent) return null;
+            const existing = children.find((c) => c.agent === agent);
+            const status =
+              r.exitCode === 0
+                ? "completed"
+                : r.timedOut
+                  ? "timed_out"
+                  : r.interrupted
+                    ? "interrupted"
+                    : "failed";
+            return {
+              ...existing,
+              agent,
+              task: typeof r.task === "string" ? r.task : existing?.task ?? task,
+              status,
+              exitCode: typeof r.exitCode === "number" ? r.exitCode : undefined,
+              recentOutput: existing?.recentOutput ?? resultOutput,
+              recentOutputLines: existing?.recentOutputLines ?? resultOutputLines,
+            } as SubagentChild;
+          })
+          .filter((c): c is SubagentChild => c !== null);
+      } else if (prog.length > 0) {
+        finalChildren = prog.map((p) => {
+          const agent = typeof p.agent === "string" ? p.agent : "agent";
+          const existing = children.find((c) => c.agent === agent);
+          return {
+            ...existing,
+            agent,
+            task: existing?.task ?? task,
+            status: typeof p.status === "string" ? p.status : "completed",
+            recentOutput: existing?.recentOutput ?? resultOutput,
+            recentOutputLines: existing?.recentOutputLines ?? resultOutputLines,
+            toolCount: typeof p.toolCount === "number" ? p.toolCount : undefined,
+            tokens: typeof p.tokens === "number" ? p.tokens : undefined,
+            durationMs: typeof p.durationMs === "number" ? p.durationMs : undefined,
+          } as SubagentChild;
+        });
+      } else {
+        finalChildren = children.map((c) => ({
+          ...c,
+          status: "completed",
+          recentOutput: c.recentOutput ?? resultOutput,
+          recentOutputLines: c.recentOutputLines ?? resultOutputLines,
+        }));
+      }
+      delegations.push({ toolCallId: tc.toolCallId, task, running: false, children: finalChildren });
+    }
+  }
+  return delegations;
+}
+
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
@@ -590,6 +700,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setData(d);
       setActiveLeafId(d.leafId);
       setMessages(d.context.messages);
+      setSubagents(subagentsFromMessages(d.context.messages));
       setEntryIds(d.context.entryIds ?? []);
       setCurrentModelOverride(null);
       setError(null);
@@ -640,6 +751,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
       setMessages(d.context.messages);
+      setSubagents(subagentsFromMessages(d.context.messages));
       setEntryIds(d.context.entryIds ?? []);
     } catch (e) {
       console.error("Failed to load context:", e);

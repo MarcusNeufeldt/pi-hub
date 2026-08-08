@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { stripMarkdownForTTS, TTS_MAX_CHARS } from "@/lib/speak-text";
 
 /**
  * Read-aloud button: POSTs the text to /api/tts and plays the returned audio.
@@ -27,11 +28,13 @@ export function SpeakButton({
       return;
     }
     if (!text.trim()) return;
+    const clean = stripMarkdownForTTS(text).slice(0, TTS_MAX_CHARS);
+    if (!clean) return;
     try {
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.slice(0, 4000) }),
+        body: JSON.stringify({ text: clean }),
       });
       if (!res.ok) return;
       const blob = await res.blob();

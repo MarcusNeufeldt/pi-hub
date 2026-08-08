@@ -41,6 +41,7 @@ interface Props {
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onTurnChangesChange?: (turns: TurnChanges[]) => void;
   onSubagentsChange?: (delegations: SubagentDelegation[]) => void;
+  clearSubagentsSignal?: number;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
@@ -177,7 +178,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { mes
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onTurnChangesChange, onSubagentsChange }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onTurnChangesChange, onSubagentsChange, clearSubagentsSignal }: Props) {
   const { t } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const { notifyEnabled, notifyEnabledRef, onNotifyToggle, telegramConfigured } = useTelegramNotify();
@@ -262,6 +263,11 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       onSubagentsChange?.(subagents);
     }
   }, [subagents, onSubagentsChange]);
+
+  // Clear fleet when the right panel's Clear button is pressed.
+  useEffect(() => {
+    if (clearSubagentsSignal) setSubagents([]);
+  }, [clearSubagentsSignal]);
 
   // --- Per-turn changes pushed to the right panel (AppShell) ---------------
   useEffect(() => {

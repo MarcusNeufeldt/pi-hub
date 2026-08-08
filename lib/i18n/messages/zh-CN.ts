@@ -532,6 +532,7 @@ export const zhCNLocale: LocalePlugin = {
     "subagents.empty": "暂无 agent——当 pi 委派时，它们会显示在这里。",
     "subagents.footer": "来自 pi subagents 的实时数据",
     "subagents.transcript": "Transcript",
+    "subagents.clear": "清除",
     "task.create.date": "日期",
     "task.create.timezone": "时区",
     "task.create.preview": "预览",

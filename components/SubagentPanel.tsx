@@ -218,9 +218,11 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
 export function SubagentsView({
   delegations,
   onOpenTranscript,
+  onClear,
 }: {
   delegations: SubagentDelegation[];
   onOpenTranscript?: (sessionId: string) => void;
+  onClear?: () => void;
 }) {
   const { t } = useI18n();
   const runningChildren = delegations.reduce(
@@ -239,6 +241,36 @@ export function SubagentsView({
             <StatusIndicator status="running" />
             {runningChildren} {t("subagents.running")}
           </span>
+        )}
+        <div style={{ flex: 1 }} />
+        {delegations.length > 0 && onClear && (
+          <button
+            onClick={onClear}
+            title={t("subagents.clear")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 7px",
+              background: "none",
+              border: "1px solid var(--border)",
+              borderRadius: 5,
+              color: "var(--text-dim)",
+              cursor: "pointer",
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: "0.03em",
+              textTransform: "uppercase",
+            }}
+          >
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+            {t("subagents.clear")}
+          </button>
         )}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 10px 4px" }}>

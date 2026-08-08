@@ -532,6 +532,7 @@ export const enLocale: LocalePlugin = {
     "subagents.empty": "No agents yet — they appear here when pi delegates.",
     "subagents.footer": "Live from pi subagents",
     "subagents.transcript": "Transcript",
+    "subagents.clear": "Clear",
     "task.create.date": "Date",
     "task.create.timezone": "Timezone",
     "task.create.preview": "Preview",

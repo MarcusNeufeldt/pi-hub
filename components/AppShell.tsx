@@ -89,6 +89,7 @@ export function AppShell() {
 
   // Subagent fleet state, lifted from ChatWindow.
   const [subagents, setSubagents] = useState<SubagentDelegation[]>([]);
+  const [subagentClearSignal, setSubagentClearSignal] = useState(0);
   const prevRunningSubagentsRef = useRef(0);
   const handleSubagentsChange = useCallback((delegations: SubagentDelegation[]) => {
     setSubagents(delegations);
@@ -1568,6 +1569,7 @@ export function AppShell() {
               onSessionStatsChange={handleSessionStatsChange}
               onTurnChangesChange={handleTurnChangesChange}
               onSubagentsChange={handleSubagentsChange}
+              clearSubagentsSignal={subagentClearSignal}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
@@ -1722,6 +1724,7 @@ export function AppShell() {
             <SubagentsView
               delegations={subagents}
               onOpenTranscript={handleOpenTranscript}
+              onClear={() => setSubagentClearSignal((s) => s + 1)}
             />
           ) : (
             <PerTurnDiffView

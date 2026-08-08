@@ -257,6 +257,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.tokensSaved": "节省 {saved}",
     "i18n.close": "关闭",
     "i18n.copy": "复制",
+    "i18n.speak": "朗读",
+    "i18n.speakStop": "停止",
     "i18n.copied": "已复制",
     "i18n.cancel": "取消",
     "i18n.save": "保存",

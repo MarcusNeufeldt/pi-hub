@@ -4,6 +4,7 @@ import { memo, useState, useRef, useEffect, useMemo } from "react";
 import { MarkdownBody } from "./MarkdownBody";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
+import { SpeakButton } from "./SpeakButton";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, isEmptyThinkingBlock } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
@@ -691,6 +692,16 @@ function AssistantMessageView({
             )}
              {copied ? t("i18n.copied") : t("i18n.copy")}
           </button>
+        )}
+        {textContent && !isStreaming && (
+          <SpeakButton
+            text={textContent}
+            style={{
+              opacity: hovered ? 1 : 0,
+              pointerEvents: hovered ? "auto" : "none",
+              transition: "opacity 0.12s, color 0.12s",
+            }}
+          />
         )}
         {time && !isStreaming && (
           <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: "auto" }}>{time}</span>

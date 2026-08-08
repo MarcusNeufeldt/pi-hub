@@ -9,6 +9,7 @@ import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { SubagentPanel } from "./SubagentPanel";
+import { SpeakButton } from "./SpeakButton";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentDelegation } from "@/hooks/useAgentSession";
@@ -257,6 +258,37 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     if (runningSubagents > wasRunningSubagentsRef.current) setSubagentPanelOpen(true);
     wasRunningSubagentsRef.current = runningSubagents;
   }, [runningSubagents]);
+
+  // --- Read-aloud pill: appears when the agent finishes a turn ------------
+  // Shows the last assistant text as a speak button; hides when a new run
+  // starts.
+  const [showSpeakPill, setShowSpeakPill] = useState(false);
+  const lastSpeakTextRef = useRef("");
+  const prevRunningRef = useRef(agentRunning);
+  useEffect(() => {
+    if (agentRunning) {
+      setShowSpeakPill(false);
+    } else if (prevRunningRef.current) {
+      // Agent just finished — find the last assistant text.
+      let text = "";
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.role === "assistant") {
+          text = (m as AssistantMessage).content
+            ?.filter((b): b is { type: "text"; text: string } => b.type === "text")
+            .map((b) => b.text)
+            .join("\n")
+            .trim();
+          if (text) break;
+        }
+      }
+      if (text) {
+        lastSpeakTextRef.current = text;
+        setShowSpeakPill(true);
+      }
+    }
+    prevRunningRef.current = agentRunning;
+  }, [agentRunning, messages]);
 
   useEffect(() => {
     if (!extensionDialog || soundedExtensionDialogIdRef.current === extensionDialog.id) return;
@@ -657,6 +689,23 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
           onOpenChange={setSubagentPanelOpen}
           isMobile={isMobile}
         />
+        {showSpeakPill && lastSpeakTextRef.current && (
+          <div style={{ position: "absolute", right: 14, bottom: 140, zIndex: 55 }}>
+            <SpeakButton
+              text={lastSpeakTextRef.current}
+              style={{
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border)",
+                borderRadius: 999,
+                height: 30,
+                padding: "0 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+              }}
+            />
+          </div>
+        )}
         <div
           style={{
             position: "absolute",

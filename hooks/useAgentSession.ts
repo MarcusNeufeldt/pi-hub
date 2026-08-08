@@ -376,6 +376,61 @@ export interface SubagentDelegation {
   children: SubagentChild[];
 }
 
+/**
+ * Maps pi-subagents `subagent` tool args to panel children, mirroring the
+ * extension's execution modes:
+ * - single:    { agent, task }
+ * - fanout:    { tasks: [{ agent?, task?, label? }] } or { agents: [...] }
+ * - workflow:  { workflowScript, agent? } (children arrive via progress snapshots)
+ * Management calls ({ action: ... }) are NOT delegations — callers skip them.
+ */
+function buildSubagentChildren(args: Record<string, unknown> | undefined): SubagentChild[] {
+  if (!args) return [];
+  const children: SubagentChild[] = [];
+  if (Array.isArray(args.tasks)) {
+    args.tasks.forEach((t, i) => {
+      const item = (t ?? {}) as Record<string, unknown>;
+      const agent =
+        typeof item.agent === "string"
+          ? item.agent
+          : typeof args.agent === "string"
+            ? args.agent
+            : `task ${i + 1}`;
+      const task =
+        typeof item.task === "string"
+          ? item.task
+          : typeof item.label === "string"
+            ? item.label
+            : undefined;
+      children.push({ agent, task, status: "running" });
+    });
+    return children;
+  }
+  if (Array.isArray(args.agents)) {
+    args.agents.forEach((a, i) => {
+      const item = (a ?? {}) as Record<string, unknown>;
+      const agent =
+        typeof item === "string" ? item : typeof item.agent === "string" ? item.agent : `agent ${i + 1}`;
+      children.push({
+        agent,
+        task: typeof item.task === "string" ? item.task : undefined,
+        status: "running",
+      });
+    });
+    return children;
+  }
+  const agent = typeof args.agent === "string" ? args.agent : undefined;
+  const task = typeof args.task === "string" ? args.task : undefined;
+  if (agent || task || typeof args.workflowScript === "string") {
+    children.push({
+      agent: agent ?? (typeof args.workflowScript === "string" ? "workflow" : "subagent"),
+      task,
+      status: "running",
+    });
+  }
+  return children;
+}
+
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
@@ -1269,11 +1324,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         if (name === "subagent") {
           const args = (event as { args?: unknown }).args as Record<string, unknown> | undefined;
-          const task = typeof args?.task === "string" ? args.task : undefined;
-          const agent = typeof args?.agent === "string" ? args.agent : undefined;
+          // Management/control calls (action: "list", "get", "interrupt", …)
+          // are not delegations — never spawn the panel for them.
+          if (args && typeof args.action === "string") break;
+          const children = buildSubagentChildren(args);
+          if (children.length === 0) break;
+          const task =
+            typeof args?.task === "string"
+              ? args.task
+              : typeof args?.workflowScript === "string"
+                ? args.workflowScript.slice(0, 140)
+                : undefined;
           setSubagents((prev) => {
             const list = prev.filter((d) => d.toolCallId !== id);
-            const children: SubagentChild[] = agent ? [{ agent, task, status: "running" }] : [];
             list.unshift({ toolCallId: id, task, running: true, children });
             return list.slice(0, 20);
           });

@@ -815,7 +815,7 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
 
 
 function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => isEditToolName(block.toolName));
   const inputStr = JSON.stringify(block.input, null, 2);
   const isEditTool = isEditToolName(block.toolName);
   const resultDiff = result && !result.isError ? getResultDiff(result) : null;
@@ -926,7 +926,7 @@ function PairedDiffResult({ diff }: {
   );
 }
 
-function SplitPatchView({ text }: { text: string }) {
+export function SplitPatchView({ text }: { text: string }) {
   const { t } = useI18n();
   const files = useMemo(() => parseUnifiedPatch(text), [text]);
   if (!files) return <PatchTextView text={text} />;

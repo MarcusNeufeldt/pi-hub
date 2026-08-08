@@ -259,6 +259,8 @@ export const zhCNLocale: LocalePlugin = {
     "i18n.copy": "复制",
     "i18n.speak": "朗读",
     "i18n.speakStop": "停止",
+    "changes.title": "更改",
+    "changes.close": "关闭更改面板",
     "i18n.copied": "已复制",
     "i18n.cancel": "取消",
     "i18n.save": "保存",

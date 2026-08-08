@@ -7,6 +7,7 @@ const {
   resolveSchedule,
   calculateNextRun,
   nextDailyRun,
+  nextHourlyRun,
   previewNextRun,
   withinMisfireGrace,
   cronFromDaily,
@@ -123,6 +124,77 @@ test("assertValidTimezone: rejects invalid zone", () => {
 test("resolveSchedule: rejects invalid daily time", () => {
   assert.throws(
     () => resolveSchedule({ type: "daily", time: "25:00", timezone: "UTC" }),
+    SchedulerError,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Hourly: "every N hours at :MM" in a zone
+// ---------------------------------------------------------------------------
+
+test("hourly: interval 1 runs at the next full hour", () => {
+  // 2026-08-08T10:15Z == 12:15 Berlin (UTC+2). Next :00 hour → 13:00 local == 11:00Z.
+  const next = nextHourlyRun(1, 0, "Europe/Berlin", Date.UTC(2026, 7, 8, 10, 15, 0));
+  assert.equal(new Date(next).toISOString(), "2026-08-08T11:00:00.000Z");
+});
+
+test("hourly: interval 6 with :30 aligns to local hour multiples of 6", () => {
+  // 2026-08-08T10:45Z == 12:45 Berlin. Next hour % 6 == 0 is 18:00 local → 16:00Z.
+  const next = nextHourlyRun(6, 30, "Europe/Berlin", Date.UTC(2026, 7, 8, 10, 45, 0));
+  assert.equal(new Date(next).toISOString(), "2026-08-08T16:30:00.000Z");
+});
+
+test("hourly: interval 24 with :00 lands on local midnight", () => {
+  // 2026-08-08T11:00Z == 13:00 Berlin → next local 00:00 == 22:00Z the same day.
+  const next = nextHourlyRun(24, 0, "Europe/Berlin", Date.UTC(2026, 7, 8, 11, 0, 0));
+  assert.equal(new Date(next).toISOString(), "2026-08-08T22:00:00.000Z");
+});
+
+test("hourly: DST fall-back day still lands on local midnight", () => {
+  // 2026-10-25 Berlin falls back (CEST+2 → CET+1). 12:00Z == 13:00 CET.
+  // Next local midnight (Oct 26 00:00 CET) == 2026-10-25T23:00:00Z. A naive
+  // UTC+1-offset guess would compute 22:00Z, so 23:00Z proves DST handling.
+  const next = nextHourlyRun(24, 0, "Europe/Berlin", Date.UTC(2026, 9, 25, 12, 0, 0));
+  assert.equal(new Date(next).toISOString(), "2026-10-25T23:00:00.000Z");
+});
+
+test("hourly: resolveSchedule persists */N cron and a future next run", () => {
+  const resolved = resolveSchedule({
+    type: "hourly",
+    intervalHours: 2,
+    minute: 15,
+    timezone: "Europe/Berlin",
+  });
+  assert.equal(resolved.scheduleType, "recurring");
+  assert.equal(resolved.cronExpression, "15 */2 * * *");
+  assert.ok(resolved.nextRunAt > Date.now());
+});
+
+test("hourly: calculateNextRun round-trips the */N cron", () => {
+  // 2026-08-08T11:00Z == 13:00 Berlin; every 3h at :30 → 15:30 local == 13:30Z.
+  const next = calculateNextRun(
+    {
+      scheduleType: "recurring",
+      cronExpression: "30 */3 * * *",
+      executeAt: null,
+      timezone: "Europe/Berlin",
+    },
+    Date.UTC(2026, 7, 8, 11, 0, 0),
+  );
+  assert.equal(new Date(next).toISOString(), "2026-08-08T13:30:00.000Z");
+});
+
+test("hourly: rejects invalid interval and minute", () => {
+  assert.throws(
+    () => resolveSchedule({ type: "hourly", intervalHours: 0, minute: 0, timezone: "UTC" }),
+    SchedulerError,
+  );
+  assert.throws(
+    () => resolveSchedule({ type: "hourly", intervalHours: 25, minute: 0, timezone: "UTC" }),
+    SchedulerError,
+  );
+  assert.throws(
+    () => resolveSchedule({ type: "hourly", intervalHours: 1, minute: 60, timezone: "UTC" }),
     SchedulerError,
   );
 });

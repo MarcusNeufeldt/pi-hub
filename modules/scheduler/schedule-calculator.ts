@@ -15,6 +15,7 @@
 import { SchedulerError, SchedulerErrorCode } from "./errors";
 import type {
   DailyScheduleInput,
+  HourlyScheduleInput,
   OnceScheduleInput,
   PersistedSchedule,
   ScheduleInput,
@@ -88,6 +89,22 @@ function assertValidOnce(input: OnceScheduleInput): void {
   }
 }
 
+function assertValidHourly(input: HourlyScheduleInput): void {
+  assertValidTimezone(input.timezone);
+  if (!Number.isInteger(input.intervalHours) || input.intervalHours < 1 || input.intervalHours > 24) {
+    throw new SchedulerError(
+      SchedulerErrorCode.INVALID_SCHEDULE,
+      `Invalid hourly interval: ${input.intervalHours} (expected 1-24)`,
+    );
+  }
+  if (!Number.isInteger(input.minute) || input.minute < 0 || input.minute > 59) {
+    throw new SchedulerError(
+      SchedulerErrorCode.INVALID_SCHEDULE,
+      `Invalid hourly minute: ${input.minute} (expected 0-59)`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Local-time → epoch conversion
 // ---------------------------------------------------------------------------
@@ -140,6 +157,12 @@ export function cronFromDaily(time: string): string {
   return `${Number(m[2])} ${Number(m[1])} * * *`;
 }
 
+// Cron-style expression for an hourly task: "M * /N * * *" (e.g. "15 * /2 * * *"
+// for every 2 hours at :15). Hourly runs always use the task timezone.
+export function cronFromHourly(intervalHours: number, minute: number): string {
+  return `${minute} */${intervalHours} * * *`;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -159,6 +182,18 @@ export function resolveSchedule(input: ScheduleInput): ResolvedSchedule {
     assertValidDaily(input);
     const cron = cronFromDaily(input.time);
     const next = nextDailyRun(input.time, input.timezone, Date.now());
+    return {
+      scheduleType: "recurring",
+      cronExpression: cron,
+      executeAt: null,
+      timezone: input.timezone,
+      nextRunAt: next,
+    };
+  }
+  if (input.type === "hourly") {
+    assertValidHourly(input);
+    const cron = cronFromHourly(input.intervalHours, input.minute);
+    const next = nextHourlyRun(input.intervalHours, input.minute, input.timezone, Date.now());
     return {
       scheduleType: "recurring",
       cronExpression: cron,
@@ -240,6 +275,51 @@ export function nextDailyRun(
 }
 
 /**
+ * Computes the next UTC epoch ms an hourly "every N hours at :MM in zone"
+ * schedule should fire, at or strictly after `fromMs`. Iterates hourly
+ * from `fromMs` (a 72h window — enough to cross any DST transition and, for
+ * any interval 1-24, at least one full local day). Runs align to local hours
+ * divisible by the interval (e.g. every 6h → 00:xx, 06:xx, 12:xx, 18:xx).
+ */
+export function nextHourlyRun(
+  intervalHours: number,
+  minute: number,
+  zone: string,
+  fromMs: number,
+): number {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+  });
+  for (let i = 0; i < 72; i++) {
+    const anchor = fromMs + i * 3600000;
+    const parts = fmt.formatToParts(new Date(anchor));
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+    let hour = get("hour");
+    if (hour === 24) hour = 0;
+    if (hour % intervalHours !== 0) continue;
+    const candidate = localToEpoch(
+      get("year"),
+      get("month"),
+      get("day"),
+      hour,
+      minute,
+      0,
+      zone,
+    );
+    if (candidate > fromMs) return candidate;
+  }
+  throw new SchedulerError(
+    SchedulerErrorCode.INVALID_SCHEDULE,
+    `Could not resolve next hourly run (every ${intervalHours}h at :${minute}) in ${zone}`,
+  );
+}
+
+/**
  * Computes the next run for an already-persisted task, at or strictly after
  * `afterMs`. For once-tasks returns `executeAt` (which may be in the past).
  */
@@ -250,20 +330,35 @@ export function calculateNextRun(
   if (schedule.scheduleType === "once") {
     return schedule.executeAt ?? afterMs;
   }
-  // recurring: parse "M H * * *" — V1 only supports daily expressions.
+  // recurring: parse "M H * * *" (daily) or "M */N * * *" (hourly).
   const parts = (schedule.cronExpression ?? "").split(/\s+/);
   const minuteRaw = Number(parts[0]);
-  const hourRaw = Number(parts[1]);
   if (
     parts.length !== 5 ||
     parts.slice(2).some((p) => p !== "*") ||
     !Number.isInteger(minuteRaw) ||
-    !Number.isInteger(hourRaw) ||
     minuteRaw < 0 ||
-    minuteRaw > 59 ||
-    hourRaw < 0 ||
-    hourRaw > 23
+    minuteRaw > 59
   ) {
+    throw new SchedulerError(
+      SchedulerErrorCode.INVALID_CRON,
+      `Unsupported cron expression: ${schedule.cronExpression}`,
+    );
+  }
+  const hourField = parts[1] ?? "";
+  const hourly = /^\*\/(\d{1,2})$/.exec(hourField);
+  if (hourly) {
+    const interval = Number(hourly[1]);
+    if (!Number.isInteger(interval) || interval < 1 || interval > 24) {
+      throw new SchedulerError(
+        SchedulerErrorCode.INVALID_CRON,
+        `Unsupported cron expression: ${schedule.cronExpression}`,
+      );
+    }
+    return nextHourlyRun(interval, minuteRaw, schedule.timezone, afterMs);
+  }
+  const hourRaw = Number(hourField);
+  if (!Number.isInteger(hourRaw) || hourRaw < 0 || hourRaw > 23) {
     throw new SchedulerError(
       SchedulerErrorCode.INVALID_CRON,
       `Unsupported cron expression: ${schedule.cronExpression}`,

@@ -1,0 +1,46 @@
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @emoji-mart/react@1.1.1
+npm warn Found: react@19.2.4
+npm warn node_modules/react
+npm warn   react@"^19.2.4" from the root project
+npm warn   139 more (@ant-design/cssinjs, @ant-design/cssinjs-utils, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8 || ^17 || ^18" from @emoji-mart/react@1.1.1
+npm warn node_modules/@emoji-mart/react
+npm warn   @emoji-mart/react@"^1.1.1" from @lobehub/ui@5.10.0
+npm warn   node_modules/@lobehub/ui
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8 || ^17 || ^18" from @emoji-mart/react@1.1.1
+npm warn   node_modules/@emoji-mart/react
+npm warn     @emoji-mart/react@"^1.1.1" from @lobehub/ui@5.10.0
+npm warn     node_modules/@lobehub/ui
+npm warn deprecated intersection-observer@0.12.2: The Intersection Observer polyfill is no longer needed and can safely be removed. Intersection Observer has been Baseline since 2019.
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+
+added 1203 packages, and audited 1204 packages in 1m
+
+314 packages are looking for funding
+  run `npm fund` for details
+
+10 vulnerabilities (1 low, 2 moderate, 7 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm warn allow-scripts 6 packages have install scripts not yet covered by allowScripts:
+npm warn allow-scripts   @google/genai@1.52.0 (preinstall: echo 'preinstall: no-op')
+npm warn allow-scripts   protobufjs@7.6.5 (postinstall: node scripts/postinstall)
+npm warn allow-scripts   sharp@0.34.5 (install: node install/check.js || npm run build)
+npm warn allow-scripts   unrs-resolver@1.11.1 (postinstall: napi-postinstall unrs-resolver 1.11.1 check)
+npm warn allow-scripts   @google/genai@1.52.0 (preinstall: echo 'preinstall: no-op')
+npm warn allow-scripts   protobufjs@7.6.5 (postinstall: node scripts/postinstall)
+npm warn allow-scripts
+npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.

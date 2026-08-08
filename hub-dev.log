@@ -1,0 +1,270 @@
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://127.0.0.1:30141
+- Network:       http://127.0.0.1:30141
+✓ Ready in 725ms
+[pi-hub:scheduler] started (leader=false, db=~\.pi\hub\app.db)
+[pi-hub:telegram] started (status=disabled, leader=false, db=~\.pi\hub\app.db)
+
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./lib/file-access.ts
+    ./app/api/worktrees/route.ts 
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./lib/file-access.ts
+    ./app/api/project-trust/route.ts 
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./lib/file-access.ts
+    ./app/api/git/status/route.ts 
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./lib/file-access.ts
+    ./app/api/models/route.ts 
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./modules/telegram/telegram-runtime.ts
+    ./app/api/integrations/telegram/status/route.ts 
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./lib/file-access.ts
+    ./app/api/files/[...path]/route.ts 
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./lib/file-access.ts
+    ./app/api/worktrees/route.ts 
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./lib/file-access.ts
+    ./app/api/worktrees/route.ts 
+[browser] ./modules/scheduler/schedule-calculator.ts:161:55
+Expression expected
+  159 |
+  160 | /**
+> 161 |  * Cron-style expression for an hourly task: "M */N * * *" (e.g. "15 */2 * * *"
+      |                                                       ^
+  162 |  * for every 2 hours at :15). Hourly runs always use the task timezone.
+  163 |  */
+  164 | export function cronFromHourly(intervalHours: number, minute: number): string {
+
+Parsing ecmascript source code failed
+
+Import trace:
+  App Route:
+    ./modules/scheduler/schedule-calculator.ts
+    ./modules/scheduler/index.ts
+    ./lib/file-access.ts
+    ./app/api/worktrees/route.ts 
+ GET /?session=019fe171-dcfb-782a-a836-53ebc56370a7 200 in 1084ms (next.js: 111ms, proxy.ts: 204ms, application-code: 770ms)
+ GET /api/home 200 in 85ms (next.js: 62ms, proxy.ts: 7ms, application-code: 15ms)
+ GET / 200 in 98ms (next.js: 14ms, proxy.ts: 21ms, application-code: 64ms)
+ GET /api/sessions 200 in 879ms (next.js: 121ms, proxy.ts: 7ms, application-code: 751ms)
+ GET /api/worktrees?cwd=C%3A%5CUsers%5Cmarcu 200 in 145ms (next.js: 54ms, proxy.ts: 9ms, application-code: 82ms)
+ GET /api/integrations/telegram/status 200 in 204ms (next.js: 128ms, proxy.ts: 70ms, application-code: 6ms)
+ GET /api/git/status?cwd=C%3A%5CUsers%5Cmarcu 200 in 214ms (next.js: 99ms, proxy.ts: 16ms, application-code: 98ms)
+ GET /api/project-trust?cwd=C%3A%5CUsers%5Cmarcu 200 in 312ms (next.js: 163ms, proxy.ts: 137ms, application-code: 12ms)
+ GET /api/integrations/telegram/status 200 in 186ms (next.js: 63ms, proxy.ts: 117ms, application-code: 6ms)
+ GET /api/git/status?cwd=C%3A%5CUsers%5Cmarcu 200 in 1242ms (next.js: 1060ms, proxy.ts: 110ms, application-code: 72ms)
+[pi-hub:scheduler] acquired leader lease
+ GET /api/files/C%3A/Users/marcu?type=list 200 in 4.0s (next.js: 4.0s, proxy.ts: 20ms, application-code: 15ms)
+ GET /api/sessions/019fe171-dcfb-782a-a836-53ebc56370a7?deferThinking=1&deferMedia=1 200 in 4.0s (next.js: 4.0s, proxy.ts: 70ms, application-code: 16ms)
+ GET /api/models?cwd=C%3A%5CUsers%5Cmarcu 200 in 4.0s (next.js: 1083ms, proxy.ts: 117ms, application-code: 2.8s)
+ GET /api/files/C%3A/Users/marcu?type=list 200 in 189ms (next.js: 66ms, proxy.ts: 111ms, application-code: 13ms)
+ GET /api/sessions/019fe171-dcfb-782a-a836-53ebc56370a7?deferThinking=1&deferMedia=1 200 in 209ms (next.js: 88ms, proxy.ts: 110ms, application-code: 11ms)
+ GET /api/sessions/019fe171-dcfb-782a-a836-53ebc56370a7/state 200 in 4.0s (next.js: 3.9s, proxy.ts: 133ms, application-code: 8ms)
+ GET /api/sessions/019fe171-dcfb-782a-a836-53ebc56370a7/state 200 in 28ms (next.js: 17ms, proxy.ts: 5ms, application-code: 6ms)
+ GET /api/integrations/telegram/status 200 in 66ms (next.js: 18ms, proxy.ts: 29ms, application-code: 19ms)
+ GET /api/agent/running 200 in 155ms (next.js: 112ms, proxy.ts: 34ms, application-code: 9ms)
+ GET /api/integrations/telegram/status 200 in 71ms (next.js: 34ms, proxy.ts: 27ms, application-code: 10ms)
+ GET /api/models?cwd=C%3A%5CUsers%5Cmarcu 200 in 135ms (next.js: 41ms, proxy.ts: 29ms, application-code: 66ms)
+ GET /api/sessions/019fe171-dcfb-782a-a836-53ebc56370a7?deferThinking=1&deferMedia=1 200 in 261ms (next.js: 209ms, proxy.ts: 30ms, application-code: 22ms)
+ GET /api/integrations/telegram/status 200 in 238ms (next.js: 89ms, proxy.ts: 123ms, application-code: 26ms)
+ GET /?session=019fe171-dcfb-782a-a836-53ebc56370a7 200 in 464ms (next.js: 54ms, proxy.ts: 29ms, application-code: 381ms)
+ GET /api/sessions/019fe171-dcfb-782a-a836-53ebc56370a7?deferThinking=1&deferMedia=1 200 in 243ms (next.js: 78ms, proxy.ts: 141ms, application-code: 23ms)
+ GET /api/sessions/019fe171-dcfb-782a-a836-53ebc56370a7/state 200 in 296ms (next.js: 145ms, proxy.ts: 139ms, application-code: 12ms)
+ GET /api/sessions/019fe171-dcfb-782a-a836-53ebc56370a7/state 200 in 903ms (next.js: 543ms, proxy.ts: 350ms, application-code: 10ms)
+ GET /api/agent/running 200 in 107ms (next.js: 42ms, proxy.ts: 58ms, application-code: 7ms)
+ GET /api/home 200 in 96ms (next.js: 40ms, proxy.ts: 46ms, application-code: 9ms)
+ GET /api/scheduler/status 200 in 217ms (next.js: 154ms, proxy.ts: 47ms, application-code: 16ms)
+ GET /api/tasks 200 in 363ms (next.js: 289ms, proxy.ts: 48ms, application-code: 26ms)
+ GET /api/home 200 in 83ms (next.js: 25ms, proxy.ts: 46ms, application-code: 11ms)
+ GET /api/scheduler/status 200 in 94ms (next.js: 55ms, proxy.ts: 29ms, application-code: 9ms)
+ GET /api/tasks 200 in 102ms (next.js: 65ms, proxy.ts: 26ms, application-code: 11ms)
+ GET /api/sessions 200 in 1109ms (next.js: 29ms, proxy.ts: 46ms, application-code: 1034ms)
+ GET /api/models?cwd=C%3A%5CUsers%5Cmarcu 200 in 3.6s (next.js: 62ms, proxy.ts: 123ms, application-code: 3.4s)
+ GET /api/sessions 200 in 31ms (next.js: 4ms, proxy.ts: 16ms, application-code: 11ms)
+ GET /api/agent/running 200 in 27ms (next.js: 10ms, proxy.ts: 9ms, application-code: 8ms)
+ GET /api/tasks/task_d97689b8-db24-4532-8b92-17a700533785 200 in 1565ms (next.js: 1543ms, proxy.ts: 14ms, application-code: 8ms)
+ GET /api/agent/running 200 in 23ms (next.js: 6ms, proxy.ts: 8ms, application-code: 8ms)
+ GET /api/agent/running 200 in 15ms (next.js: 4ms, proxy.ts: 5ms, application-code: 6ms)
+ POST /api/scheduler/preview 200 in 172ms (next.js: 94ms, proxy.ts: 12ms, application-code: 65ms)
+ POST /api/scheduler/preview 200 in 185ms (next.js: 161ms, proxy.ts: 12ms, application-code: 11ms)
+ GET /api/agent/running 200 in 29ms (next.js: 8ms, proxy.ts: 8ms, application-code: 12ms)
+ POST /api/scheduler/preview 200 in 18ms (next.js: 4ms, proxy.ts: 6ms, application-code: 8ms)
+ GET /api/agent/running 200 in 11ms (next.js: 3ms, proxy.ts: 4ms, application-code: 4ms)
+ POST /api/scheduler/preview 400 in 14ms (next.js: 3ms, proxy.ts: 4ms, application-code: 7ms)
+ GET /api/agent/running 200 in 12ms (next.js: 3ms, proxy.ts: 5ms, application-code: 4ms)
+ POST /api/scheduler/preview 200 in 28ms (next.js: 9ms, proxy.ts: 10ms, application-code: 9ms)
+ GET /api/agent/running 200 in 10ms (next.js: 2ms, proxy.ts: 3ms, application-code: 4ms)
+ GET /api/agent/running 200 in 14ms (next.js: 4ms, proxy.ts: 5ms, application-code: 6ms)
+ GET /api/agent/running 200 in 45ms (next.js: 15ms, proxy.ts: 22ms, application-code: 8ms)
+ GET /api/agent/running 200 in 20ms (next.js: 5ms, proxy.ts: 6ms, application-code: 9ms)
+ GET /api/sessions 200 in 19ms (next.js: 4ms, proxy.ts: 5ms, application-code: 10ms)
+ GET /api/agent/running 200 in 13ms (next.js: 4ms, proxy.ts: 4ms, application-code: 6ms)
+ GET /api/integrations/telegram/status 200 in 22ms (next.js: 6ms, proxy.ts: 10ms, application-code: 5ms)
+ GET /api/models?cwd=C%3A%5CUsers%5Cmarcu 200 in 68ms (next.js: 52ms, proxy.ts: 9ms, application-code: 6ms)
+ GET /api/sessions/019fe14b-3674-7c01-ba3e-137e0db8e221?deferThinking=1&deferMedia=1 200 in 138ms (next.js: 113ms, proxy.ts: 9ms, application-code: 16ms)
+ GET /api/integrations/telegram/status 200 in 332ms (next.js: 78ms, proxy.ts: 250ms, application-code: 4ms)
+ GET /api/models?cwd=C%3A%5CUsers%5Cmarcu 200 in 339ms (next.js: 74ms, proxy.ts: 248ms, application-code: 17ms)
+ GET /?session=019fe14b-3674-7c01-ba3e-137e0db8e221 200 in 424ms (next.js: 30ms, proxy.ts: 10ms, application-code: 383ms)
+ GET /api/sessions/019fe14b-3674-7c01-ba3e-137e0db8e221?deferThinking=1&deferMedia=1 200 in 81ms (next.js: 14ms, proxy.ts: 55ms, application-code: 13ms)
+ GET /api/sessions/019fe14b-3674-7c01-ba3e-137e0db8e221/state 200 in 73ms (next.js: 33ms, proxy.ts: 34ms, application-code: 6ms)
+ GET /api/sessions/019fe14b-3674-7c01-ba3e-137e0db8e221/state 200 in 16ms (next.js: 6ms, proxy.ts: 5ms, application-code: 5ms)
+ GET /api/agent/running 200 in 24ms (next.js: 5ms, proxy.ts: 11ms, application-code: 7ms)
+ GET /api/agent/running 200 in 11ms (next.js: 3ms, proxy.ts: 5ms, application-code: 4ms)
+ GET /api/agent/running 200 in 9ms (next.js: 2ms, proxy.ts: 3ms, application-code: 3ms)
+✓ Compiled in 1062ms
+ GET /api/home 200 in 436ms (next.js: 130ms, proxy.ts: 301ms, application-code: 6ms)
+ GET /?session=019fe14b-3674-7c01-ba3e-137e0db8e221 200 in 599ms (next.js: 268ms, proxy.ts: 58ms, application-code: 273ms)
+ GET /api/files/C%3A/Users/marcu?type=list 200 in 1352ms (next.js: 225ms, proxy.ts: 300ms, application-code: 827ms)
+ GET /api/sessions 200 in 1350ms (next.js: 94ms, proxy.ts: 300ms, application-code: 956ms)
+ GET /api/git/status?cwd=C%3A%5CUsers%5Cmarcu 200 in 1357ms (next.js: 50ms, proxy.ts: 300ms, application-code: 1007ms)
+ GET /api/worktrees?cwd=C%3A%5CUsers%5Cmarcu 200 in 1363ms (next.js: 172ms, proxy.ts: 301ms, application-code: 890ms)
+ GET /api/files/C%3A/Users/marcu?type=list 200 in 48ms (next.js: 26ms, proxy.ts: 11ms, application-code: 11ms)
+ GET /api/git/status?cwd=C%3A%5CUsers%5Cmarcu 200 in 45ms (next.js: 5ms, proxy.ts: 11ms, application-code: 30ms)
+ GET / 200 in 621ms (next.js: 4ms, proxy.ts: 4ms, application-code: 614ms)
+ GET /api/integrations/telegram/status 200 in 335ms (next.js: 264ms, proxy.ts: 55ms, application-code: 16ms)
+ GET /api/agent/running 200 in 402ms (next.js: 344ms, proxy.ts: 49ms, application-code: 9ms)
+ GET /api/sessions 200 in 1457ms (next.js: 43ms, proxy.ts: 61ms, application-code: 1353ms)
+ GET /api/agent/running 200 in 12ms (next.js: 3ms, proxy.ts: 4ms, application-code: 5ms)
+ GET /api/agent/running 200 in 9ms (next.js: 2ms, proxy.ts: 3ms, application-code: 4ms)
+ GET /api/agent/running 200 in 36ms (next.js: 12ms, proxy.ts: 16ms, application-code: 8ms)
+ GET /api/integrations/telegram/status 200 in 46ms (next.js: 22ms, proxy.ts: 16ms, application-code: 8ms)
+ GET /api/sessions 200 in 952ms (next.js: 30ms, proxy.ts: 17ms, application-code: 904ms)
+ GET /api/sessions 200 in 19ms (next.js: 7ms, proxy.ts: 6ms, application-code: 6ms)
+ GET /api/agent/running 200 in 13ms (next.js: 4ms, proxy.ts: 4ms, application-code: 5ms)
+ GET /api/agent/running 200 in 9ms (next.js: 2ms, proxy.ts: 3ms, application-code: 4ms)
+ GET /api/integrations/telegram/status 200 in 37ms (next.js: 21ms, proxy.ts: 12ms, application-code: 4ms)
+ GET /api/sessions/019fe14b-3674-7c01-ba3e-137e0db8e221?deferThinking=1&deferMedia=1 200 in 247ms (next.js: 212ms, proxy.ts: 12ms, application-code: 23ms)
+ GET /api/integrations/telegram/status 200 in 678ms (next.js: 35ms, proxy.ts: 639ms, application-code: 4ms)
+ GET /?session=019fe14b-3674-7c01-ba3e-137e0db8e221 200 in 830ms (next.js: 72ms, proxy.ts: 10ms, application-code: 748ms)
+ GET /api/sessions/019fe14b-3674-7c01-ba3e-137e0db8e221?deferThinking=1&deferMedia=1 200 in 77ms (next.js: 19ms, proxy.ts: 41ms, application-code: 18ms)
+ GET /api/sessions/019fe14b-3674-7c01-ba3e-137e0db8e221/state 200 in 140ms (next.js: 89ms, proxy.ts: 41ms, application-code: 10ms)
+ GET /api/sessions/019fe14b-3674-7c01-ba3e-137e0db8e221/state 200 in 15ms (next.js: 5ms, proxy.ts: 6ms, application-code: 4ms)
+ GET /api/agent/running 200 in 14ms (next.js: 3ms, proxy.ts: 4ms, application-code: 6ms)
+ GET /api/agent/running 200 in 15ms (next.js: 3ms, proxy.ts: 6ms, application-code: 6ms)
+[pi-hub:notifier] notification failed (run state unchanged) Cannot read properties of undefined (reading 'notify')
+[pi-web] session_start dispatched to extensions for session 019fe1a7-dfa1-7239-b5db-78745c05392b
+[pi-hub:notifier] notification failed (run state unchanged) Cannot read properties of undefined (reading 'notify')

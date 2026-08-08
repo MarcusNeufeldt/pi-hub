@@ -57,7 +57,17 @@ export interface OnceScheduleInput {
   timezone: string;
 }
 
-export type ScheduleInput = DailyScheduleInput | OnceScheduleInput;
+/** Hourly schedule input: every N hours at :MM in the given IANA timezone. */
+export interface HourlyScheduleInput {
+  type: "hourly";
+  /** Run every N hours (1-24). */
+  intervalHours: number;
+  /** Minute of the hour (0-59). */
+  minute: number;
+  timezone: string;
+}
+
+export type ScheduleInput = DailyScheduleInput | OnceScheduleInput | HourlyScheduleInput;
 
 /** Persisted schedule representation (mirrors scheduled_tasks columns). */
 export interface PersistedSchedule {

@@ -22,10 +22,12 @@ export function coerceSchedule(raw: unknown): ScheduleInput {
     type?: unknown;
     time?: unknown;
     localDateTime?: unknown;
+    intervalHours?: unknown;
+    minute?: unknown;
     timezone?: unknown;
   };
-  if (s.type !== "daily" && s.type !== "once") {
-    throw validationError('schedule.type must be "daily" or "once"');
+  if (s.type !== "daily" && s.type !== "once" && s.type !== "hourly") {
+    throw validationError('schedule.type must be "daily", "once", or "hourly"');
   }
   if (typeof s.timezone !== "string") {
     throw validationError("schedule.timezone is required");
@@ -35,6 +37,20 @@ export function coerceSchedule(raw: unknown): ScheduleInput {
       throw validationError('schedule.time is required for "daily"');
     }
     return { type: "daily", time: s.time, timezone: s.timezone };
+  }
+  if (s.type === "hourly") {
+    if (typeof s.intervalHours !== "number") {
+      throw validationError('schedule.intervalHours is required for "hourly"');
+    }
+    if (typeof s.minute !== "number") {
+      throw validationError('schedule.minute is required for "hourly"');
+    }
+    return {
+      type: "hourly",
+      intervalHours: s.intervalHours,
+      minute: s.minute,
+      timezone: s.timezone,
+    };
   }
   if (typeof s.localDateTime !== "string") {
     throw validationError('schedule.localDateTime is required for "once"');

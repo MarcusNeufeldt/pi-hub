@@ -793,7 +793,9 @@ function TaskRow({
   const scheduleLabel =
     task.schedule.type === "daily"
       ? `${t("task.type.everyDay")} ${task.schedule.time ?? ""}`
-      : t("task.type.oneTime");
+      : task.schedule.type === "hourly"
+        ? `${t("task.type.hourly")} ${task.schedule.intervalHours ?? 1} · :${String(task.schedule.minute ?? 0).padStart(2, "0")}`
+        : t("task.type.oneTime");
 
   return (
     <div
@@ -968,14 +970,16 @@ function CreateTaskView({
   const [name, setName] = useState(editing?.name ?? "");
   const [cwd, setCwd] = useState(editing?.cwd ?? defaultCwd ?? "");
   const [prompt, setPrompt] = useState(editing?.prompt ?? "");
-  const [scheduleType, setScheduleType] = useState<"daily" | "once">(
+  const [scheduleType, setScheduleType] = useState<"daily" | "once" | "hourly">(
     editing?.schedule.type ?? "daily",
   );
   const [time, setTime] = useState(editing?.schedule.time ?? "08:00");
   const [localDateTime, setLocalDateTime] = useState(
     editing?.schedule.localDateTime ?? "",
   );
-  const [timezone, setTimezone] = useState(editing?.schedule.timezone ?? "Asia/Singapore");
+  const [intervalHours, setIntervalHours] = useState(editing?.schedule.intervalHours ?? 1);
+  const [hourMinute, setHourMinute] = useState(editing?.schedule.minute ?? 0);
+  const [timezone, setTimezone] = useState(editing?.schedule.timezone ?? "Europe/Berlin");
   const [provider, setProvider] = useState(editing?.execution.provider ?? "");
   const [modelId, setModelId] = useState(editing?.execution.modelId ?? "");
   const [thinking, setThinking] = useState(editing?.execution.thinkingLevel ?? "");
@@ -1028,6 +1032,7 @@ function CreateTaskView({
 
   const AVAILABLE_TOOLS = ["Read", "Bash", "Edit", "Write"];
   const TIMEZONES = [
+    "Europe/Berlin",
     "Asia/Singapore",
     "Asia/Shanghai",
     "Asia/Tokyo",
@@ -1045,7 +1050,9 @@ function CreateTaskView({
   const scheduleDto: ScheduleDto =
     scheduleType === "daily"
       ? { type: "daily", time, timezone }
-      : { type: "once", localDateTime: localDateTime || new Date().toISOString().slice(0, 16), timezone };
+      : scheduleType === "hourly"
+        ? { type: "hourly", intervalHours, minute: hourMinute, timezone }
+        : { type: "once", localDateTime: localDateTime || new Date().toISOString().slice(0, 16), timezone };
 
   // Live preview of the next run.
   useEffect(() => {
@@ -1061,7 +1068,7 @@ function CreateTaskView({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scheduleType, time, localDateTime, timezone]);
+  }, [scheduleType, time, localDateTime, timezone, intervalHours, hourMinute]);
 
   function toggleTool(tool: string) {
     setTools((prev) =>
@@ -1253,6 +1260,11 @@ function CreateTaskView({
             onClick={() => setScheduleType("once")}
             label={t("task.type.oneTime")}
           />
+          <RadioOption
+            checked={scheduleType === "hourly"}
+            onClick={() => setScheduleType("hourly")}
+            label={t("task.type.hourly")}
+          />
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1277,6 +1289,32 @@ function CreateTaskView({
                 onChange={(e) => setTime(e.target.value)}
               />
             </label>
+          )}
+          {scheduleType === "hourly" && (
+            <>
+              <label style={fieldLabelStyle}>
+                <FieldCaption>{t("task.create.intervalHours")}</FieldCaption>
+                <input
+                  type="number"
+                  min={1}
+                  max={24}
+                  style={{ ...inputStyle, width: 76 }}
+                  value={intervalHours}
+                  onChange={(e) => setIntervalHours(Math.max(1, Math.min(24, Number(e.target.value) || 1)))}
+                />
+              </label>
+              <label style={fieldLabelStyle}>
+                <FieldCaption>{t("task.create.minute")}</FieldCaption>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  style={{ ...inputStyle, width: 76 }}
+                  value={hourMinute}
+                  onChange={(e) => setHourMinute(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
+                />
+              </label>
+            </>
           )}
           <label style={fieldLabelStyle}>
             <FieldCaption>{t("task.create.timezone")}</FieldCaption>

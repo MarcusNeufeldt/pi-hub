@@ -33,11 +33,15 @@ function iso(ms: number | null | undefined): string | null {
 // ---------------------------------------------------------------------------
 
 export interface ScheduleDto {
-  type: "daily" | "once";
+  type: "daily" | "once" | "hourly";
   /** Local time for daily, e.g. "08:00". */
   time?: string;
   /** Local date-time for once, e.g. "2026-08-08T10:00:00". */
   localDateTime?: string;
+  /** Every N hours for hourly (1-24). */
+  intervalHours?: number;
+  /** Minute of the hour for hourly (0-59). */
+  minute?: number;
   timezone: string;
   /** Original cron expression (for transparency; not user-editable in V1). */
   cronExpression?: string | null;
@@ -46,13 +50,23 @@ export interface ScheduleDto {
 /** Derives the frontend-facing schedule from a persisted task. */
 export function scheduleToDto(task: TaskDefinition): ScheduleDto {
   if (task.schedule.scheduleType === "recurring") {
-    // "M H * * *" -> parse hour/minute
+    // "M */N * * *" -> hourly; "M H * * *" -> daily
     const parts = (task.schedule.cronExpression ?? "").split(/\s+/);
     const minute = parts[0] ?? "0";
-    const hour = parts[1] ?? "0";
+    const hourField = parts[1] ?? "0";
+    const hourly = /^\*\/(\d{1,2})$/.exec(hourField);
+    if (hourly) {
+      return {
+        type: "hourly",
+        intervalHours: Number(hourly[1]),
+        minute: Number(minute),
+        timezone: task.schedule.timezone,
+        cronExpression: task.schedule.cronExpression,
+      };
+    }
     return {
       type: "daily",
-      time: `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`,
+      time: `${hourField.padStart(2, "0")}:${minute.padStart(2, "0")}`,
       timezone: task.schedule.timezone,
       cronExpression: task.schedule.cronExpression,
     };

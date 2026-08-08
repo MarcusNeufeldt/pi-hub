@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
+import { loadHiddenProjects, saveHiddenProjects } from "@/lib/project-visibility";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 
@@ -110,6 +111,7 @@ interface WorktreeState {
 
 const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
 const RUNNING_SESSIONS_POLL_MS = 2500;
+const SESSION_LIST_POLL_MS = 60000;
 
 function loadUnreadSessionIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -392,6 +394,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [homeDir, setHomeDir] = useState<string>("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projectFilter, setProjectFilter] = useState("");
+  const [recentCollapsed, setRecentCollapsed] = useState(false);
+  const [hiddenProjects, setHiddenProjects] = useState<string[]>(() => loadHiddenProjects());
+  const [confirmHideProject, setConfirmHideProject] = useState<string | null>(null);
+  const [hoveredProject, setHoveredProject] = useState<string | null>(null);
+  const [hiddenSectionOpen, setHiddenSectionOpen] = useState(false);
   const [wtFilter, setWtFilter] = useState("");
   const [customPathOpen, setCustomPathOpen] = useState(false);
   const [customPathValue, setCustomPathValue] = useState("");
@@ -530,6 +537,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     };
   }, []);
 
+  // Auto-refresh the session list every minute (and on tab focus) so chats
+  // started from the CLI or other tabs appear without a manual refresh click.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadSessions(false);
+    };
+    const id = setInterval(refresh, SESSION_LIST_POLL_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadSessions]);
+
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
     const completedInBackground = [...previous].filter((id) => !runningSessionIds.has(id) && id !== selectedSessionId);
@@ -657,10 +678,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         // Session not found — notify parent so it can show the placeholder
         onInitialRestoreDone?.();
       }
-      const projects = getRecentProjects(allSessions);
+      const projects = getRecentProjects(allSessions).filter((p) => !hiddenProjects.includes(p));
       if (projects.length > 0) setSelectedCwd(projects[0]);
     }
-  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone]);
+  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone, hiddenProjects]);
 
   const commitCustomPath = useCallback(async (candidate?: string) => {
     const path = (candidate ?? customPathValue).trim();
@@ -806,6 +827,28 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onSelectSession(s);
   }, [onSelectSession]);
 
+  // Hides a project from the sidebar without touching its chats. Hidden
+  // projects persist in localStorage and can be restored from the dropdown.
+  const handleHideProject = useCallback((project: string) => {
+    setHiddenProjects((prev) => {
+      const next = prev.includes(project) ? prev : [...prev, project];
+      saveHiddenProjects(next);
+      return next;
+    });
+    setConfirmHideProject(null);
+    setHoveredProject(null);
+    // If the hidden project is currently selected, fall back to the most
+    // recent still-visible project so the workspace does not linger on a
+    // hidden entry.
+    setSelectedCwd((cwd) => {
+      if (!cwd) return cwd;
+      const root = projectRootFor(cwd);
+      if (root !== project) return cwd;
+      const visible = getRecentProjects(allSessions).filter((p) => p !== project);
+      return visible[0] ?? null;
+    });
+  }, [allSessions, projectRootFor]);
+
   const handleNewSession = useCallback(() => {
     if (!selectedCwd) return;
     // Generate a temporary UUID client-side — no backend call needed.
@@ -816,7 +859,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onNewSession?.(tempId, selectedCwd);
   }, [selectedCwd, onNewSession]);
 
-  const recentProjects = getRecentProjects(allSessions);
+  const recentProjects = getRecentProjects(allSessions).filter((p) => !hiddenProjects.includes(p));
   const showProjectFilter = recentProjects.length > 8;
   const visibleProjects = projectFilter.trim()
     ? recentProjects.filter((p) => p.toLowerCase().includes(projectFilter.trim().toLowerCase()))
@@ -858,6 +901,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // Build parent-child tree within the filtered set
   const sessionTree = buildSessionTree(filteredSessions);
+
+  // All chats across every project, most recent first — the Codex-style
+  // "Recent" list. Clicking one switches the workspace to its project.
+  const recentSessions = [...allSessions]
+    .filter((s) => !hiddenProjects.includes(s.projectRoot ?? s.cwd))
+    .sort((a, b) => b.modified.localeCompare(a.modified))
+    .slice(0, 10);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -1054,50 +1104,192 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 </div>
               )}
               <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto" }}>
-                {visibleProjects.map((project) => (
-                  <button
-                    key={project}
-                    onClick={() => {
-                      setSelectedCwd(project);
-                      setProjectFilter("");
-                      setCustomPathOpen(false);
-                      setCustomPathValue("");
-                      setCustomPathError(null);
-                      setDropdownOpen(false);
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 7,
-                      width: "100%",
-                      padding: "8px 10px",
-                      background: "var(--bg)",
-                      border: "none",
-                      borderBottom: "1px solid var(--border)",
-                      color: project === selectedProject ? "var(--text)" : "var(--text-muted)",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={project}
-                  >
-                    {project === selectedProject && (
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                      </svg>
-                    )}
-                    {project !== selectedProject && <span style={{ width: 10, flexShrink: 0 }} />}
-                    <PathLabel text={displayCwd(project, homeDir)} style={{ flex: 1 }} />
-                  </button>
-                ))}
+                {visibleProjects.map((project) => {
+                  const isHiding = confirmHideProject === project;
+                  return (
+                    <div
+                      key={project}
+                      onMouseEnter={() => setHoveredProject(project)}
+                      onMouseLeave={() => setHoveredProject((p) => (p === project ? null : p))}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        background: isHiding ? "rgba(239,68,68,0.06)" : "var(--bg)",
+                        borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      {isHiding ? (
+                        <>
+                          <div style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: 11, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {t("sidebar.hideProjectPrompt")}
+                          </div>
+                          <button
+                            onClick={() => handleHideProject(project)}
+                            style={{
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              height: 28, padding: "0 11px", marginRight: 6,
+                              background: "#ef4444", border: "none",
+                              borderRadius: 6, color: "#fff",
+                              cursor: "pointer", fontSize: 11, fontWeight: 600,
+                              whiteSpace: "nowrap", flexShrink: 0,
+                            }}
+                          >
+                            {t("sidebar.hide")}
+                          </button>
+                          <button
+                            onClick={() => setConfirmHideProject(null)}
+                            style={{
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              height: 28, padding: "0 11px", marginRight: 8,
+                              background: "var(--bg)", border: "1px solid var(--border)",
+                              borderRadius: 6, color: "var(--text-muted)",
+                              cursor: "pointer", fontSize: 11, flexShrink: 0,
+                            }}
+                          >
+                            {t("sidebar.cancel")}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              setSelectedCwd(project);
+                              setProjectFilter("");
+                              setCustomPathOpen(false);
+                              setCustomPathValue("");
+                              setCustomPathError(null);
+                              setDropdownOpen(false);
+                            }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 7,
+                              flex: 1,
+                              minWidth: 0,
+                              padding: "8px 10px",
+                              background: "transparent",
+                              border: "none",
+                              color: project === selectedProject ? "var(--text)" : "var(--text-muted)",
+                              cursor: "pointer",
+                              textAlign: "left",
+                              fontSize: 11,
+                              fontFamily: "var(--font-mono)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={project}
+                          >
+                            {project === selectedProject && (
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <polyline points="1.5 5 4 7.5 8.5 2.5" />
+                              </svg>
+                            )}
+                            {project !== selectedProject && <span style={{ width: 10, flexShrink: 0 }} />}
+                            <PathLabel text={displayCwd(project, homeDir)} style={{ flex: 1 }} />
+                          </button>
+                          {hoveredProject === project && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setConfirmHideProject(project); }}
+                              title={t("sidebar.hideProject")}
+                              style={{
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                width: 26, height: 26, padding: 0, marginRight: 8,
+                                background: "none", border: "none",
+                                color: "var(--text-dim)", cursor: "pointer",
+                                borderRadius: 5, flexShrink: 0,
+                                transition: "color 0.12s, background 0.12s",
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-selected)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                                <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                                <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                                <line x1="2" y1="2" x2="22" y2="22" />
+                              </svg>
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
                 {visibleProjects.length === 0 && projectFilter.trim() && (
                    <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.noMatchingProjects")}</div>
                 )}
               </div>
+
+              {/* Hidden projects — collapsed accordion, expand only on demand */}
+              {hiddenProjects.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setHiddenSectionOpen((v) => !v)}
+                    title={t("sidebar.showHiddenProjects")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      width: "100%",
+                      padding: "7px 10px",
+                      background: "var(--bg)",
+                      border: "none",
+                      borderTop: "1px solid var(--border)",
+                      color: "var(--text-dim)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.05em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ transform: hiddenSectionOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>
+                      <polyline points="3 2 7 5 3 8" />
+                    </svg>
+                    <span>{t("sidebar.hiddenProjects")}</span>
+                    <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>({hiddenProjects.length})</span>
+                  </button>
+                  {hiddenSectionOpen && hiddenProjects.map((project) => (
+                    <button
+                      key={project}
+                      onClick={() => {
+                        setHiddenProjects((prev) => {
+                          const next = prev.filter((p) => p !== project);
+                          saveHiddenProjects(next);
+                          return next;
+                        });
+                        setProjectFilter("");
+                      }}
+                      title={t("sidebar.showProject")}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 7,
+                        width: "100%",
+                        padding: "8px 10px",
+                        background: "var(--bg)",
+                        border: "none",
+                        color: "var(--text-dim)",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontSize: 11,
+                        fontFamily: "var(--font-mono)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <PathLabel text={displayCwd(project, homeDir)} style={{ flex: 1 }} />
+                    </button>
+                  ))}
+                </>
+              )}
 
               {/* Default cwd shortcut */}
               {!customPathOpen && (
@@ -1526,6 +1718,48 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {t("sidebar.noSessions")}
           </div>
         )}
+        {recentSessions.length > 0 && (
+          <div style={{ borderBottom: "1px solid var(--border)", marginBottom: 4, paddingBottom: 2 }}>
+            <button
+              onClick={() => setRecentCollapsed((v) => !v)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                width: "100%", padding: "6px 10px",
+                background: "none", border: "none",
+                color: "var(--text-muted)", cursor: "pointer",
+                fontSize: 11, fontWeight: 600, letterSpacing: "0.05em",
+                textTransform: "uppercase", textAlign: "left",
+              }}
+            >
+              <svg
+                width="9" height="9" viewBox="0 0 10 10" fill="none"
+                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: recentCollapsed ? "none" : "rotate(90deg)", transition: "transform 0.15s", flexShrink: 0 }}
+              >
+                <polyline points="3 2 7 5 3 8" />
+              </svg>
+              <span>{t("sidebar.recent")}</span>
+              <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>({recentSessions.length})</span>
+            </button>
+            {!recentCollapsed && recentSessions.map((s) => (
+              <SessionItem
+                key={s.id}
+                session={s}
+                isSelected={s.id === selectedSessionId}
+                isRunning={runningSessionIds.has(s.id)}
+                isUnread={unreadSessionIds.has(s.id)}
+                onClick={() => handleSelectSessionFromList(s)}
+                onRenamed={loadSessions}
+                onDeleted={(id) => {
+                  onSessionDeleted?.(id);
+                  loadSessions();
+                }}
+                depth={0}
+                projectLabel={displayCwd(s.projectRoot ?? s.cwd, homeDir)}
+              />
+            ))}
+          </div>
+        )}
         {sessionTree.map((node) => (
           <SessionTreeItem
             key={node.session.id}
@@ -1809,6 +2043,7 @@ function SessionItem({
   hasChildren = false,
   collapsed = false,
   onToggleCollapse,
+  projectLabel,
 }: {
   session: SessionInfo;
   isSelected: boolean;
@@ -1821,6 +2056,7 @@ function SessionItem({
   hasChildren?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  projectLabel?: string;
 }) {
   const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
@@ -2016,6 +2252,18 @@ function SessionItem({
                 <span title={session.modified}>{formatRelativeTime(session.modified)}</span>
               )}
               <span>{t("sidebar.messagesCount", { count: session.messageCount })}</span>
+              {projectLabel && (
+                <span
+                  title={projectLabel}
+                  style={{
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    minWidth: 0, fontFamily: "var(--font-mono)", fontSize: 10,
+                    color: "var(--text-dim)", opacity: 0.85,
+                  }}
+                >
+                  {projectLabel}
+                </span>
+              )}
               {session.worktreeBranch && (
                 <span
                   title={`Worktree: ${session.cwd}`}

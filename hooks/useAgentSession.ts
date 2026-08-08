@@ -649,6 +649,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
   const [subagents, setSubagents] = useState<SubagentDelegation[]>([]);
+  const clearSubagents = useCallback(() => setSubagents([]), []);
 
   // --- Async-run polling: detached runs publish status.json; poll it so the
   // cards show real state, output, and the worker's transcript session. -----
@@ -2502,6 +2503,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
     subagents,
+    clearSubagents,
     isNew,
     promptAnchorActive,
     // Refs

@@ -267,8 +267,8 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   // Clear fleet when the right panel's Clear button is pressed.
   useEffect(() => {
-    if (clearSubagentsSignal) setSubagents([]);
-  }, [clearSubagentsSignal]);
+    if (clearSubagentsSignal) clearSubagents();
+  }, [clearSubagentsSignal, clearSubagents]);
 
   // --- Per-turn changes pushed to the right panel (AppShell) ---------------
   useEffect(() => {

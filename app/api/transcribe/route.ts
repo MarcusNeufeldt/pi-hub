@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, writeFile, rm, mkdtemp, mkdir } from "node:fs/promises";
+import { readFile, writeFile, rm, mkdtemp } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 
 const execFileAsync = promisify(execFile);
 
-// STT via OpenRouter → Gemini 3.6 Flash (audio-capable, reliable verbatim
-// transcription). Override with TRANSCRIBE_MODEL.
+// STT providers:
+// - elevenlabs (default when ELEVENLABS_API_KEY is set): Scribe v2 — best
+//   accuracy per the AA-WER v2 leaderboard (2.2%). Override with
+//   TRANSCRIBE_MODEL; optional TRANSCRIBE_LANGUAGE (e.g. "de").
+// - openrouter: Gemini 3.6 Flash (or TRANSCRIBE_MODEL override) — fallback.
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = process.env.TRANSCRIBE_MODEL ?? "google/gemini-3.6-flash";
+const ELEVENLABS_URL = "https://api.elevenlabs.io/v1/speech-to-text";
+
+function getProvider(): "elevenlabs" | "openrouter" {
+  const forced = process.env.TRANSCRIBE_PROVIDER;
+  if (forced === "elevenlabs" || forced === "openrouter") return forced;
+  return process.env.ELEVENLABS_API_KEY ? "elevenlabs" : "openrouter";
+}
 
 function getOpenRouterKey(): string | null {
   const env = process.env.OPENROUTER_API_KEY;
@@ -26,17 +36,79 @@ function getOpenRouterKey(): string | null {
   }
 }
 
+async function transcribeElevenLabs(wav: Buffer): Promise<string> {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) {
+    throw new Error("ELEVENLABS_API_KEY is not set");
+  }
+  const form = new FormData();
+  form.append("model_id", process.env.TRANSCRIBE_MODEL ?? "scribe_v2");
+  form.append("file", new Blob([wav], { type: "audio/wav" }), "audio.wav");
+  const language = process.env.TRANSCRIBE_LANGUAGE;
+  if (language) form.append("language_code", language);
+  const res = await fetch(ELEVENLABS_URL, {
+    method: "POST",
+    headers: { "xi-api-key": key },
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ElevenLabs ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const data = (await res.json()) as { text?: string };
+  return (data.text ?? "").trim();
+}
+
+async function transcribeOpenRouter(wav: Buffer): Promise<string> {
+  const key = getOpenRouterKey();
+  if (!key) {
+    throw new Error("No OpenRouter key found");
+  }
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a verbatim speech transcription engine. Transcribe the user's speech exactly as spoken. Output ONLY the transcription text. Never add greetings, suggestions, commentary, or responses to the content.",
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_audio",
+              input_audio: { data: wav.toString("base64"), format: "wav" },
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`OpenRouter ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return (data?.choices?.[0]?.message?.content ?? "").trim();
+}
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // POST /api/transcribe — multipart form field "audio" (webm/opus from the
 // browser MediaRecorder). Normalizes to 16 kHz mono wav and transcribes via
-// OpenRouter. Returns { text }.
+// the active provider. Returns { text, provider }.
 export async function POST(req: NextRequest) {
-  const key = getOpenRouterKey();
-  if (!key) {
-    return NextResponse.json({ error: "No OpenRouter key found" }, { status: 500 });
-  }
+  const provider = getProvider();
 
   const form = await req.formData();
   const file = form.get("audio");
@@ -50,15 +122,6 @@ export async function POST(req: NextRequest) {
     const wavPath = join(dir, "input.wav");
     await writeFile(rawPath, Buffer.from(await file.arrayBuffer()));
 
-    // Debug: keep the raw upload + converted wav for inspection.
-    if (process.env.PI_DEBUG_AUDIO === "1") {
-      const debugDir = join(homedir(), "pi-web", "debug-audio");
-      await mkdir(debugDir, { recursive: true }).catch(() => {});
-      const stamp = Date.now();
-      await writeFile(join(debugDir, `${stamp}.raw.webm`), Buffer.from(await file.arrayBuffer())).catch(() => {});
-      console.log(`[transcribe] upload ${file.size} bytes, type=${(file as File).type ?? "?"}`);
-    }
-
     // MediaRecorder produces webm/opus; normalize for STT.
     await execFileAsync(
       "ffmpeg",
@@ -67,58 +130,16 @@ export async function POST(req: NextRequest) {
     );
     const wav = await readFile(wavPath);
 
-    if (process.env.PI_DEBUG_AUDIO === "1") {
-      const debugDir = join(homedir(), "pi-web", "debug-audio");
-      const stamp = Date.now();
-      await writeFile(join(debugDir, `${stamp}.conv.wav`), wav).catch(() => {});
-      const probe = await execFileAsync(
-        "ffprobe",
-        ["-v", "error", "-show_entries", "format=duration:stream=codec_name,sample_rate,channels", "-of", "default=noprint_wrappers=1", wavPath],
-        { timeout: 15000, windowsHide: true },
-      ).catch(() => ({ stdout: "probe failed" }));
-      console.log(`[transcribe] wav ${wav.length} bytes\n${probe.stdout}`);
-    }
-
-    const res = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        temperature: 0,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a verbatim speech transcription engine. Transcribe the user's speech exactly as spoken. Output ONLY the transcription text. Never add greetings, suggestions, commentary, or responses to the content.",
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_audio",
-                input_audio: { data: wav.toString("base64"), format: "wav" },
-              },
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      return NextResponse.json(
-        { error: `OpenRouter ${res.status}: ${body.slice(0, 300)}` },
-        { status: 502 },
-      );
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const text: string = data?.choices?.[0]?.message?.content ?? "";
-    return NextResponse.json({ text: text.trim() });
+    const text =
+      provider === "elevenlabs"
+        ? await transcribeElevenLabs(wav)
+        : await transcribeOpenRouter(wav);
+    return NextResponse.json({ text, provider });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 502 },
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

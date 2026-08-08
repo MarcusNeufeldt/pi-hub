@@ -22,7 +22,7 @@ import {
   runPromptAndWait,
   type WaiterSession,
 } from "./prompt-run-waiter";
-import type { ExecutionOptions, TaskRun } from "./types";
+import type { ExecutionOptions, ResumeTarget, TaskRun } from "./types";
 
 /** Progress callbacks so the runtime can persist state without DB coupling here. */
 export interface RunProgress {
@@ -75,6 +75,29 @@ export function buildPrompt(userPrompt: string): string {
   ].join("\n");
 }
 
+/**
+ * Resume-mode prompt envelope (resume §8). Sent to an already-existing
+ * session that was interrupted (typically by a provider rate limit). Instructs
+ * the model to pick up from where it stopped WITHOUT redoing completed work.
+ */
+export function buildResumePrompt(originalTaskPrompt: string): string {
+  return [
+    "[Pi Hub Resume Execution]",
+    "The previous run in this session was interrupted before completion",
+    "(most likely by a provider rate limit or quota).",
+    "",
+    "Instructions:",
+    "1. Review the conversation above to see what was already accomplished.",
+    "2. Do NOT redo work that already succeeded.",
+    "3. Resume the task from where it stopped. If the last action failed",
+    "   mid-way, assess its partial effects before continuing.",
+    "4. If a blocker remains, explain it in the final response.",
+    "",
+    "<Original task for reference>",
+    originalTaskPrompt.trim(),
+  ].join("\n");
+}
+
 /** Session display name like "[Task] Daily Review · 2026-08-07 08:00". */
 export function buildSessionName(taskName: string, scheduledFor: number): string {
   const d = new Date(scheduledFor);
@@ -92,12 +115,24 @@ export function buildSessionName(taskName: string, scheduledFor: number): string
  */
 export async function executeRun(
   run: TaskRun,
-  options: { startSession: SessionStarter; progress: RunProgress; signal?: AbortSignal },
+  options: {
+    startSession: SessionStarter;
+    progress: RunProgress;
+    signal?: AbortSignal;
+    /** In-process mutex check for resume mode (resume §9). Injected by runtime. */
+    isSessionInUse?: (sessionId: string) => boolean;
+  },
 ): Promise<void> {
-  const { startSession, progress, signal } = options;
+  const { startSession, progress, signal, isSessionInUse } = options;
   const execution = JSON.parse(
     run.executionOptionsSnapshotJson,
   ) as ExecutionOptions;
+
+  // Resume target: when set, continue an existing session instead of creating
+  // a fresh one (docs/pi-hub/scheduled-execution-resume-design.zh-CN.md).
+  const resume = run.resumeSnapshotJson
+    ? (JSON.parse(run.resumeSnapshotJson) as ResumeTarget)
+    : null;
 
   // 1. Re-check the snapshot cwd (§23.1) — it may have been removed.
   if (!existsSync(run.cwdSnapshot)) {
@@ -124,12 +159,41 @@ export async function executeRun(
     return;
   }
 
-  // 2. Create a fresh Pi Session.
+  // 2. Resume-mode guards: target file must exist and must not be in active
+  //    use by the browser (concurrent writes corrupt the jsonl, resume §9).
+  if (resume) {
+    if (!existsSync(resume.sessionFile)) {
+      progress.onFinish({
+        status: "failed",
+        resultExcerpt: null,
+        errorCode: SchedulerErrorCode.SESSION_NOT_FOUND,
+        errorMessage: `Session file no longer exists: ${resume.sessionFile}`,
+        warnings: [],
+      });
+      return;
+    }
+    if (isSessionInUse?.(resume.sessionId)) {
+      // SESSION_BUSY is recoverable: the runtime reschedules a once resume
+      // task with a short interval (resume §9) instead of letting it die —
+      // the claim already advanced the once task to `completed`, so without
+      // rescheduling this run the task would be permanently lost.
+      progress.onFinish({
+        status: "failed",
+        resultExcerpt: null,
+        errorCode: SchedulerErrorCode.SESSION_BUSY,
+        errorMessage: `Session ${resume.sessionId} is currently active (open in the browser?). Skipped to avoid concurrent writes.`,
+        warnings: [],
+      });
+      return;
+    }
+  }
+
+  // 3. Start (new) or resume (open) the Pi Session.
   let session: RpcSession;
   try {
     session = await startSession(
       `__scheduled_task__${run.id}`,
-      "",
+      resume?.sessionFile ?? "",
       cwd,
       {
         ...(execution.toolNames.length ? { toolNames: execution.toolNames } : {}),
@@ -160,20 +224,38 @@ export async function executeRun(
   const heartbeat = setInterval(() => progress.onHeartbeat(), 30_000);
 
   try {
-    // 3. Name the session so it's recognizable in the session list.
-    try {
-      await session.send({
-        type: "set_session_name",
-        name: buildSessionName(run.taskNameSnapshot, run.scheduledFor),
-      });
-    } catch {
-      // Non-fatal — naming is cosmetic.
+    // 4. Name NEW sessions only — resume mode keeps the original session name.
+    if (!resume) {
+      try {
+        await session.send({
+          type: "set_session_name",
+          name: buildSessionName(run.taskNameSnapshot, run.scheduledFor),
+        });
+      } catch {
+        // Non-fatal — naming is cosmetic.
+      }
     }
 
-    // 4. Prompt + wait. The waiter handles extension auto-cancel + timeout.
+    // 5. Resume mode: override the model. startRpcSession ignores initialModel
+    //    for sessions with existing messages (resume §10), so set it explicitly.
+    if (resume?.provider && resume?.modelId) {
+      try {
+        await session.send({
+          type: "set_model",
+          provider: resume.provider,
+          modelId: resume.modelId,
+        });
+      } catch {
+        // Non-fatal — fall back to the session's saved model.
+      }
+    }
+
+    // 6. Prompt + wait. The waiter handles extension auto-cancel + timeout.
     const result = await runPromptAndWait(
       session as WaiterSession,
-      buildPrompt(run.promptSnapshot),
+      resume
+        ? buildResumePrompt(run.promptSnapshot)
+        : buildPrompt(run.promptSnapshot),
       execution.timeoutSeconds * 1000,
       { signal },
     );

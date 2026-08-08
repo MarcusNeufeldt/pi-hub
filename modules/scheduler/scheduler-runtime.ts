@@ -17,12 +17,14 @@ import { randomUUID } from "crypto";
 
 import { scanOnce } from "./due-task-scanner";
 import { executeRun, createRealSessionStarter, type RunProgress, type SessionStarter } from "./pi-task-executor";
+import { isRateLimitError } from "./rate-limit";
 import { safeNotify, NoopTaskNotifier, type TaskNotifier } from "./task-notifier";
 import { SqliteTaskStore } from "./sqlite-task-store";
 import { ensureHubHome, getDbPath, getDbPathDisplay } from "./paths";
 import { TaskService } from "./task-service";
+import { SchedulerErrorCode } from "./errors";
 import type { TaskStore } from "./task-store";
-import type { SchedulerRuntimeStatus, TaskRun } from "./types";
+import type { SchedulerRuntimeStatus, TaskDefinition, TaskRun } from "./types";
 
 const LEASE_NAME = "scheduler";
 const LEASE_MS = 15_000; // lease validity
@@ -31,12 +33,103 @@ const TICK_MS = 10_000; // scan frequency
 const HEARTBEAT_TIMEOUT_MS = 90_000; // stale-run cutoff (3 missed heartbeats)
 const MAX_CONCURRENCY = 1;
 
+/** Short retry interval when a resume run finds its target session open in the
+ *  browser (resume §9). Fixed — not user-configurable — because this is the
+ *  resume safety net, not an opt-in policy. The user just needs a window to
+ *  close the browser tab; 5 min keeps the retry responsive without spamming. */
+export const SESSION_BUSY_RETRY_INTERVAL_MS = 5 * 60_000; // 5 minutes
+/** Max session-busy retries before giving up (≈30 min total window). Bounded
+ *  so a session left open indefinitely can't loop forever. */
+export const MAX_SESSION_BUSY_ATTEMPTS = 6;
+
+/** Outcome of {@link computeRecovery} — how to reschedule a failed run. */
+export interface RecoveryDecision {
+  /** UTC epoch ms for the next run. */
+  nextRunAt: number;
+  /** New consecutive-failure counter to persist. */
+  attemptCount: number;
+  /** Which recovery path matched (for logging / tests). */
+  reason: "session_busy" | "rate_limit";
+  /** The cap this path is bounded by (for logging). */
+  cap: number;
+}
+
+/**
+ * Pure decision: should `task` be auto-rescheduled after `run` failed, and if
+ * so, with what nextRunAt / attemptCount? Returns null when the failure is
+ * not recoverable, the cap is reached, the task is not a once task, or the
+ * run was manually triggered (recovery preserves the *scheduler's* execution
+ * plan; a manual run is an explicit user action they can re-trigger).
+ *
+ * Two recoverable paths:
+ *  - **SESSION_BUSY** (resume §9): the target session is open in the browser.
+ *    Reactivate with a short, fixed interval. This is the resume safety net —
+ *    it does NOT depend on the opt-in retryOnRateLimit policy, because without
+ *    it a once resume task would be permanently lost the moment the claim
+ *    marked it completed (the claim advances a once task to `completed`
+ *    before execution even starts).
+ *  - **Rate-limit** (resume §11): only when the task opts in via
+ *    retryOnRateLimit; honours the user-configured interval and cap.
+ *
+ * Only once tasks are rescued — a recurring task already advanced to its next
+ * cycle during claim, so rescheduling would only overwrite that cadence.
+ *
+ * `attemptCount` semantics: consecutive recoverable failures (busy OR
+ * rate-limit), reset to 0 on success. Shared between both paths; since a run
+ * can only be one of them, the only cross-contamination is a task that first
+ * hits busy a few times then rate-limits — which stops slightly earlier
+ * (conservative, never excessive).
+ */
+export function computeRecovery(
+  task: TaskDefinition,
+  run: TaskRun,
+  now: number,
+): RecoveryDecision | null {
+  // Only scheduled runs are auto-recovered. A manual trigger is the user's
+  // explicit action — they're present to retry — so never reschedule it.
+  if (run.triggerType !== "scheduled") return null;
+  // Only once tasks need rescuing; recurring already advanced its schedule.
+  if (task.schedule.scheduleType !== "once") return null;
+  // attemptCount counts prior failures; this just-failed run is the
+  // (attemptCount + 1)-th attempt.
+  const attemptsSoFar = task.attemptCount + 1;
+
+  // Session busy (resume §9): fixed short interval, fixed cap, NOT opt-in.
+  if (run.errorCode === SchedulerErrorCode.SESSION_BUSY) {
+    if (attemptsSoFar >= MAX_SESSION_BUSY_ATTEMPTS) return null;
+    return {
+      nextRunAt: now + SESSION_BUSY_RETRY_INTERVAL_MS,
+      attemptCount: attemptsSoFar,
+      reason: "session_busy",
+      cap: MAX_SESSION_BUSY_ATTEMPTS,
+    };
+  }
+
+  // Rate-limit (resume §11): opt-in policy with user interval + cap.
+  if (
+    task.retryOnRateLimit?.enabled &&
+    isRateLimitError(run.errorMessage)
+  ) {
+    if (attemptsSoFar >= task.retryOnRateLimit.maxAttempts) return null;
+    return {
+      nextRunAt: now + task.retryOnRateLimit.intervalMinutes * 60_000,
+      attemptCount: attemptsSoFar,
+      reason: "rate_limit",
+      cap: task.retryOnRateLimit.maxAttempts,
+    };
+  }
+
+  return null;
+}
+
 interface RuntimeInternals {
   store: SqliteTaskStore;
   service: TaskService;
   notifier: TaskNotifier;
   ownerId: string;
   startSession: SessionStarter;
+  /** In-process mutex check injected into executeRun for resume mode (§9). */
+  isSessionInUse: (sessionId: string) => boolean;
   leaseTimer: ReturnType<typeof setInterval>;
   scanTimer: ReturnType<typeof setInterval>;
   lastTickAt: number;
@@ -69,6 +162,7 @@ export class SchedulerRuntime {
     store?: SqliteTaskStore;
     startSession?: SessionStarter;
     notifier?: TaskNotifier;
+    isSessionInUse?: (sessionId: string) => boolean;
   }): Promise<void> {
     if (this.inner) return;
 
@@ -90,12 +184,15 @@ export class SchedulerRuntime {
     }
 
     const ownerId = randomUUID();
+    const isSessionInUse =
+      options?.isSessionInUse ?? (await buildDefaultChecker());
     const inner: RuntimeInternals = {
       store,
       service,
       notifier,
       ownerId,
       startSession: options?.startSession ?? lazyStarter,
+      isSessionInUse,
       leaseTimer: undefined as never,
       scanTimer: undefined as never,
       lastTickAt: 0,
@@ -289,6 +386,17 @@ export class SchedulerRuntime {
         });
         const finished = inner.store.getRun(run.id);
         if (finished) {
+          // Recoverable-failure auto-reschedule: reset the counter on success;
+          // on a recoverable failure (SESSION_BUSY or rate-limit), reactivate
+          // a once task for a retry (resume §9 / §11) — even though the claim
+          // already marked it completed.
+          if (finished.taskId) {
+            if (finalStatus === "success") {
+              inner.store.resetAttemptCount(finished.taskId);
+            } else if (finalStatus === "failed") {
+              this.maybeRescheduleForRecovery(inner, finished);
+            }
+          }
           void safeNotify(
             inner.notifier,
             finalStatus === "success" ? "onRunSucceeded" : "onRunFailed",
@@ -303,6 +411,7 @@ export class SchedulerRuntime {
         startSession: inner.startSession,
         progress,
         signal: controller.signal,
+        isSessionInUse: inner.isSessionInUse,
       });
     } catch (error) {
       // executeRun is not supposed to throw, but guard the queue anyway.
@@ -315,6 +424,31 @@ export class SchedulerRuntime {
     } finally {
       inner.active.delete(run.id);
     }
+  }
+
+  /**
+   * Recoverable-failure auto-reschedule (resume §9 + §11). Delegates the
+   * decision to the pure {@link computeRecovery} so it is unit-testable, then
+   * persists it. A null decision (non-recoverable error, cap reached, or a
+   * recurring task) leaves the run failed and the task as the claim left it.
+   */
+  private maybeRescheduleForRecovery(
+    inner: RuntimeInternals,
+    run: TaskRun,
+  ): void {
+    if (!run.taskId) return;
+    const task = inner.store.getTask(run.taskId);
+    if (!task) return;
+    const decision = computeRecovery(task, run, Date.now());
+    if (!decision) return;
+    inner.store.rescheduleTask(
+      run.taskId,
+      decision.nextRunAt,
+      decision.attemptCount,
+    );
+    console.info(
+      `[pi-hub:scheduler] task ${run.taskId} rescheduled (${decision.reason}; attempt ${decision.attemptCount}/${decision.cap})`,
+    );
   }
 }
 
@@ -358,6 +492,7 @@ function makeFailedRuntime(error: string): SchedulerRuntime {
     notifier: new NoopTaskNotifier(),
     ownerId: "",
     startSession: undefined as never,
+    isSessionInUse: () => false,
     leaseTimer: undefined as never,
     scanTimer: undefined as never,
     lastTickAt: 0,
@@ -376,6 +511,19 @@ export function getSchedulerRuntime(): SchedulerRuntime | undefined {
 }
 
 // ---- default session starter (lazy import to keep Edge bundles clean) ------
+
+// ---- default session-in-use checker (lazy import of rpc-manager) ------
+
+let defaultSessionChecker: ((sessionId: string) => boolean) | null = null;
+async function buildDefaultChecker(): Promise<(sessionId: string) => boolean> {
+  if (defaultSessionChecker) return defaultSessionChecker;
+  // Dynamic import so the scheduler module stays loadable in non-Pi test
+  // contexts without pulling the full rpc-manager graph at module load time.
+  const { getRpcSession } = await import("@/lib/rpc-manager");
+  defaultSessionChecker = (sessionId: string) =>
+    Boolean(getRpcSession(sessionId)?.isAlive());
+  return defaultSessionChecker;
+}
 
 let defaultSessionStarter: SessionStarter | null = null;
 async function buildDefaultStarter(): Promise<SessionStarter> {

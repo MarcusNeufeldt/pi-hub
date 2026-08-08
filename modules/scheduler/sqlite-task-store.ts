@@ -26,6 +26,8 @@ import type {
 import type {
   ExecutionOptions,
   PersistedSchedule,
+  ResumeTarget,
+  RetryOnRateLimit,
   TaskDefinition,
   TaskRun,
   TaskRunSummary,
@@ -62,6 +64,9 @@ interface TaskRow {
   created_at: number;
   updated_at: number;
   revision: number;
+  resume_json: string | null;
+  retry_on_rate_limit_json: string | null;
+  attempt_count: number;
 }
 
 interface RunRow {
@@ -85,6 +90,7 @@ interface RunRow {
   finished_at: number | null;
   heartbeat_at: number | null;
   created_at: number;
+  resume_snapshot_json: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +119,11 @@ function rowToTask(r: TaskRow): TaskDefinition {
       notifyOnSuccess: r.notify_on_success === 1,
       notifyOnFailure: r.notify_on_failure === 1,
     },
+    resume: r.resume_json ? (JSON.parse(r.resume_json) as ResumeTarget) : null,
+    retryOnRateLimit: r.retry_on_rate_limit_json
+      ? (JSON.parse(r.retry_on_rate_limit_json) as RetryOnRateLimit)
+      : null,
+    attemptCount: r.attempt_count,
     status: r.status,
     overlapPolicy: r.overlap_policy,
     misfirePolicy: r.misfire_policy,
@@ -134,6 +145,7 @@ function rowToRun(r: RunRow): TaskRun {
     cwdSnapshot: r.cwd_snapshot,
     scheduleSnapshotJson: r.schedule_snapshot_json,
     executionOptionsSnapshotJson: r.execution_options_snapshot_json,
+    resumeSnapshotJson: r.resume_snapshot_json,
     triggerType: r.trigger_type,
     scheduledFor: r.scheduled_for,
     status: r.status,
@@ -214,6 +226,8 @@ export class SqliteTaskStore implements TaskStore {
           id, name, prompt, cwd,
           schedule_type, cron_expression, execute_at, timezone, next_run_at,
           provider, model_id, thinking_level, tool_names_json,
+          resume_json,
+          retry_on_rate_limit_json,
           status, overlap_policy, misfire_policy, misfire_grace_seconds, timeout_seconds,
           notify_on_success, notify_on_failure,
           last_run_at, created_at, updated_at, revision
@@ -221,6 +235,8 @@ export class SqliteTaskStore implements TaskStore {
           @id, @name, @prompt, @cwd,
           @schedule_type, @cron_expression, @execute_at, @timezone, @next_run_at,
           @provider, @model_id, @thinking_level, @tool_names_json,
+          @resume_json,
+          @retry_on_rate_limit_json,
           @status, @overlap_policy, @misfire_policy, @misfire_grace_seconds, @timeout_seconds,
           @notify_on_success, @notify_on_failure,
           NULL, @created_at, @updated_at, 1
@@ -240,6 +256,10 @@ export class SqliteTaskStore implements TaskStore {
         model_id: row.execution.modelId,
         thinking_level: row.execution.thinkingLevel,
         tool_names_json: JSON.stringify(row.execution.toolNames),
+        resume_json: row.resume ? JSON.stringify(row.resume) : null,
+        retry_on_rate_limit_json: row.retryOnRateLimit
+          ? JSON.stringify(row.retryOnRateLimit)
+          : null,
         status: row.status,
         overlap_policy: "skip",
         misfire_policy: row.misfirePolicy,
@@ -287,6 +307,12 @@ export class SqliteTaskStore implements TaskStore {
       execution: row.execution
         ? { ...current.execution, ...row.execution }
         : current.execution,
+      resume:
+        row.resume === undefined ? current.resume : row.resume,
+      retryOnRateLimit:
+        row.retryOnRateLimit === undefined
+          ? current.retryOnRateLimit
+          : row.retryOnRateLimit,
       status: row.status ?? current.status,
       updatedAt: row.updatedAt,
       revision: current.revision + 1,
@@ -300,6 +326,8 @@ export class SqliteTaskStore implements TaskStore {
           execute_at = @execute_at, timezone = @timezone, next_run_at = @next_run_at,
           provider = @provider, model_id = @model_id, thinking_level = @thinking_level,
           tool_names_json = @tool_names_json,
+          resume_json = @resume_json,
+          retry_on_rate_limit_json = @retry_on_rate_limit_json,
           status = @status,
           timeout_seconds = @timeout_seconds,
           notify_on_success = @notify_on_success, notify_on_failure = @notify_on_failure,
@@ -321,6 +349,10 @@ export class SqliteTaskStore implements TaskStore {
         model_id: next.execution.modelId,
         thinking_level: next.execution.thinkingLevel,
         tool_names_json: JSON.stringify(next.execution.toolNames),
+        resume_json: next.resume ? JSON.stringify(next.resume) : null,
+        retry_on_rate_limit_json: next.retryOnRateLimit
+          ? JSON.stringify(next.retryOnRateLimit)
+          : null,
         status: next.status,
         timeout_seconds: next.execution.timeoutSeconds,
         notify_on_success: next.execution.notifyOnSuccess ? 1 : 0,
@@ -369,6 +401,24 @@ export class SqliteTaskStore implements TaskStore {
     return rows.map((r) => r.cwd);
   }
 
+  rescheduleTask(taskId: string, nextRunAt: number, attemptCount: number): void {
+    // Reactivate the task for a rate-limit retry. Skip if paused (respect
+    // user intent) or gone — both are harmless no-ops.
+    this.db
+      .prepare(
+        `UPDATE scheduled_tasks
+           SET status = 'active', next_run_at = ?, attempt_count = ?, updated_at = ?
+         WHERE id = ? AND status != 'paused'`,
+      )
+      .run(nextRunAt, attemptCount, Date.now(), taskId);
+  }
+
+  resetAttemptCount(taskId: string): void {
+    this.db
+      .prepare("UPDATE scheduled_tasks SET attempt_count = 0 WHERE id = ?")
+      .run(taskId);
+  }
+
   // ---- runs ----------------------------------------------------------------
 
   insertRunIfAbsent(row: InsertRunRow): { run: TaskRun; inserted: boolean } {
@@ -380,6 +430,7 @@ export class SqliteTaskStore implements TaskStore {
             id, task_id, dedupe_key,
             task_name_snapshot, prompt_snapshot, cwd_snapshot,
             schedule_snapshot_json, execution_options_snapshot_json,
+            resume_snapshot_json,
             trigger_type, scheduled_for, status,
             session_id, result_excerpt, error_code, error_message,
             queued_at, started_at, finished_at, heartbeat_at, created_at
@@ -387,6 +438,7 @@ export class SqliteTaskStore implements TaskStore {
             @id, @task_id, @dedupe_key,
             @task_name_snapshot, @prompt_snapshot, @cwd_snapshot,
             @schedule_snapshot_json, @execution_options_snapshot_json,
+            @resume_snapshot_json,
             @trigger_type, @scheduled_for, @status,
             NULL, NULL, @error_code, @error_message,
             @queued_at, NULL, @finished_at, NULL, @created_at
@@ -401,6 +453,7 @@ export class SqliteTaskStore implements TaskStore {
           cwd_snapshot: row.cwdSnapshot,
           schedule_snapshot_json: row.scheduleSnapshotJson,
           execution_options_snapshot_json: row.executionOptionsSnapshotJson,
+          resume_snapshot_json: row.resumeSnapshotJson ?? null,
           trigger_type: row.triggerType,
           scheduled_for: row.scheduledFor,
           status: row.status,
@@ -599,12 +652,14 @@ export class SqliteTaskStore implements TaskStore {
             id, task_id, dedupe_key,
             task_name_snapshot, prompt_snapshot, cwd_snapshot,
             schedule_snapshot_json, execution_options_snapshot_json,
+            resume_snapshot_json,
             trigger_type, scheduled_for, status,
             queued_at, created_at
           ) VALUES (
             @id, @task_id, @dedupe_key,
             @task_name_snapshot, @prompt_snapshot, @cwd_snapshot,
             @schedule_snapshot_json, @execution_options_snapshot_json,
+            @resume_snapshot_json,
             'scheduled', @scheduled_for, 'queued',
             @queued_at, @created_at
           )`,
@@ -618,6 +673,7 @@ export class SqliteTaskStore implements TaskStore {
           cwd_snapshot: task.cwd,
           schedule_snapshot_json: scheduleJson(task.schedule),
           execution_options_snapshot_json: executionJson(task.execution),
+          resume_snapshot_json: task.resume ? JSON.stringify(task.resume) : null,
           scheduled_for: scheduledFor,
           queued_at: Date.now(),
           created_at: Date.now(),

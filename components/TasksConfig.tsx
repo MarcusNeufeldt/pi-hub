@@ -29,6 +29,8 @@ import {
   triggerRun,
   updateTask,
   type CreateTaskPayload,
+  type ResumeTargetDto,
+  type RetryOnRateLimitDto,
   type RunSummaryDto,
   type ScheduleDto,
   type SchedulerStatusDto,
@@ -204,6 +206,7 @@ export function TasksConfig({
   // home sidebar does it (deduped by projectRoot, sorted by recent activity).
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [homeDir, setHomeDir] = useState<string>("");
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>({ name: "dashboard" });
@@ -246,6 +249,7 @@ export function TasksConfig({
         setWorkspaces(
           sessionsData.sessions ? getRecentProjects(sessionsData.sessions) : [],
         );
+        setSessions(sessionsData.sessions ?? []);
         setHomeDir(homeData.home ?? "");
       } catch {
         // Non-fatal — the picker just shows fewer options.
@@ -451,6 +455,7 @@ export function TasksConfig({
             <CreateTaskView
               workspaces={workspaces}
               homeDir={homeDir}
+              sessions={sessions}
               defaultCwd={activeCwd ?? undefined}
               onCancel={() => setView({ name: "dashboard" })}
               onCreate={handleCreate}
@@ -461,6 +466,7 @@ export function TasksConfig({
               editing={view.task}
               workspaces={workspaces}
               homeDir={homeDir}
+              sessions={sessions}
               onCancel={() => setView({ name: "detail", task: view.task })}
               onSave={(payload) => handleUpdate(view.task, payload)}
             />
@@ -942,6 +948,7 @@ function CreateTaskView({
   workspaces,
   homeDir,
   defaultCwd,
+  sessions,
   onCancel,
   onCreate,
   onSave,
@@ -950,6 +957,7 @@ function CreateTaskView({
   workspaces: string[];
   homeDir: string;
   defaultCwd?: string;
+  sessions: SessionInfo[];
   onCancel: () => void;
   onCreate?: (payload: CreateTaskPayload) => Promise<void>;
   onSave?: (payload: UpdateTaskPayload) => Promise<void>;
@@ -986,6 +994,37 @@ function CreateTaskView({
   const [submitting, setSubmitting] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
 
+  // Resume mode (continue an existing session, e.g. after a rate-limit hit).
+  const [resumeMode, setResumeMode] = useState<boolean>(Boolean(editing?.resume));
+  const [resumeSessionId, setResumeSessionId] = useState<string>(
+    editing?.resume?.sessionId ?? "",
+  );
+  const [overrideModel, setOverrideModel] = useState<boolean>(
+    Boolean(editing?.resume?.provider && editing?.resume?.modelId),
+  );
+  // Rate-limit auto-reschedule policy (resume §11).
+  const [retryEnabled, setRetryEnabled] = useState<boolean>(
+    Boolean(editing?.retryOnRateLimit?.enabled),
+  );
+  const [retryInterval, setRetryInterval] = useState<number>(
+    editing?.retryOnRateLimit?.intervalMinutes ?? 300,
+  );
+  const [retryMaxAttempts, setRetryMaxAttempts] = useState<number>(
+    editing?.retryOnRateLimit?.maxAttempts ?? 3,
+  );
+
+  const selectedSession = sessions.find((s) => s.id === resumeSessionId);
+  // When editing a resume task whose session no longer appears in the loaded
+  // list, fall back to the stored sessionFile so the target isn't lost.
+  const resumeSessionPath =
+    selectedSession?.path ?? editing?.resume?.sessionFile ?? "";
+
+  // Keep cwd in sync with the resumed session (resume mode owns the cwd).
+  useEffect(() => {
+    if (resumeMode && selectedSession) {
+      setCwd(selectedSession.cwd);
+    }
+  }, [resumeMode, selectedSession]);
 
   const AVAILABLE_TOOLS = ["Read", "Bash", "Edit", "Write"];
   const TIMEZONES = [
@@ -997,7 +1036,11 @@ function CreateTaskView({
     "UTC",
   ];
 
-  const canSubmit = Boolean(name.trim() && cwd.trim() && prompt.trim());
+  const canSubmit = Boolean(
+    name.trim() &&
+      prompt.trim() &&
+      (resumeMode ? Boolean(selectedSession || editing?.resume) : cwd.trim()),
+  );
 
   const scheduleDto: ScheduleDto =
     scheduleType === "daily"
@@ -1038,23 +1081,54 @@ function CreateTaskView({
       notifyOnSuccess: notifySuccess,
       notifyOnFailure: notifyFailure,
     };
+    // Resolve resume target (continue an existing session).
+    let resume: ResumeTargetDto | null = null;
+    if (resumeMode) {
+      const base = selectedSession
+        ? { sessionFile: selectedSession.path, sessionId: selectedSession.id }
+        : editing?.resume
+          ? {
+              sessionFile: editing.resume.sessionFile,
+              sessionId: editing.resume.sessionId,
+            }
+          : null;
+      if (base) {
+        resume =
+          overrideModel && provider.trim() && modelId.trim()
+            ? { ...base, provider: provider.trim(), modelId: modelId.trim() }
+            : base;
+      }
+    }
+    const retryOnRateLimit: RetryOnRateLimitDto | null = retryEnabled
+      ? {
+          enabled: true,
+          intervalMinutes: retryInterval,
+          maxAttempts: retryMaxAttempts,
+        }
+      : null;
+    const finalCwd =
+      resumeMode && selectedSession ? selectedSession.cwd : cwd.trim();
     try {
       if (isEditing && editing && onSave) {
         await onSave({
           name: name.trim(),
-          cwd: cwd.trim(),
+          cwd: finalCwd,
           prompt: prompt.trim(),
           schedule: scheduleDto,
           execution,
+          resume,
+          retryOnRateLimit,
           revision: editing.revision,
         });
       } else if (onCreate) {
         await onCreate({
           name: name.trim(),
-          cwd: cwd.trim(),
+          cwd: finalCwd,
           prompt: prompt.trim(),
           schedule: scheduleDto,
           execution,
+          resume,
+          retryOnRateLimit,
         });
       }
     } finally {
@@ -1074,24 +1148,87 @@ function CreateTaskView({
         />
         <div style={{ height: 12 }} />
         <SectionTitle>{t("task.create.cwd")}</SectionTitle>
-        <select
-          style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
-          value={workspaces.includes(cwd) ? cwd : ""}
-          onChange={(e) => setCwd(e.target.value)}
-        >
-          {cwd && !workspaces.includes(cwd) ? (
-            <option value={cwd}>{displayCwd(cwd, homeDir)}</option>
-          ) : (
-            <option value="" disabled>
-              {t("task.create.cwdPlaceholder")}
-            </option>
-          )}
-          {workspaces.map((ws) => (
-            <option key={ws} value={ws}>
-              {displayCwd(ws, homeDir)}
-            </option>
-          ))}
-        </select>
+        {resumeMode ? (
+          <input
+            style={{ ...inputStyle, fontFamily: "var(--font-mono)", opacity: 0.7 }}
+            value={displayCwd(cwd, homeDir)}
+            readOnly
+            title={t("task.resume.cwdLocked")}
+          />
+        ) : (
+          <select
+            style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
+            value={workspaces.includes(cwd) ? cwd : ""}
+            onChange={(e) => setCwd(e.target.value)}
+          >
+            {cwd && !workspaces.includes(cwd) ? (
+              <option value={cwd}>{displayCwd(cwd, homeDir)}</option>
+            ) : (
+              <option value="" disabled>
+                {t("task.create.cwdPlaceholder")}
+              </option>
+            )}
+            {workspaces.map((ws) => (
+              <option key={ws} value={ws}>
+                {displayCwd(ws, homeDir)}
+              </option>
+            ))}
+          </select>
+        )}
+      </FormSection>
+
+      <FormSection>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, color: "var(--text)" }}>
+          <input
+            type="checkbox"
+            checked={resumeMode}
+            onChange={(e) => setResumeMode(e.target.checked)}
+            style={{ cursor: "pointer" }}
+          />
+          {t("task.resume.enable")}
+        </label>
+        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>
+          {t("task.resume.hint")}
+        </div>
+        {resumeMode && (
+          <div style={{ marginTop: 10 }}>
+            <FieldCaption>{t("task.resume.selectSession")}</FieldCaption>
+            <select
+              style={{ ...inputStyle, marginTop: 4 }}
+              value={resumeSessionId}
+              onChange={(e) => setResumeSessionId(e.target.value)}
+            >
+              <option value="" disabled>
+                {t("task.resume.selectPlaceholder")}
+              </option>
+              {sessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {(s.name || s.firstMessage?.slice(0, 40) || s.id.slice(0, 8)) +
+                    " · " +
+                    displayCwd(s.cwd, homeDir)}
+                </option>
+              ))}
+            </select>
+            {resumeMode && !selectedSession && editing?.resume && (
+              <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4 }}>
+                {t("task.resume.sessionMissing")}
+              </div>
+            )}
+            {resumeMode && resumeSessionPath && (
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--text-dim)",
+                  marginTop: 4,
+                  fontFamily: "var(--font-mono)",
+                  wordBreak: "break-all",
+                }}
+              >
+                {resumeSessionPath}
+              </div>
+            )}
+          </div>
+        )}
       </FormSection>
 
       <FormSection>
@@ -1251,6 +1388,53 @@ function CreateTaskView({
                 {t("task.create.notifyHint")}
               </div>
             </div>
+            <div>
+              <CheckboxOption
+                checked={retryEnabled}
+                onClick={() => setRetryEnabled((v) => !v)}
+                label={t("task.retry.enable")}
+              />
+              {retryEnabled && (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+                  <label style={fieldLabelStyle}>
+                    <FieldCaption>{t("task.retry.interval")}</FieldCaption>
+                    <input
+                      type="number"
+                      min={1}
+                      style={inputStyle}
+                      value={retryInterval}
+                      onChange={(e) => setRetryInterval(Number(e.target.value) || 300)}
+                    />
+                  </label>
+                  <label style={fieldLabelStyle}>
+                    <FieldCaption>{t("task.retry.maxAttempts")}</FieldCaption>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      style={inputStyle}
+                      value={retryMaxAttempts}
+                      onChange={(e) => setRetryMaxAttempts(Number(e.target.value) || 3)}
+                    />
+                  </label>
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>
+                {t("task.retry.hint")}
+              </div>
+            </div>
+            {resumeMode && (
+              <div>
+                <CheckboxOption
+                  checked={overrideModel}
+                  onClick={() => setOverrideModel((v) => !v)}
+                  label={t("task.resume.overrideModel")}
+                />
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>
+                  {t("task.resume.overrideModelHint")}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </FormSection>
@@ -1378,6 +1562,15 @@ function DetailView({
             : "default"
         }
       />
+      {task.resume && (
+        <DetailField label={t("task.detail.mode")} value={t("task.resume.modeOn")} />
+      )}
+      {task.retryOnRateLimit?.enabled && (
+        <DetailField
+          label={t("task.detail.retry")}
+          value={`${task.attemptCount} / ${task.retryOnRateLimit.maxAttempts}`}
+        />
+      )}
       {task.lastRun && (
         <DetailField
           label={t("task.column.lastResult")}

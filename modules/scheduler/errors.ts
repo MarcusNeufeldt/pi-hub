@@ -28,6 +28,8 @@ export const SchedulerErrorCode = {
   VALIDATION_ERROR: "VALIDATION_ERROR",
   NOTIFICATION_FAILED: "NOTIFICATION_FAILED",
   RUN_NOT_CANCELLABLE: "RUN_NOT_CANCELLABLE",
+  SESSION_NOT_FOUND: "SESSION_NOT_FOUND",
+  SESSION_BUSY: "SESSION_BUSY",
 } as const;
 
 export type SchedulerErrorCodeValue =
@@ -56,6 +58,8 @@ const STATUS_BY_CODE: Record<SchedulerErrorCodeValue, number> = {
   [SchedulerErrorCode.VALIDATION_ERROR]: 400,
   [SchedulerErrorCode.NOTIFICATION_FAILED]: 500,
   [SchedulerErrorCode.RUN_NOT_CANCELLABLE]: 409,
+  [SchedulerErrorCode.SESSION_NOT_FOUND]: 400,
+  [SchedulerErrorCode.SESSION_BUSY]: 409,
 };
 
 export class SchedulerError extends Error {

@@ -18,7 +18,8 @@ export {
 } from "./schedule-calculator";
 export { SchedulerError, SchedulerErrorCode, validationError } from "./errors";
 export { NoopTaskNotifier } from "./task-notifier";
-export { executeRun, buildPrompt, buildSessionName } from "./pi-task-executor";
+export { executeRun, buildPrompt, buildResumePrompt, buildSessionName } from "./pi-task-executor";
+export { isRateLimitError } from "./rate-limit";
 export { scanOnce } from "./due-task-scanner";
 export { getDbPath, getHubHome, ensureHubHome, getDbPathDisplay } from "./paths";
 
@@ -35,6 +36,8 @@ export type {
   OnceScheduleInput,
   PersistedSchedule,
   ExecutionOptions,
+  ResumeTarget,
+  RetryOnRateLimit,
   CreateTaskInput,
   UpdateTaskPatch,
   TriggerType,

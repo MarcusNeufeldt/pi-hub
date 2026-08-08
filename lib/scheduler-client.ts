@@ -29,6 +29,19 @@ export interface ExecutionDto {
   notifyOnFailure: boolean;
 }
 
+export interface ResumeTargetDto {
+  sessionFile: string;
+  sessionId: string;
+  provider?: string | null;
+  modelId?: string | null;
+}
+
+export interface RetryOnRateLimitDto {
+  enabled: boolean;
+  intervalMinutes: number;
+  maxAttempts: number;
+}
+
 export interface TaskDto {
   id: string;
   name: string;
@@ -36,6 +49,12 @@ export interface TaskDto {
   cwd: string;
   schedule: ScheduleDto;
   execution: ExecutionDto;
+  /** Non-null ⇒ resume mode (continue an existing session). */
+  resume?: ResumeTargetDto | null;
+  /** Optional rate-limit auto-reschedule policy. */
+  retryOnRateLimit?: RetryOnRateLimitDto | null;
+  /** Consecutive rate-limit failures (read-only). */
+  attemptCount: number;
   status: "active" | "paused" | "completed";
   misfirePolicy: "run_once" | "skip";
   misfireGraceSeconds: number;
@@ -103,6 +122,8 @@ export interface CreateTaskPayload {
   prompt: string;
   schedule: ScheduleDto;
   execution?: Partial<ExecutionDto>;
+  resume?: ResumeTargetDto | null;
+  retryOnRateLimit?: RetryOnRateLimitDto | null;
 }
 
 export interface UpdateTaskPayload {
@@ -111,6 +132,8 @@ export interface UpdateTaskPayload {
   prompt?: string;
   schedule?: ScheduleDto;
   execution?: Partial<ExecutionDto>;
+  resume?: ResumeTargetDto | null;
+  retryOnRateLimit?: RetryOnRateLimitDto | null;
   status?: TaskDto["status"];
   revision: number;
 }

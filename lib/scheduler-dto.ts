@@ -95,6 +95,19 @@ export function executionToDto(e: ExecutionOptions): ExecutionDto {
   return { ...e };
 }
 
+export interface ResumeTargetDto {
+  sessionFile: string;
+  sessionId: string;
+  provider?: string | null;
+  modelId?: string | null;
+}
+
+export interface RetryOnRateLimitDto {
+  enabled: boolean;
+  intervalMinutes: number;
+  maxAttempts: number;
+}
+
 export interface TaskDto {
   id: string;
   name: string;
@@ -102,6 +115,12 @@ export interface TaskDto {
   cwd: string;
   schedule: ScheduleDto;
   execution: ExecutionDto;
+  /** Non-null ⇒ resume mode (continue an existing session). */
+  resume?: ResumeTargetDto | null;
+  /** Optional rate-limit auto-reschedule policy. */
+  retryOnRateLimit?: RetryOnRateLimitDto | null;
+  /** Consecutive rate-limit failures (read-only on the client). */
+  attemptCount: number;
   status: TaskDefinition["status"];
   misfirePolicy: TaskDefinition["misfirePolicy"];
   misfireGraceSeconds: number;
@@ -124,6 +143,9 @@ export function taskToDto(
     cwd: task.cwd,
     schedule: scheduleToDto(task),
     execution: executionToDto(task.execution),
+    resume: task.resume ?? null,
+    retryOnRateLimit: task.retryOnRateLimit ?? null,
+    attemptCount: task.attemptCount,
     status: task.status,
     misfirePolicy: task.misfirePolicy,
     misfireGraceSeconds: task.misfireGraceSeconds,

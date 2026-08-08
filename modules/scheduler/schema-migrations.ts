@@ -123,6 +123,26 @@ const MIGRATIONS: { version: number; up: string }[] = [
       ) STRICT;
     `,
   },
+  {
+    // Resume mode (docs/pi-hub/scheduled-execution-resume-design.zh-CN.md):
+    // optional pointer to an existing session to continue instead of creating
+    // a fresh one each run. Nullable; null = V1 new-session behavior.
+    version: 2,
+    up: `
+      ALTER TABLE scheduled_tasks ADD COLUMN resume_json TEXT;
+      ALTER TABLE task_runs ADD COLUMN resume_snapshot_json TEXT;
+    `,
+  },
+  {
+    // Rate-limit auto-reschedule (resume §11): optional policy + a
+    // consecutive-failure counter. attempt_count has a DEFAULT so existing
+    // rows backfill cleanly.
+    version: 3,
+    up: `
+      ALTER TABLE scheduled_tasks ADD COLUMN retry_on_rate_limit_json TEXT;
+      ALTER TABLE scheduled_tasks ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 /** Configures a fresh database connection with the recommended PRAGMAs. */

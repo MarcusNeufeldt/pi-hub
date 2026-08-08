@@ -10,6 +10,8 @@
 import type {
   ExecutionOptions,
   PersistedSchedule,
+  ResumeTarget,
+  RetryOnRateLimit,
   TaskDefinition,
   TaskRun,
   TaskRunSummary,
@@ -24,6 +26,10 @@ export interface CreateTaskRow {
   schedule: PersistedSchedule;
   nextRunAt: number | null;
   execution: ExecutionOptions;
+  /** Resume target; null/undefined = create a new session each run. */
+  resume?: ResumeTarget | null;
+  /** Optional rate-limit auto-reschedule policy. */
+  retryOnRateLimit?: RetryOnRateLimit | null;
   status: TaskStatus;
   misfirePolicy: "run_once" | "skip";
   misfireGraceSeconds: number;
@@ -38,6 +44,10 @@ export interface UpdateTaskRow {
   schedule?: PersistedSchedule;
   nextRunAt?: number | null;
   execution?: Partial<ExecutionOptions>;
+  /** undefined ⇒ unchanged; null ⇒ clear; object ⇒ set. */
+  resume?: ResumeTarget | null;
+  /** undefined ⇒ unchanged; null ⇒ clear; object ⇒ set. */
+  retryOnRateLimit?: RetryOnRateLimit | null;
   status?: TaskStatus;
   updatedAt: number;
 }
@@ -51,6 +61,8 @@ export interface InsertRunRow {
   cwdSnapshot: string;
   scheduleSnapshotJson: string;
   executionOptionsSnapshotJson: string;
+  /** Snapshot of the task's resume target at claim time (nullable). */
+  resumeSnapshotJson?: string | null;
   triggerType: "scheduled" | "manual";
   scheduledFor: number;
   status: TaskRun["status"];
@@ -88,6 +100,14 @@ export interface TaskStore {
   }): TaskDefinition[];
   /** Distinct task cwds (for file-access allow-list registration). */
   listTaskCwds(): string[];
+  /**
+   * Reactivates a (possibly completed) task for a rate-limit retry (resume
+   * §11): sets status='active', next_run_at, attempt_count. No-op if the task
+   * is paused or gone (respects user pause intent).
+   */
+  rescheduleTask(taskId: string, nextRunAt: number, attemptCount: number): void;
+  /** Resets the consecutive-rate-limit-failure counter (on success). */
+  resetAttemptCount(taskId: string): void;
 
   // ---- runs ----
   /**

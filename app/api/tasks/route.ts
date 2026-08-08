@@ -5,7 +5,7 @@ import type {
   TaskStatus,
 } from "@/modules/scheduler";
 import { errorResponse, taskToDto } from "@/lib/scheduler-dto";
-import { coerceExecution, coerceSchedule } from "@/lib/scheduler-coerce";
+import { coerceExecution, coerceResume, coerceRetryOnRateLimit, coerceSchedule } from "@/lib/scheduler-coerce";
 import { getServiceOrError } from "@/lib/scheduler-service-access";
 
 interface CreateBody {
@@ -14,6 +14,8 @@ interface CreateBody {
   prompt?: unknown;
   schedule?: unknown;
   execution?: unknown;
+  resume?: unknown;
+  retryOnRateLimit?: unknown;
 }
 
 export async function GET(req: Request) {
@@ -75,6 +77,8 @@ export async function POST(req: Request) {
       prompt: body.prompt,
       schedule: coerceSchedule(body.schedule),
       execution: coerceExecution(body.execution),
+      resume: coerceResume(body.resume),
+      retryOnRateLimit: coerceRetryOnRateLimit(body.retryOnRateLimit),
     };
     const task = service.createTask(input);
     return NextResponse.json(taskToDto(task), { status: 201 });

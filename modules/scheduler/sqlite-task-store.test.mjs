@@ -215,3 +215,200 @@ test("listTaskCwds: returns distinct cwds", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("resume: insert/get/update/clear resume target", () => {
+  const { store, dir } = makeStore();
+  try {
+    const resume = {
+      sessionFile: "/home/u/.pi/agent/sessions/x/abc.jsonl",
+      sessionId: "abc-123",
+    };
+    seedTask(store, { id: "resume-task", resume });
+    let t = store.getTask("resume-task");
+    assert.deepEqual(t.resume, resume);
+
+    // Update resume (different session + model override).
+    const resume2 = {
+      sessionFile: "/home/u/.pi/agent/sessions/y/def.jsonl",
+      sessionId: "def-456",
+      provider: "anthropic",
+      modelId: "claude-3",
+    };
+    const updated = store.updateTask("resume-task", t.revision, {
+      resume: resume2,
+      updatedAt: Date.now(),
+    });
+    assert.deepEqual(updated.resume, resume2);
+
+    // Clear resume → null.
+    const cleared = store.updateTask("resume-task", updated.revision, {
+      resume: null,
+      updatedAt: Date.now(),
+    });
+    assert.equal(cleared.resume, null);
+
+    // undefined resume on update keeps the current value (null).
+    const untouched = store.updateTask("resume-task", cleared.revision, {
+      name: "Renamed",
+      updatedAt: Date.now(),
+    });
+    assert.equal(untouched.resume, null);
+    assert.equal(untouched.name, "Renamed");
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resume: claim snapshots resume target into the run", () => {
+  const { store, dir } = makeStore();
+  try {
+    const resume = {
+      sessionFile: "/home/u/.pi/agent/sessions/x/abc.jsonl",
+      sessionId: "abc-123",
+    };
+    seedTask(store, { id: "resume-claim", resume });
+    const claim = store.claimScheduledRun(
+      "resume-claim",
+      Date.now(),
+      (task) => ({
+        dedupeKey: `scheduled:resume-claim:${task.nextRunAt}`,
+        scheduledFor: task.nextRunAt,
+      }),
+      () => ({ nextRunAt: Date.now() + 86400000, status: "active" }),
+    );
+    assert.ok(claim?.inserted);
+    assert.equal(
+      store.getRun(claim.run.id).resumeSnapshotJson,
+      JSON.stringify(resume),
+    );
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resume: non-resume task run has null resumeSnapshotJson", () => {
+  const { store, dir } = makeStore();
+  try {
+    seedTask(store, { id: "plain" });
+    const claim = store.claimScheduledRun(
+      "plain",
+      Date.now(),
+      (task) => ({
+        dedupeKey: `scheduled:plain:${task.nextRunAt}`,
+        scheduledFor: task.nextRunAt,
+      }),
+      () => ({ nextRunAt: Date.now() + 86400000, status: "active" }),
+    );
+    assert.ok(claim?.inserted);
+    assert.equal(store.getRun(claim.run.id).resumeSnapshotJson, null);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("retryOnRateLimit: insert/get/update/clear policy", () => {
+  const { store, dir } = makeStore();
+  try {
+    const policy = { enabled: true, intervalMinutes: 300, maxAttempts: 3 };
+    seedTask(store, { id: "rl-task", retryOnRateLimit: policy });
+    let t = store.getTask("rl-task");
+    assert.deepEqual(t.retryOnRateLimit, policy);
+    assert.equal(t.attemptCount, 0);
+
+    // Update policy.
+    const policy2 = { enabled: true, intervalMinutes: 60, maxAttempts: 5 };
+    const updated = store.updateTask("rl-task", t.revision, {
+      retryOnRateLimit: policy2,
+      updatedAt: Date.now(),
+    });
+    assert.deepEqual(updated.retryOnRateLimit, policy2);
+
+    // Clear policy.
+    const cleared = store.updateTask("rl-task", updated.revision, {
+      retryOnRateLimit: null,
+      updatedAt: Date.now(),
+    });
+    assert.equal(cleared.retryOnRateLimit, null);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("rescheduleTask: reactivates a completed task and bumps attemptCount", () => {
+  const { store, dir } = makeStore();
+  try {
+    const now = Date.now();
+    store.insertTask({
+      id: "once-rl",
+      name: "once",
+      prompt: "p",
+      cwd: "/tmp",
+      schedule: { scheduleType: "once", cronExpression: null, executeAt: now - 1, timezone: "UTC" },
+      nextRunAt: now - 1,
+      execution: { provider: null, modelId: null, thinkingLevel: null, toolNames: [], timeoutSeconds: 7200, notifyOnSuccess: false, notifyOnFailure: true },
+      status: "active",
+      misfirePolicy: "run_once",
+      misfireGraceSeconds: 86400,
+      createdAt: now,
+      updatedAt: now,
+    });
+    // Claim consumes the once schedule → status completed.
+    store.claimScheduledRun(
+      "once-rl",
+      now,
+      (task) => ({
+        dedupeKey: `scheduled:once-rl:${task.nextRunAt}`,
+        scheduledFor: task.nextRunAt,
+      }),
+      () => ({ nextRunAt: null, status: "completed" }),
+    );
+    assert.equal(store.getTask("once-rl").status, "completed");
+
+    // Reschedule: completed → active, nextRunAt set, attemptCount bumped.
+    const next = now + 60000;
+    store.rescheduleTask("once-rl", next, 1);
+    const after = store.getTask("once-rl");
+    assert.equal(after.status, "active");
+    assert.equal(after.nextRunAt, next);
+    assert.equal(after.attemptCount, 1);
+
+    // It is now due again and picked up by the scanner.
+    const due = store.listDueTasks(next);
+    assert.ok(due.some((t) => t.id === "once-rl"));
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("rescheduleTask: does NOT override a paused task", () => {
+  const { store, dir } = makeStore();
+  try {
+    seedTask(store, { id: "paused-rl", status: "paused" });
+    store.rescheduleTask("paused-rl", Date.now() + 60000, 1);
+    const t = store.getTask("paused-rl");
+    assert.equal(t.status, "paused");
+    assert.equal(t.attemptCount, 0); // unchanged — user pause respected
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resetAttemptCount: zeroes the counter", () => {
+  const { store, dir } = makeStore();
+  try {
+    seedTask(store, { id: "reset-rl" });
+    store.rescheduleTask("reset-rl", Date.now() + 60000, 2);
+    assert.equal(store.getTask("reset-rl").attemptCount, 2);
+    store.resetAttemptCount("reset-rl");
+    assert.equal(store.getTask("reset-rl").attemptCount, 0);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

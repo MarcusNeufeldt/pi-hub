@@ -7,7 +7,12 @@
  */
 
 import { validationError } from "@/modules/scheduler";
-import type { ExecutionOptions, ScheduleInput } from "@/modules/scheduler";
+import type {
+  ExecutionOptions,
+  ResumeTarget,
+  RetryOnRateLimit,
+  ScheduleInput,
+} from "@/modules/scheduler";
 
 export function coerceSchedule(raw: unknown): ScheduleInput {
   if (typeof raw !== "object" || raw === null) {
@@ -86,4 +91,68 @@ export function coerceExecution(raw: unknown): ExecutionOptions {
     notifyOnFailure: true,
   };
   return { ...fallback, ...coercePartialExecution(raw) };
+}
+
+/**
+ * Coerces an optional rate-limit retry policy. null/undefined → null (disabled).
+ * Throws on a malformed object; numeric ranges are validated by TaskService.
+ */
+export function coerceRetryOnRateLimit(raw: unknown): RetryOnRateLimit | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "object") {
+    throw validationError("retryOnRateLimit must be an object or null");
+  }
+  const r = raw as {
+    enabled?: unknown;
+    intervalMinutes?: unknown;
+    maxAttempts?: unknown;
+  };
+  if (typeof r.enabled !== "boolean") {
+    throw validationError("retryOnRateLimit.enabled must be a boolean");
+  }
+  if (typeof r.intervalMinutes !== "number") {
+    throw validationError("retryOnRateLimit.intervalMinutes must be a number");
+  }
+  if (typeof r.maxAttempts !== "number") {
+    throw validationError("retryOnRateLimit.maxAttempts must be a number");
+  }
+  return {
+    enabled: r.enabled,
+    intervalMinutes: r.intervalMinutes,
+    maxAttempts: r.maxAttempts,
+  };
+}
+
+/**
+ * Coerces an optional resume target from the request body. null/undefined →
+ * null (new-session mode). Throws on a malformed object.
+ */
+export function coerceResume(raw: unknown): ResumeTarget | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "object") {
+    throw validationError("resume must be an object or null");
+  }
+  const r = raw as {
+    sessionFile?: unknown;
+    sessionId?: unknown;
+    provider?: unknown;
+    modelId?: unknown;
+  };
+  if (typeof r.sessionFile !== "string" || !r.sessionFile.trim()) {
+    throw validationError("resume.sessionFile is required");
+  }
+  if (typeof r.sessionId !== "string" || !r.sessionId.trim()) {
+    throw validationError("resume.sessionId is required");
+  }
+  const out: ResumeTarget = {
+    sessionFile: r.sessionFile,
+    sessionId: r.sessionId,
+  };
+  if (r.provider !== undefined) {
+    out.provider = typeof r.provider === "string" ? r.provider : null;
+  }
+  if (r.modelId !== undefined) {
+    out.modelId = typeof r.modelId === "string" ? r.modelId : null;
+  }
+  return out;
 }

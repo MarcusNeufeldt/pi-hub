@@ -87,6 +87,44 @@ export interface ExecutionOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Resume target (resume mode — continue an existing session)
+// ---------------------------------------------------------------------------
+
+/**
+ * When set, the task runs in RESUME MODE: instead of creating a fresh Pi
+ * session each run, it opens the referenced session file and continues the
+ * conversation. Used to recover runs interrupted by provider rate limits.
+ *
+ * Design: docs/pi-hub/scheduled-execution-resume-design.zh-CN.md.
+ */
+export interface ResumeTarget {
+  /** Absolute path of the session .jsonl file to continue. */
+  sessionFile: string;
+  /** Redundant session id — used for the in-process mutex check (§9). */
+  sessionId: string;
+  /**
+   * Override the resumed session's model. startRpcSession ignores
+   * initialModel for sessions with existing messages (§10), so the executor
+   * issues an explicit set_model after startup when these are set.
+   */
+  provider?: string | null;
+  modelId?: string | null;
+}
+
+/**
+ * Optional auto-reschedule on rate-limit failures (resume §11). When enabled,
+ * a run that fails with a rate-limit error is rescheduled after
+ * `intervalMinutes`, up to `maxAttempts` times.
+ */
+export interface RetryOnRateLimit {
+  enabled: boolean;
+  /** Reschedule interval in minutes, e.g. 300 = 5 hours. */
+  intervalMinutes: number;
+  /** Max attempts including the first; further failures stop rescheduling. */
+  maxAttempts: number;
+}
+
+// ---------------------------------------------------------------------------
 // Core persisted entities
 // ---------------------------------------------------------------------------
 
@@ -99,6 +137,12 @@ export interface TaskDefinition {
   /** UTC epoch ms of the next due time, or null when paused/completed. */
   nextRunAt: number | null;
   execution: ExecutionOptions;
+  /** Non-null ⇒ resume mode; null/undefined ⇒ V1 "create a new session each run". */
+  resume?: ResumeTarget | null;
+  /** Optional auto-reschedule on rate-limit failures (resume §11). */
+  retryOnRateLimit?: RetryOnRateLimit | null;
+  /** Consecutive rate-limit failures; reset to 0 on success. */
+  attemptCount: number;
 
   status: TaskStatus;
   overlapPolicy: OverlapPolicy;
@@ -126,6 +170,8 @@ export interface TaskRun {
   cwdSnapshot: string;
   scheduleSnapshotJson: string;
   executionOptionsSnapshotJson: string;
+  /** Snapshot of the task's resume target at claim time; null = new-session run. */
+  resumeSnapshotJson: string | null;
 
   triggerType: TriggerType;
   /** Planned execution time (UTC epoch ms). */
@@ -173,6 +219,10 @@ export interface CreateTaskInput {
   cwd: string;
   schedule: ScheduleInput;
   execution: ExecutionOptions;
+  /** Optional resume target; omit for the default new-session behavior. */
+  resume?: ResumeTarget | null;
+  /** Optional rate-limit auto-reschedule policy. */
+  retryOnRateLimit?: RetryOnRateLimit | null;
 }
 
 export interface UpdateTaskPatch {
@@ -181,6 +231,10 @@ export interface UpdateTaskPatch {
   cwd?: string;
   schedule?: ScheduleInput;
   execution?: Partial<ExecutionOptions>;
+  /** undefined ⇒ unchanged; null ⇒ clear (revert to new-session mode); object ⇒ set. */
+  resume?: ResumeTarget | null;
+  /** undefined ⇒ unchanged; null ⇒ clear; object ⇒ set. */
+  retryOnRateLimit?: RetryOnRateLimit | null;
   status?: TaskStatus;
   /** Caller's current revision; mismatch → 409 Conflict. */
   revision: number;

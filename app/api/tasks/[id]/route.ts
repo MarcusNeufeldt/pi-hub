@@ -7,7 +7,7 @@ import type {
   UpdateTaskPatch,
 } from "@/modules/scheduler";
 import { errorResponse, taskToDto } from "@/lib/scheduler-dto";
-import { coercePartialExecution, coerceSchedule } from "@/lib/scheduler-coerce";
+import { coercePartialExecution, coerceResume, coerceRetryOnRateLimit, coerceSchedule } from "@/lib/scheduler-coerce";
 import { getServiceOrError } from "@/lib/scheduler-service-access";
 
 export async function GET(
@@ -31,6 +31,8 @@ interface PatchBody {
   prompt?: unknown;
   schedule?: unknown;
   execution?: unknown;
+  resume?: unknown;
+  retryOnRateLimit?: unknown;
   status?: unknown;
   revision?: unknown;
 }
@@ -61,6 +63,12 @@ export async function PATCH(
     }
     if (body.execution !== undefined) {
       patch.execution = coercePartialExecution(body.execution) as Partial<ExecutionOptions>;
+    }
+    if (body.resume !== undefined) {
+      patch.resume = coerceResume(body.resume);
+    }
+    if (body.retryOnRateLimit !== undefined) {
+      patch.retryOnRateLimit = coerceRetryOnRateLimit(body.retryOnRateLimit);
     }
     if (body.status === "active" || body.status === "paused" || body.status === "completed") {
       patch.status = body.status as TaskStatus;

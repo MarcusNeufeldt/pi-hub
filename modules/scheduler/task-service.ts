@@ -22,6 +22,8 @@ import type { TaskStore } from "./task-store";
 import type {
   CreateTaskInput,
   ExecutionOptions,
+  ResumeTarget,
+  RetryOnRateLimit,
   TaskDefinition,
   TaskRun,
   TaskRunSummary,
@@ -93,6 +95,51 @@ function validateExecution(e: ExecutionOptions): void {
   }
 }
 
+/** Validates a resume target (resume mode). */
+function validateResume(resume: ResumeTarget): void {
+  if (
+    typeof resume.sessionFile !== "string" ||
+    !resume.sessionFile.trim()
+  ) {
+    throw validationError("resume.sessionFile is required");
+  }
+  if (!isAbsolute(resume.sessionFile)) {
+    throw validationError("resume.sessionFile must be an absolute path");
+  }
+  if (!resume.sessionFile.endsWith(".jsonl")) {
+    throw validationError(
+      "resume.sessionFile must point to a .jsonl session file",
+    );
+  }
+  if (typeof resume.sessionId !== "string" || !resume.sessionId.trim()) {
+    throw validationError("resume.sessionId is required");
+  }
+  if (
+    (resume.provider && !resume.modelId) ||
+    (!resume.provider && resume.modelId)
+  ) {
+    throw validationError(
+      "resume.provider and resume.modelId must both be set or both be null",
+    );
+  }
+}
+
+/** Validates a rate-limit retry policy (resume §11). */
+function validateRetryOnRateLimit(r: RetryOnRateLimit): void {
+  if (!Number.isFinite(r.intervalMinutes) || r.intervalMinutes < 1) {
+    throw validationError("retryOnRateLimit.intervalMinutes must be >= 1");
+  }
+  if (
+    !Number.isFinite(r.maxAttempts) ||
+    r.maxAttempts < 1 ||
+    r.maxAttempts > 10
+  ) {
+    throw validationError(
+      "retryOnRateLimit.maxAttempts must be between 1 and 10",
+    );
+  }
+}
+
 export class TaskService {
   constructor(private readonly store: TaskStore) {}
 
@@ -136,6 +183,8 @@ export class TaskService {
       ...input.execution,
     };
     validateExecution(execution);
+    if (input.resume) validateResume(input.resume);
+    if (input.retryOnRateLimit) validateRetryOnRateLimit(input.retryOnRateLimit);
 
     const resolved = resolveSchedule(input.schedule);
     const now = Date.now();
@@ -152,6 +201,8 @@ export class TaskService {
       },
       nextRunAt: resolved.nextRunAt,
       execution,
+      resume: input.resume ?? null,
+      retryOnRateLimit: input.retryOnRateLimit ?? null,
       status: "active",
       misfirePolicy:
         resolved.scheduleType === "once" ? "run_once" : "run_once",
@@ -193,6 +244,14 @@ export class TaskService {
       validateExecution(merged);
       next.execution = merged;
     }
+    if (patch.resume !== undefined) {
+      if (patch.resume) validateResume(patch.resume);
+      next.resume = patch.resume;
+    }
+    if (patch.retryOnRateLimit !== undefined) {
+      if (patch.retryOnRateLimit) validateRetryOnRateLimit(patch.retryOnRateLimit);
+      next.retryOnRateLimit = patch.retryOnRateLimit;
+    }
     if (patch.status !== undefined) {
       next.status = patch.status;
       if (patch.status === "paused") {
@@ -214,6 +273,8 @@ export class TaskService {
       schedule: next.schedule,
       nextRunAt: next.nextRunAt,
       execution: next.execution ? { ...next.execution } : undefined,
+      resume: next.resume,
+      retryOnRateLimit: next.retryOnRateLimit,
       status: next.status,
       updatedAt: Date.now(),
     });
@@ -257,6 +318,7 @@ export class TaskService {
       cwdSnapshot: task.cwd,
       scheduleSnapshotJson: JSON.stringify(task.schedule),
       executionOptionsSnapshotJson: JSON.stringify(task.execution),
+      resumeSnapshotJson: task.resume ? JSON.stringify(task.resume) : null,
       triggerType: "manual",
       scheduledFor: now,
       status: "queued",

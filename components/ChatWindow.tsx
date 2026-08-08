@@ -41,6 +41,7 @@ interface Props {
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onTurnChangesChange?: (turns: TurnChanges[]) => void;
   onSubagentsChange?: (delegations: SubagentDelegation[]) => void;
+  onOpenTranscript?: (sessionId: string) => void;
   clearSubagentsSignal?: number;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
@@ -178,7 +179,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { mes
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onTurnChangesChange, onSubagentsChange, clearSubagentsSignal }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onTurnChangesChange, onSubagentsChange, clearSubagentsSignal, onOpenTranscript }: Props) {
   const { t } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const { notifyEnabled, notifyEnabledRef, onNotifyToggle, telegramConfigured } = useTelegramNotify();
@@ -808,6 +809,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                     onEditContent={handleEditContent}
                     showTimestamp={showTimestamp}
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
+                    onOpenSession={onOpenTranscript}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                   />
                 );

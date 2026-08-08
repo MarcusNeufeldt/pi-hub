@@ -71,6 +71,7 @@ interface Props {
   showTimestamp?: boolean;
   prevTimestamp?: number;
   sessionId?: string;
+  onOpenSession?: (sessionId: string) => void;
 }
 
 function formatTime(ts?: number): string | null {
@@ -133,6 +134,9 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
   if (message.role === "custom") {
     if ((message as CustomMessage).customType === "compaction") {
       return <CompactionMessageView message={message as CustomMessage} />;
+    }
+    if ((message as CustomMessage).customType === "subagent-notify") {
+      return <SubagentNotifyView message={message as CustomMessage} onOpenSession={onOpenSession} />;
     }
     return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -1267,6 +1271,134 @@ function CompactionFileList({ title, files }: { title: string; files: string[] }
           <li key={file}>{file}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+interface SubagentNotifyInfo {
+  output?: string;
+  artifactPath?: string;
+}
+
+function parseSubagentNotify(content: string): SubagentNotifyInfo {
+  const info: SubagentNotifyInfo = {};
+  const m = content.match(/Return:\s*(\{[\s\S]*\})/);
+  if (m) {
+    try {
+      const parsed = JSON.parse(m[1]) as {
+        output?: string;
+        artifactPaths?: string[];
+      };
+      info.output = typeof parsed.output === "string" ? parsed.output : undefined;
+      info.artifactPath =
+        Array.isArray(parsed.artifactPaths) && typeof parsed.artifactPaths[0] === "string"
+          ? parsed.artifactPaths[0]
+          : undefined;
+    } catch {
+      // fall through to raw rendering
+    }
+  }
+  return info;
+}
+
+function sessionIdFromPath(filePath: string): string | undefined {
+  const name = filePath.split(/[\\/]/).pop() ?? "";
+  const m = name.match(/^.*?_([0-9a-f-]+)\.jsonl$/);
+  return m ? m[1] : undefined;
+}
+
+/** Completion notice for a background subagent run — visible ping with the
+ *  worker's result and a jump to its transcript. */
+function SubagentNotifyView({
+  message,
+  onOpenSession,
+}: {
+  message: CustomMessage;
+  onOpenSession?: (sessionId: string) => void;
+}) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const text = getMessageText(message.content);
+  const info = parseSubagentNotify(text);
+  const transcriptId = info.artifactPath ? sessionIdFromPath(info.artifactPath) : undefined;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div
+        style={{
+          border: "1px solid rgba(34,197,94,0.35)",
+          borderRadius: 8,
+          overflow: "hidden",
+          background: "rgba(34,197,94,0.05)",
+        }}
+      >
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            width: "100%",
+            padding: "7px 10px",
+            background: "none",
+            border: "none",
+            color: "var(--text)",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+            textAlign: "left",
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          {t("subagents.notifyTitle")}
+          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "auto", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>
+            <polyline points="2 3.5 5 6.5 8 3.5" />
+          </svg>
+        </button>
+        {expanded && (
+          <div style={{ padding: "0 10px 8px" }}>
+            {info.output && (
+              <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "var(--font-mono)" }}>
+                {info.output}
+              </div>
+            )}
+            {!info.output && (
+              <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 160, overflowY: "auto" }}>
+                {text}
+              </div>
+            )}
+            {transcriptId && onOpenSession && (
+              <button
+                onClick={() => onOpenSession(transcriptId!)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 8,
+                  padding: "3px 8px",
+                  background: "var(--bg-hover)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 5,
+                  color: "var(--accent)",
+                  cursor: "pointer",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.03em",
+                  textTransform: "uppercase",
+                }}
+              >
+                {t("subagents.transcript")}
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

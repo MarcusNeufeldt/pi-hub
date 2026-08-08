@@ -1570,6 +1570,7 @@ export function AppShell() {
               onTurnChangesChange={handleTurnChangesChange}
               onSubagentsChange={handleSubagentsChange}
               clearSubagentsSignal={subagentClearSignal}
+              onOpenTranscript={handleOpenTranscript}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}

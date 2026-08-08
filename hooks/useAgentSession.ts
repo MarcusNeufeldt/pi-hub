@@ -1418,39 +1418,74 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (name === "subagent") {
           const isError = (event as { isError?: unknown }).isError === true;
           const result = (event as { result?: unknown }).result as
-            | { details?: { results?: Array<Record<string, unknown>> } }
+            | {
+                details?: {
+                  results?: Array<Record<string, unknown>>;
+                  progress?: Array<Record<string, unknown>>;
+                };
+              }
             | string
             | undefined;
           setSubagents((prev) =>
             prev.map((d) => {
               if (d.toolCallId !== id) return d;
-              const results =
-                typeof result === "object" && result?.details?.results ? result.details.results : [];
-              const children =
-                results.length > 0
-                  ? results
-                      .map((r) => {
-                        const agent = typeof r.agent === "string" ? r.agent : undefined;
-                        if (!agent) return null;
-                        const existing = d.children.find((c) => c.agent === agent);
-                        const status =
-                          r.exitCode === 0
-                            ? "completed"
-                            : r.timedOut
-                              ? "timed_out"
-                              : r.interrupted
-                                ? "interrupted"
-                                : "failed";
-                        return {
-                          ...existing,
-                          agent,
-                          task: typeof r.task === "string" ? r.task : existing?.task ?? d.task,
-                          status,
-                          exitCode: typeof r.exitCode === "number" ? r.exitCode : existing?.exitCode,
-                        } as SubagentChild;
-                      })
-                      .filter((c): c is SubagentChild => c !== null)
-                  : d.children.map((c) => ({ ...c, status: isError ? "failed" : "completed" }));
+              const details =
+                typeof result === "object" && result?.details ? result.details : undefined;
+              const results = details?.results ?? [];
+              const progress = details?.progress ?? [];
+              let children: SubagentChild[];
+              if (results.length > 0) {
+                children = results
+                  .map((r) => {
+                    const agent = typeof r.agent === "string" ? r.agent : undefined;
+                    if (!agent) return null;
+                    const existing = d.children.find((c) => c.agent === agent);
+                    const status =
+                      r.exitCode === 0
+                        ? "completed"
+                        : r.timedOut
+                          ? "timed_out"
+                          : r.interrupted
+                            ? "interrupted"
+                            : "failed";
+                    return {
+                      ...existing,
+                      agent,
+                      task: typeof r.task === "string" ? r.task : existing?.task ?? d.task,
+                      status,
+                      exitCode: typeof r.exitCode === "number" ? r.exitCode : existing?.exitCode,
+                    } as SubagentChild;
+                  })
+                  .filter((c): c is SubagentChild => c !== null);
+              } else if (progress.length > 0) {
+                // No result rows (e.g. workflowScript runs) — resolve children
+                // from the final progress snapshot instead of placeholder names.
+                children = progress.map((p) => {
+                  const agent = typeof p.agent === "string" ? p.agent : "agent";
+                  const existing = d.children.find((c) => c.agent === agent);
+                  return {
+                    ...existing,
+                    agent,
+                    task: existing?.task ?? d.task,
+                    status: typeof p.status === "string" ? p.status : "completed",
+                    currentTool:
+                      typeof p.currentTool === "string" ? p.currentTool : existing?.currentTool,
+                    recentOutputLines: Array.isArray(p.recentOutput)
+                      ? (p.recentOutput as string[]).slice(-10)
+                      : existing?.recentOutputLines,
+                    toolCount: typeof p.toolCount === "number" ? p.toolCount : existing?.toolCount,
+                    tokens: typeof p.tokens === "number" ? p.tokens : existing?.tokens,
+                    model: typeof p.model === "string" ? p.model : existing?.model,
+                    durationMs:
+                      typeof p.durationMs === "number" ? p.durationMs : existing?.durationMs,
+                  } as SubagentChild;
+                });
+              } else {
+                children = d.children.map((c) => ({
+                  ...c,
+                  status: isError ? "failed" : "completed",
+                }));
+              }
               return { ...d, children, running: false };
             }),
           );

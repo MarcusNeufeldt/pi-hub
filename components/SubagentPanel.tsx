@@ -55,7 +55,17 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
   const [expanded, setExpanded] = useState(false);
   const tools = child.recentTools ?? [];
   const outputLines = child.recentOutputLines ?? [];
-  const hasDetail = tools.length > 0 || outputLines.length > 1 || child.thinking;
+  const hasAny = Boolean(
+    child.task ||
+      child.currentTool ||
+      tools.length > 0 ||
+      outputLines.length > 0 ||
+      child.thinking ||
+      child.toolCount !== undefined ||
+      child.tokens !== undefined ||
+      child.model ||
+      child.exitCode !== undefined,
+  );
   return (
     <div
       style={{
@@ -67,28 +77,29 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
       }}
     >
       <div
-        style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3, cursor: hasDetail ? "pointer" : "default" }}
-        onClick={() => hasDetail && setExpanded((v) => !v)}
-        title={hasDetail ? (expanded ? "Collapse" : "Expand") : undefined}
+        style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3, cursor: "pointer" }}
+        onClick={() => setExpanded((v) => !v)}
+        title={expanded ? "Collapse" : "Expand"}
       >
         <StatusIndicator status={child.status} />
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
           {child.agent}
         </span>
+        <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: running ? "var(--accent)" : child.status === "completed" ? "#4ade80" : "#ef4444", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          {child.status}
+        </span>
         <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
           {formatDuration(child.durationMs)}
         </span>
-        {hasDetail && (
-          <svg
-            width="10" height="10" viewBox="0 0 10 10" fill="none"
-            stroke="var(--text-dim)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-            style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}
-          >
-            <polyline points="3 2 7 5 3 8" />
-          </svg>
-        )}
+        <svg
+          width="10" height="10" viewBox="0 0 10 10" fill="none"
+          stroke="var(--text-dim)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}
+        >
+          <polyline points="3 2 7 5 3 8" />
+        </svg>
       </div>
-      {child.task && (
+      {!expanded && child.task && (
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.task}>
           {child.task}
         </div>
@@ -129,6 +140,27 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
       )}
       {expanded && (
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 5, paddingTop: 6 }}>
+          {child.task && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 3 }}>
+                Task
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.45 }}>
+                {child.task}
+              </div>
+            </div>
+          )}
+          {running && child.currentTool && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 3 }}>
+                Now
+              </div>
+              <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.currentToolArgs ?? child.currentTool}>
+                {child.currentTool}
+                {child.currentToolArgs ? ` ${child.currentToolArgs.slice(0, 120)}` : ""}
+              </div>
+            </div>
+          )}
           {tools.length > 0 && (
             <div style={{ marginBottom: 6 }}>
               <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 3 }}>
@@ -162,6 +194,11 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
               <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.thinking}>
                 {child.thinking}
               </div>
+            </div>
+          )}
+          {!hasAny && (
+            <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
+              No details captured for this agent.
             </div>
           )}
         </div>

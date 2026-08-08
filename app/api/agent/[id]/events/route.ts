@@ -3,10 +3,20 @@ import { getRpcSession, startRpcSession, type AgentEvent } from "@/lib/rpc-manag
 
 export const dynamic = "force-dynamic";
 
-const OMITTED_EVENT_TYPES = new Set(["turn_start", "turn_end", "tool_execution_update"]);
+const OMITTED_EVENT_TYPES = new Set(["turn_start", "turn_end"]);
 
 function toClientEvent(event: AgentEvent): AgentEvent | null {
   if (OMITTED_EVENT_TYPES.has(event.type)) return null;
+  if (event.type === "tool_execution_update") {
+    // Only subagent progress reaches the client, as a compact subagent_update
+    // event. All other tool streaming is dropped to keep the SSE light.
+    if (event.toolName !== "subagent") return null;
+    return {
+      type: "subagent_update",
+      toolCallId: event.toolCallId,
+      partialResult: event.partialResult,
+    } as AgentEvent;
+  }
   if (event.type === "message_update") {
     const clientEvent = { ...event };
     delete clientEvent.assistantMessageEvent;

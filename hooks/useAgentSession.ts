@@ -350,6 +350,29 @@ type SlashCommandsResponse = {
   commands?: SlashCommandInfo[];
 };
 
+export interface SubagentChild {
+  agent: string;
+  task?: string;
+  status: string; // "running" | "completed" | "failed" | "timed_out" | ...
+  currentTool?: string;
+  currentToolArgs?: string;
+  recentOutput?: string;
+  toolCount?: number;
+  tokens?: number;
+  model?: string;
+  durationMs?: number;
+  exitCode?: number;
+  activityState?: string;
+}
+
+/** One `subagent` tool call = one delegation, possibly with several children. */
+export interface SubagentDelegation {
+  toolCallId: string;
+  task?: string;
+  running: boolean;
+  children: SubagentChild[];
+}
+
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
@@ -399,6 +422,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [extensionStatuses, setExtensionStatuses] = useState<ExtensionStatusItem[]>([]);
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
+  const [subagents, setSubagents] = useState<SubagentDelegation[]>([]);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const eventSourceSessionIdRef = useRef<string | null>(null);
@@ -1240,16 +1264,118 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (!tools.some((t) => t.id === id)) tools.push({ id, name });
           return { kind: "running_tools", tools };
         });
+        if (name === "subagent") {
+          const args = (event as { args?: unknown }).args as Record<string, unknown> | undefined;
+          const task = typeof args?.task === "string" ? args.task : undefined;
+          const agent = typeof args?.agent === "string" ? args.agent : undefined;
+          setSubagents((prev) => {
+            const list = prev.filter((d) => d.toolCallId !== id);
+            const children: SubagentChild[] = agent ? [{ agent, task, status: "running" }] : [];
+            list.unshift({ toolCallId: id, task, running: true, children });
+            return list.slice(0, 20);
+          });
+        }
+        break;
+      }
+      case "subagent_update": {
+        const callId = (event as { toolCallId?: unknown }).toolCallId as string | undefined;
+        if (!callId) break;
+        const partial = (event as { partialResult?: unknown }).partialResult as
+          | { details?: { progress?: Array<Record<string, unknown>>; results?: Array<Record<string, unknown>> } }
+          | string
+          | undefined;
+        setSubagents((prev) =>
+          prev.map((d) => {
+            if (d.toolCallId !== callId) return d;
+            if (typeof partial === "string") {
+              return {
+                ...d,
+                children: d.children.map((c) => ({ ...c, recentOutput: partial.slice(0, 500) })),
+              };
+            }
+            const progress = partial?.details?.progress ?? [];
+            if (progress.length === 0) return d;
+            const results = partial.details?.results ?? [];
+            const children: SubagentChild[] = progress.map((p) => {
+              const agent = typeof p.agent === "string" ? p.agent : "agent";
+              const existing = d.children.find((c) => c.agent === agent);
+              const result = results.find((r) => r.agent === p.agent);
+              const output = Array.isArray(p.recentOutput)
+                ? (p.recentOutput[p.recentOutput.length - 1] as string | undefined)
+                : undefined;
+              return {
+                agent,
+                task:
+                  (typeof result?.task === "string" ? result.task : undefined) ??
+                  existing?.task ??
+                  d.task,
+                status: typeof p.status === "string" ? p.status : existing?.status ?? "running",
+                currentTool: typeof p.currentTool === "string" ? p.currentTool : existing?.currentTool,
+                currentToolArgs:
+                  typeof p.currentToolArgs === "string" ? p.currentToolArgs : existing?.currentToolArgs,
+                recentOutput: output ?? existing?.recentOutput,
+                toolCount: typeof p.toolCount === "number" ? p.toolCount : existing?.toolCount,
+                tokens: typeof p.tokens === "number" ? p.tokens : existing?.tokens,
+                model: typeof p.model === "string" ? p.model : existing?.model,
+                durationMs: typeof p.durationMs === "number" ? p.durationMs : existing?.durationMs,
+                activityState:
+                  typeof p.activityState === "string" ? p.activityState : existing?.activityState,
+              };
+            });
+            return { ...d, task: children[0]?.task ?? d.task, children, running: true };
+          }),
+        );
         break;
       }
       case "tool_execution_end": {
         const id = event.toolCallId as string;
+        const name = event.toolName as string;
         setAgentPhase((prev) => {
           if (prev?.kind !== "running_tools") return prev;
           const tools = prev.tools.filter((t) => t.id !== id);
           if (tools.length === 0) return { kind: "waiting_model" };
           return { kind: "running_tools", tools };
         });
+        if (name === "subagent") {
+          const isError = (event as { isError?: unknown }).isError === true;
+          const result = (event as { result?: unknown }).result as
+            | { details?: { results?: Array<Record<string, unknown>> } }
+            | string
+            | undefined;
+          setSubagents((prev) =>
+            prev.map((d) => {
+              if (d.toolCallId !== id) return d;
+              const results =
+                typeof result === "object" && result?.details?.results ? result.details.results : [];
+              const children =
+                results.length > 0
+                  ? results
+                      .map((r) => {
+                        const agent = typeof r.agent === "string" ? r.agent : undefined;
+                        if (!agent) return null;
+                        const existing = d.children.find((c) => c.agent === agent);
+                        const status =
+                          r.exitCode === 0
+                            ? "completed"
+                            : r.timedOut
+                              ? "timed_out"
+                              : r.interrupted
+                                ? "interrupted"
+                                : "failed";
+                        return {
+                          ...existing,
+                          agent,
+                          task: typeof r.task === "string" ? r.task : existing?.task ?? d.task,
+                          status,
+                          exitCode: typeof r.exitCode === "number" ? r.exitCode : existing?.exitCode,
+                        } as SubagentChild;
+                      })
+                      .filter((c): c is SubagentChild => c !== null)
+                  : d.children.map((c) => ({ ...c, status: isError ? "failed" : "completed" }));
+              return { ...d, children, running: false };
+            }),
+          );
+        }
         break;
       }
       case "queue_update":
@@ -1941,6 +2067,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
+    subagents,
     isNew,
     promptAnchorActive,
     // Refs

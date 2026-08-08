@@ -8,9 +8,10 @@ import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantB
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { SubagentPanel } from "./SubagentPanel";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
-import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
+import { useAgentSession, type AgentPhase, type NoticeItem, type SubagentDelegation } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { notifyTelegramManualRun } from "@/lib/telegram-client";
@@ -238,12 +239,24 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     handleRecallQueue,
     handleBuiltinSlashCommand,
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollToBottom, scrollUserMsgToTop,
+    subagents,
   } = useAgentSession({
     session, newSessionCwd, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
     onPromptFinished: wrappedOnPromptFinished,
   });
   const sessionBusy = agentRunning || bashRunning;
+
+  // --- Live subagent panel -------------------------------------------------
+  // Auto-opens when a new delegation starts (0 → n running transition), so a
+  // manual close is respected until the next batch spawns.
+  const runningSubagents = subagents.filter((d) => d.running).length;
+  const wasRunningSubagentsRef = useRef(0);
+  const [subagentPanelOpen, setSubagentPanelOpen] = useState(false);
+  useEffect(() => {
+    if (runningSubagents > wasRunningSubagentsRef.current) setSubagentPanelOpen(true);
+    wasRunningSubagentsRef.current = runningSubagents;
+  }, [runningSubagents]);
 
   useEffect(() => {
     if (!extensionDialog || soundedExtensionDialogIdRef.current === extensionDialog.id) return;
@@ -638,6 +651,12 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       ) : (
       <>
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
+        <SubagentPanel
+          delegations={subagents}
+          open={subagentPanelOpen}
+          onOpenChange={setSubagentPanelOpen}
+          isMobile={isMobile}
+        />
         <div
           style={{
             position: "absolute",

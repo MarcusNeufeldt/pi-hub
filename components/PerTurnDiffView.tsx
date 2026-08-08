@@ -182,8 +182,8 @@ export function PerTurnDiffView({
                       </button>
                     )}
                     <button
-                      onClick={() => onOpenFile?.(c.file, getFileName(c.file))}
-                      title={c.file}
+                      onClick={() => (collapsedAll ? toggleFile(c.file) : onOpenFile?.(c.file, getFileName(c.file)))}
+                      title={collapsedAll ? (fileExpanded ? t("changes.collapse") : t("changes.expand")) : c.file}
                       style={{
                         flex: 1,
                         minWidth: 0,
@@ -204,12 +204,33 @@ export function PerTurnDiffView({
                       }}
                     >
                       {getFileName(c.file)}
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.7 }}>
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                        <polyline points="15 3 21 3 21 9" />
-                        <line x1="10" y1="14" x2="21" y2="3" />
-                      </svg>
                     </button>
+                    {collapsedAll && (
+                      <button
+                        onClick={() => onOpenFile?.(c.file, getFileName(c.file))}
+                        title={t("changes.openFile")}
+                        aria-label={t("changes.openFile")}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 16,
+                          height: 16,
+                          padding: 0,
+                          background: "none",
+                          border: "none",
+                          color: "var(--text-dim)",
+                          cursor: "pointer",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                      </button>
+                    )}
                     {stats.add > 0 && (
                       <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#16a34a", flexShrink: 0 }}>
                         +{stats.add}

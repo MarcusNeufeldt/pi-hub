@@ -267,6 +267,7 @@ export const enLocale: LocalePlugin = {
     "changes.collapseAll": "Collapse all diffs",
     "changes.expand": "Show diff",
     "changes.collapse": "Hide diff",
+    "changes.openFile": "Open file",
     "changes.file": "file",
     "changes.files": "files",
     "i18n.speak": "Read aloud",

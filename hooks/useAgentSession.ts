@@ -1347,31 +1347,51 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const callId = (event as { toolCallId?: unknown }).toolCallId as string | undefined;
         if (!callId) break;
         const partial = (event as { partialResult?: unknown }).partialResult as
-          | { details?: { progress?: Array<Record<string, unknown>>; results?: Array<Record<string, unknown>> } }
+          | {
+              content?: Array<{ type?: string; text?: string }>;
+              details?: { progress?: Array<Record<string, unknown>>; results?: Array<Record<string, unknown>> };
+            }
           | string
           | undefined;
         setSubagents((prev) =>
           prev.map((d) => {
             if (d.toolCallId !== callId) return d;
-            if (typeof partial === "string") {
+            // Snapshot text output lives in content[].text — always capture it.
+            const contentText =
+              typeof partial === "string"
+                ? partial
+                : (partial?.content ?? [])
+                    .filter((b) => b?.type === "text" && b.text)
+                    .map((b) => b.text ?? "")
+                    .join("\n")
+                    .trim();
+            const progress = typeof partial === "object" ? partial?.details?.progress ?? [] : [];
+            if (progress.length === 0) {
+              if (!contentText) return d;
+              const lines = contentText.split("\n");
               return {
                 ...d,
-                children: d.children.map((c) => ({ ...c, recentOutput: partial.slice(0, 500) })),
+                children: d.children.map((c) => ({
+                  ...c,
+                  recentOutput: lines[lines.length - 1]?.slice(0, 500),
+                  recentOutputLines: lines.slice(-10),
+                })),
               };
             }
-            const progress = partial?.details?.progress ?? [];
-            if (progress.length === 0) return d;
-            const results = partial.details?.results ?? [];
+            const results = typeof partial === "object" ? partial.details?.results ?? [] : [];
             const children: SubagentChild[] = progress.map((p) => {
               const agent = typeof p.agent === "string" ? p.agent : "agent";
               const existing = d.children.find((c) => c.agent === agent);
               const result = results.find((r) => r.agent === p.agent);
-              const output = Array.isArray(p.recentOutput)
-                ? (p.recentOutput[p.recentOutput.length - 1] as string | undefined)
-                : undefined;
-              const outputLines = Array.isArray(p.recentOutput)
-                ? (p.recentOutput as string[]).slice(-10)
-                : existing?.recentOutputLines;
+              const output = contentText ||
+                (Array.isArray(p.recentOutput)
+                  ? (p.recentOutput[p.recentOutput.length - 1] as string | undefined)
+                  : undefined);
+              const outputLines = contentText
+                ? contentText.split("\n").slice(-10)
+                : Array.isArray(p.recentOutput)
+                  ? (p.recentOutput as string[]).slice(-10)
+                  : existing?.recentOutputLines;
               const recentTools = Array.isArray(p.recentTools)
                 ? (p.recentTools as Array<Record<string, unknown>>).slice(-6).map((t) => ({
                     tool: typeof t.tool === "string" ? t.tool : "tool",
@@ -1419,6 +1439,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const isError = (event as { isError?: unknown }).isError === true;
           const result = (event as { result?: unknown }).result as
             | {
+                content?: Array<{ type?: string; text?: string }>;
                 details?: {
                   results?: Array<Record<string, unknown>>;
                   progress?: Array<Record<string, unknown>>;
@@ -1426,6 +1447,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               }
             | string
             | undefined;
+          // Final output of the delegation (what the subagent produced).
+          const resultText =
+            typeof result === "string"
+              ? result
+              : (result?.content ?? [])
+                  .filter((b) => b?.type === "text" && b.text)
+                  .map((b) => b.text ?? "")
+                  .join("\n")
+                  .trim();
+          const resultOutput = resultText ? resultText.slice(0, 500) : undefined;
+          const resultOutputLines = resultText ? resultText.split("\n").slice(-10) : undefined;
           setSubagents((prev) =>
             prev.map((d) => {
               if (d.toolCallId !== id) return d;
@@ -1454,6 +1486,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                       task: typeof r.task === "string" ? r.task : existing?.task ?? d.task,
                       status,
                       exitCode: typeof r.exitCode === "number" ? r.exitCode : existing?.exitCode,
+                      recentOutput: existing?.recentOutput ?? resultOutput,
+                      recentOutputLines: existing?.recentOutputLines ?? resultOutputLines,
                     } as SubagentChild;
                   })
                   .filter((c): c is SubagentChild => c !== null);
@@ -1470,9 +1504,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                     status: typeof p.status === "string" ? p.status : "completed",
                     currentTool:
                       typeof p.currentTool === "string" ? p.currentTool : existing?.currentTool,
-                    recentOutputLines: Array.isArray(p.recentOutput)
-                      ? (p.recentOutput as string[]).slice(-10)
-                      : existing?.recentOutputLines,
+                    recentOutput: existing?.recentOutput ?? resultOutput,
+                    recentOutputLines: existing?.recentOutputLines ?? resultOutputLines,
+                    recentTools:
+                      Array.isArray(p.recentTools)
+                        ? (p.recentTools as Array<Record<string, unknown>>).slice(-6).map((t) => ({
+                            tool: typeof t.tool === "string" ? t.tool : "tool",
+                            args: typeof t.args === "string" ? t.args : undefined,
+                          }))
+                        : existing?.recentTools,
                     toolCount: typeof p.toolCount === "number" ? p.toolCount : existing?.toolCount,
                     tokens: typeof p.tokens === "number" ? p.tokens : existing?.tokens,
                     model: typeof p.model === "string" ? p.model : existing?.model,
@@ -1484,6 +1524,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                 children = d.children.map((c) => ({
                   ...c,
                   status: isError ? "failed" : "completed",
+                  recentOutput: c.recentOutput ?? resultOutput,
+                  recentOutputLines: c.recentOutputLines ?? resultOutputLines,
                 }));
               }
               return { ...d, children, running: false };

@@ -1291,30 +1291,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </span>
               {onRecallQueue && (
                 <button
+                  // .ui-btn--outline already does exactly what the deleted
+                  // handlers did: fill on hover and warm the border to accent.
+                  className="ui-btn ui-btn--outline ui-btn--sm"
                   onClick={onRecallQueue}
                    title={t("chat.recallTitle")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "4px 12px",
-                    fontSize: "var(--fs-meta)",
-                    color: "var(--text)",
-                    background: "transparent",
-                    border: "1px solid var(--border)",
-                    borderRadius: 7,
-                    cursor: "pointer",
-                    transition: "background 0.12s, border-color 0.12s",
-                    whiteSpace: "nowrap",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 45%, var(--border))";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.borderColor = "var(--border)";
-                  }}
+                  style={{ color: "var(--text)", whiteSpace: "nowrap" }}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="9 14 4 9 9 4" />
@@ -1366,8 +1348,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             style={{
               marginBottom: 8,
               padding: "7px 10px",
-              background: "rgba(239,68,68,0.07)",
-              border: "1px solid rgba(239,68,68,0.3)",
+              background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
               borderRadius: 6,
               color: "var(--danger)",
               fontFamily: "var(--font-mono)",
@@ -1862,8 +1844,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   alignSelf: "flex-end",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   width: 30, height: 30, padding: 0,
-                  background: recording ? "rgba(239,68,68,0.15)" : "var(--bg-panel)",
-                  border: recording ? "1px solid rgba(239,68,68,0.5)" : "1px solid var(--border)",
+                  background: recording ? "color-mix(in srgb, var(--danger) 15%, transparent)" : "var(--bg-panel)",
+                  border: recording ? "1px solid color-mix(in srgb, var(--danger) 50%, transparent)" : "1px solid var(--border)",
                   borderRadius: 8,
                   color: recording ? "var(--danger)" : transcribing ? "var(--text-dim)" : "var(--text-muted)",
                   cursor: transcribing ? "wait" : "pointer",
@@ -1940,25 +1922,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               onClick={() => fileInputRef.current?.click()}
               disabled={isStreaming}
              title={t("chat.attachImage")}
-              style={{
-                flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                width: 32, height: 32, padding: 0,
-                background: "none", border: "none",
-                borderRadius: 9,
-                color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
-                cursor: isStreaming ? "not-allowed" : "pointer",
-                opacity: isStreaming ? 0.5 : 1,
-                transition: "background 0.12s, color 0.12s",
-              }}
-              onMouseEnter={(e) => {
-                if (isStreaming) return;
-                e.currentTarget.style.background = "var(--bg-hover)";
-                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "none";
-                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text-muted)";
-              }}
+              // disabled={isStreaming} above already drives the dimmed/no-hover
+              // state through .ui-btn[disabled] and :hover:not([disabled]), so
+              // the isStreaming guards in the deleted handlers are redundant.
+              className={`ui-btn ui-btn--icon${attachedImages.length ? " ui-btn--accent" : ""}`}
+              style={{ borderRadius: "var(--r-md)" }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -1979,31 +1947,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       });
                     }}
                     disabled={isStreaming}
+                    // Open state comes from aria-expanded, which .ui-btn already
+                    // styles — no duplicated conditional background.
+                    className="ui-btn"
+                    aria-expanded={modelDropdownOpen}
                     style={{
-                      display: "flex", alignItems: "center", gap: 6,
+                      gap: 6,
                       justifyContent: isMobile ? "flex-start" : undefined,
-                      padding: isMobile ? "8px 10px" : "8px 12px",
-                      height: 32,
+                      paddingInline: isMobile ? "10px" : "12px",
                       width: isMobile ? "100%" : undefined,
                       maxWidth: isMobile ? "100%" : 220,
                       overflow: "hidden",
-                      background: modelDropdownOpen ? "var(--bg-hover)" : "none",
-                      border: "none",
-                      borderRadius: 9,
-                      color: "var(--text-muted)",
-                      cursor: isStreaming ? "not-allowed" : "pointer",
+                      borderRadius: "var(--r-md)",
                       fontSize: "var(--fs-meta)",
-                      opacity: isStreaming ? 0.5 : 1,
-                      transition: "background 0.12s, color 0.12s",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (isStreaming) return;
-                      e.currentTarget.style.background = "var(--bg-hover)";
-                      e.currentTarget.style.color = "var(--text)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = modelDropdownOpen ? "var(--bg-hover)" : "none";
-                      e.currentTarget.style.color = "var(--text-muted)";
                     }}
                     title={modelOptions.length > 0 ? "Change model" : "No available models"}
                   >
@@ -2150,33 +2106,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   setModelFilter("");
                   setControlsMenuOpen(true);
                 }}
+                // pointerEvents: none while the menu is open already prevents any
+                // hover, so the controlsMenuOpen guards were redundant.
+                className="ui-btn"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
                   width: "100%",
-                  height: 32,
-                  padding: "8px 10px",
-                  background: "none",
-                  border: "none",
-                  borderRadius: 9,
-                  color: "var(--text-muted)",
-                  cursor: controlsMenuOpen ? "default" : "pointer",
+                  paddingInline: "10px",
+                  borderRadius: "var(--r-md)",
                   fontSize: "var(--fs-meta)",
                   fontWeight: 500,
                   visibility: controlsMenuOpen ? "hidden" : "visible",
                   pointerEvents: controlsMenuOpen ? "none" : "auto",
-                  transition: "background 0.12s, color 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  if (controlsMenuOpen) return;
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
-                }}
-                onMouseLeave={(e) => {
-                  if (controlsMenuOpen) return;
-                  e.currentTarget.style.background = "none";
-                  e.currentTarget.style.color = "var(--text-muted)";
                 }}
               >
                 {t("chat.moreControls")}
@@ -2210,28 +2150,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   disabled={isStreaming}
                    title={t("chat.changeReasoning", { level: thinkingDisplayLabel })}
                    aria-label={t("chat.changeReasoningLabel")}
+                  className="ui-btn"
+                  aria-expanded={thinkingDropdownOpen}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
+                    gap: 5,
+                    paddingInline: isMobile ? "6px" : "12px",
                     width: isMobile ? "auto" : undefined,
-                    height: 32,
-                    background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
-                    border: "none",
-                    borderRadius: 9,
-                    color: "var(--text-muted)",
-                    cursor: isStreaming ? "not-allowed" : "pointer",
+                    borderRadius: "var(--r-md)",
                     fontSize: "var(--fs-meta)",
-                    opacity: isStreaming ? 0.5 : 1,
-                    transition: "background 0.12s, color 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (isStreaming) return;
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                    e.currentTarget.style.color = "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = thinkingDropdownOpen ? "var(--bg-hover)" : "none";
-                    e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2300,28 +2226,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   disabled={isStreaming}
                    title={t("chat.changeToolPreset") + `: ${toolPresetLabel}`}
                    aria-label={t("chat.changeToolPreset")}
+                  className="ui-btn"
+                  aria-expanded={toolDropdownOpen}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
+                    gap: 5,
+                    paddingInline: isMobile ? "6px" : "12px",
                     width: isMobile ? "auto" : undefined,
-                    height: 32,
-                    background: toolDropdownOpen ? "var(--bg-hover)" : "none",
-                    border: "none",
-                    borderRadius: 9,
-                    color: "var(--text-muted)",
-                    cursor: isStreaming ? "not-allowed" : "pointer",
+                    borderRadius: "var(--r-md)",
                     fontSize: "var(--fs-meta)",
-                    opacity: isStreaming ? 0.5 : 1,
-                    transition: "background 0.12s, color 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (isStreaming) return;
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                    e.currentTarget.style.color = "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = toolDropdownOpen ? "var(--bg-hover)" : "none";
-                    e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2374,27 +2286,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <button
                   onClick={isCompacting ? onAbortCompaction : onCompact}
                   disabled={isStreaming && !isCompacting}
+                  // Compacting is an engaged destructive action (the click
+                  // aborts it), so it wears the persistent danger tint; idle it
+                  // is an ordinary control. Was rgba(239,68,68,...) literals.
+                  className={`ui-btn${isCompacting ? " ui-btn--danger-tint" : ""}`}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
+                    gap: 5,
+                    paddingInline: isMobile ? "6px" : "12px",
                     width: isMobile ? "auto" : undefined,
-                    height: 32,
-                    background: isCompacting ? "rgba(239,68,68,0.08)" : "none",
-                    border: "none",
-                    borderRadius: 9,
-                    color: isCompacting ? "var(--danger)" : "var(--text-muted)",
-                    cursor: (isStreaming && !isCompacting) ? "not-allowed" : "pointer",
-                    fontSize: "var(--fs-meta)", opacity: (isStreaming && !isCompacting) ? 0.5 : 1,
-                    transition: "background 0.12s, color 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (isStreaming && !isCompacting) return;
-                    e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.16)" : "var(--bg-hover)";
-                    e.currentTarget.style.color = isCompacting ? "var(--danger)" : "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.08)" : "none";
-                    e.currentTarget.style.color = isCompacting ? "var(--danger)" : "var(--text-muted)";
+                    borderRadius: "var(--r-md)",
+                    fontSize: "var(--fs-meta)",
                   }}
                    title={isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}
                    aria-label={isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}
@@ -2415,21 +2316,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <button
                 onClick={onAbort}
                  title={t("chat.stopAgent")}
+                className="ui-btn ui-btn--danger-tint"
                 style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "8px 14px",
-                  height: 32,
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.3)",
-                  borderRadius: 9,
-                  color: "var(--danger)",
-                  cursor: "pointer",
-                  fontSize: "var(--fs-meta)", fontWeight: 600,
-                  whiteSpace: "nowrap", letterSpacing: "-0.01em",
-                  transition: "background 0.12s",
+                  gap: 6,
+                  paddingInline: "14px",
+                  borderRadius: "var(--r-md)",
+                  fontSize: "var(--fs-meta)",
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  letterSpacing: "-0.01em",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.16)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                   <rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" />
@@ -2494,27 +2390,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   setThinkingDropdownOpen(false);
                   setControlsMenuOpen(false);
                 }}
+                // Rests on --bg-hover, so .ui-btn--cap steps its hover up to
+                // --bg-selected instead of down.
+                className="ui-btn ui-btn--cap"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
                   width: 36,
-                  height: 32,
-                  padding: 0,
-                  marginLeft: 0,
-                  background: "var(--bg-hover)",
-                  border: "none",
+                  minWidth: 36,
+                  paddingInline: 0,
                   borderLeft: "1px solid color-mix(in srgb, var(--border) 72%, transparent)",
-                  borderRadius: "0 9px 9px 0",
+                  borderRadius: "0 var(--r-md) var(--r-md) 0",
                   color: "var(--text)",
-                  cursor: "pointer",
-                  transition: "background 0.12s, color 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-selected)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
                 }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

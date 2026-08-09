@@ -746,6 +746,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const eventStreamGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eventStreamGraceGenerationRef = useRef(0);
   const eventStreamGraceActiveRef = useRef(false);
+  const subagentsRunningRef = useRef(false);
+  const subagentWakeGraceUntilRef = useRef(0);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
   const agentRunningRef = useRef(false);
   const sdkAgentActiveRef = useRef(false);
@@ -777,6 +779,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const currentRunStartedAtRef = useRef<number | null>(null);
   /** Run id already surfaced via onPromptFinished (once-per-run guard). */
   const notifiedRunFinishedRef = useRef(-1);
+
+  // Completion notifications use pi.sendMessage({ triggerTurn: true }). Keep
+  // the selected session's SSE alive until that extension-triggered turn has
+  // had a chance to start; otherwise long-running workers finish after the
+  // normal 30-second idle grace and their automatic assistant turn is orphaned
+  // in the session file until the browser reloads.
+  useEffect(() => {
+    const hasRunningSubagents = subagents.some((delegation) => delegation.running);
+    if (hasRunningSubagents || subagentsRunningRef.current) {
+      subagentWakeGraceUntilRef.current = Date.now() + EVENT_STREAM_IDLE_GRACE_MS;
+    }
+    subagentsRunningRef.current = hasRunningSubagents;
+  }, [subagents]);
 
   const setToolPresetState = opts.setToolPreset ?? setToolPreset;
 
@@ -1251,6 +1266,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         || sessionIdRef.current !== sid
         || !eventStreamGraceActiveRef.current
       ) return;
+
+      // Detached subagents can outlive the ordinary idle grace. Their
+      // completion notifier starts a new agent turn from the extension, so the
+      // browser must remain subscribed to observe agent_start and the response.
+      if (
+        subagentsRunningRef.current
+        || Date.now() < subagentWakeGraceUntilRef.current
+      ) {
+        eventStreamGraceTimerRef.current = setTimeout(
+          () => void checkServerIdle(),
+          PROMPT_SETTLE_POLL_MS,
+        );
+        return;
+      }
 
       try {
         const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);

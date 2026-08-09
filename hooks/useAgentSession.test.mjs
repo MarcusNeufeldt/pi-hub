@@ -39,6 +39,10 @@ test("keeps the session event stream open through the idle grace window", () => 
   assert.match(graceSource, /setTimeout\(\(\) => void checkServerIdle\(\), EVENT_STREAM_IDLE_GRACE_MS\)/);
   assert.match(graceSource, /fetch\(`\/api\/agent\/\$\{encodeURIComponent\(sid\)\}`\)/);
   assert.match(graceSource, /closeEvents\(\)/);
+  assert.match(graceSource, /subagentsRunningRef\.current\s*\|\| Date\.now\(\) < subagentWakeGraceUntilRef\.current/);
+  assert.match(graceSource, /setTimeout\([\s\S]*?checkServerIdle\(\)[\s\S]*?PROMPT_SETTLE_POLL_MS/);
+  assert.match(source, /const subagentWakeGraceUntilRef = useRef\(0\)/);
+  assert.match(source, /subagentWakeGraceUntilRef\.current = Date\.now\(\) \+ EVENT_STREAM_IDLE_GRACE_MS/);
   assert.match(finishSource, /scheduleEventStreamClose\(sid\)/);
   assert.doesNotMatch(finishSource, /closeEvents\(\)/);
   assert.doesNotMatch(agentEndSource, /closeEvents\(\)/);

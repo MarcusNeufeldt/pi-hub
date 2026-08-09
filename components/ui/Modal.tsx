@@ -23,6 +23,8 @@ export function Modal({
   hideTitle = false,
   description,
   width,
+  height,
+  padded = true,
   dismissible = true,
   head,
   footer,
@@ -36,6 +38,12 @@ export function Modal({
   description?: string;
   /** Max width of the panel; ignored on mobile, where it is a full-width sheet. */
   width?: number | string;
+  /** Explicit panel height. Needed by the config modals, whose two-pane bodies
+   *  scroll internally and so cannot size to content. */
+  height?: number | string;
+  /** false renders children raw, without the padded scrolling body wrapper, for
+   *  panels that manage their own internal layout. */
+  padded?: boolean;
   /** false while a blocking action runs, so the user cannot dismiss mid-write. */
   dismissible?: boolean;
   /** Replaces the default title block entirely (e.g. to add a leading icon). */
@@ -57,10 +65,15 @@ export function Modal({
       <Dialog.Portal>
         <Dialog.Overlay className="ui-overlay">
           <Dialog.Content
-            className="ui-dialog"
-            style={width === undefined
-              ? undefined
-              : ({ "--dialog-w": typeof width === "number" ? `${width}px` : width } as CSSProperties)}
+            className={`ui-dialog${height === undefined ? "" : " ui-dialog--tall"}`}
+            style={{
+              ...(width === undefined
+                ? null
+                : { "--dialog-w": typeof width === "number" ? `${width}px` : width }),
+              ...(height === undefined
+                ? null
+                : { "--dialog-h": typeof height === "number" ? `${height}px` : height }),
+            } as CSSProperties}
             onEscapeKeyDown={block}
             onInteractOutside={block}
           >
@@ -87,7 +100,9 @@ export function Modal({
               </div>
             ))}
 
-            {children ? <div className="ui-dialog__body">{children}</div> : null}
+            {children
+              ? (padded ? <div className="ui-dialog__body">{children}</div> : children)
+              : null}
             {footer ? <div className="ui-dialog__foot">{footer}</div> : null}
           </Dialog.Content>
         </Dialog.Overlay>

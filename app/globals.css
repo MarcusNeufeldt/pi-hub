@@ -1389,6 +1389,11 @@ span.linenumber {
     background: var(--bg-hover);
     color: var(--text);
   }
+  /* Outlined buttons warm their edge toward the accent on hover. Several call
+     sites were hand-writing exactly this with onMouseEnter. */
+  .ui-btn--outline:hover:not([disabled]) {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
   .ui-btn--primary:hover:not([disabled]) {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
@@ -1527,6 +1532,7 @@ span.linenumber {
 .ui-dialog {
   width: 100%;
   max-width: var(--dialog-w, 440px);
+  height: var(--dialog-h, auto);
   max-height: calc(var(--app-viewport-height, 100dvh) - 2 * var(--sp-6));
   display: flex;
   flex-direction: column;
@@ -1618,6 +1624,11 @@ span.linenumber {
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     border-bottom: none;
     padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* A desktop height like 78vh should not govern the sheet. Panels that declare
+     one fill the sheet; short confirms keep sizing to their content. */
+  .ui-dialog--tall {
+    height: 92dvh;
   }
   .ui-dialog[data-state="open"] {
     animation: ui-sheet-in var(--dur) var(--ease);

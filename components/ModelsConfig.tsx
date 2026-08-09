@@ -1539,17 +1539,18 @@ function AddProviderPicker({
 
   const totalCount = availableOAuth.length + availableApiKey.length + (showCustom ? 1 : 0);
 
+  // Layout only. Background, border, cursor and transition come from
+  // .ui-btn.ui-btn--outline.ui-btn--card — if the background stayed here it
+  // would override the class hover and the card would never respond.
   const cardStyle: React.CSSProperties = {
-    display: "flex", flexDirection: "row", alignItems: "center", gap: 8,
+    flexDirection: "row",
+    gap: 8,
+    height: "auto",
     padding: "10px 12px",
-    background: "var(--bg-panel)",
-    border: "1px solid var(--border)",
-    borderRadius: 7,
+    borderRadius: "var(--r-md)",
     boxSizing: "border-box",
-    cursor: "pointer",
     minWidth: 0,
     textAlign: "left",
-    transition: "border-color 0.12s, background 0.12s",
     width: "100%",
   };
 
@@ -1588,9 +1589,8 @@ function AddProviderPicker({
               {showCustom && (
                 <button
                   onClick={() => { onAddCustom(); onClose(); }}
+                  className="ui-btn ui-btn--outline ui-btn--card"
                   style={cardStyle}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>OpenAI / Anthropic compatible</div>
@@ -1609,9 +1609,8 @@ function AddProviderPicker({
               )}
               {availableOAuth.map((p) => (
                 <button key={p.id} onClick={() => { onSelectOAuth(p.id); onClose(); }}
+                  className="ui-btn ui-btn--outline ui-btn--card"
                   style={cardStyle}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
@@ -1626,9 +1625,8 @@ function AddProviderPicker({
               )}
               {availableApiKey.map((p) => (
                 <button key={p.id} onClick={() => { onSelectApiKey(p.id); onClose(); }}
+                  className="ui-btn ui-btn--outline ui-btn--card"
                   style={cardStyle}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</div>
@@ -1902,9 +1900,8 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                   <div
                     key={p.id}
                     onClick={() => setSelection({ type: "oauth", providerId: p.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 5, cursor: "pointer", background: isSelected ? "var(--bg-selected)" : "none" }}
-                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "none"; }}
+                    className={`ui-row${isSelected ? " is-active" : ""}`}
+                    style={{ gap: 7, padding: "5px 8px" }}
                   >
                     <ProviderIcon id={p.id} size={16} />
                     <span style={{ fontSize: "var(--fs-meta)", color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
@@ -1919,9 +1916,8 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                   <div
                     key={p.id}
                     onClick={() => setSelection({ type: "apikey", providerId: p.id })}
-                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 5, cursor: "pointer", background: isSelected ? "var(--bg-selected)" : "none" }}
-                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "none"; }}
+                    className={`ui-row${isSelected ? " is-active" : ""}`}
+                    style={{ gap: 7, padding: "5px 8px" }}
                   >
                     <ProviderIcon id={p.id} size={16} />
                     <span style={{ fontSize: "var(--fs-meta)", color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</span>
@@ -1945,9 +1941,8 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                     {/* Provider row */}
                     <div
                       onClick={() => setSelection({ type: "provider", name: pName })}
-                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 8px", borderRadius: 5, cursor: "pointer", background: isProviderSelected ? "var(--bg-selected)" : "none" }}
-                      onMouseEnter={(e) => { if (!isProviderSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                      onMouseLeave={(e) => { if (!isProviderSelected) e.currentTarget.style.background = "none"; }}
+                      className={`ui-row${isProviderSelected ? " is-active" : ""}`}
+                      style={{ gap: 6, padding: "7px 8px" }}
                     >
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }}>
                         <rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" />
@@ -1968,9 +1963,8 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                         <div
                           key={i}
                           onClick={() => setSelection({ type: "model", providerName: pName, index: i })}
-                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px 5px 26px", borderRadius: 5, cursor: "pointer", background: isModelSelected ? "var(--bg-selected)" : "none" }}
-                          onMouseEnter={(e) => { if (!isModelSelected) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isModelSelected) e.currentTarget.style.background = "none"; }}
+                          className={`ui-row${isModelSelected ? " is-active" : ""}`}
+                          style={{ gap: 6, padding: "5px 8px 5px 26px" }}
                         >
                           <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: m.id ? "var(--text-muted)" : "var(--text-dim)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                              {m.id || t("i18n.newModel")}
@@ -1985,9 +1979,8 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                     {/* Add model button */}
                     <div
                       onClick={(e) => { e.stopPropagation(); addModel(pName); }}
-                      style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px 4px 26px", borderRadius: 5, cursor: "pointer", color: "var(--text-dim)" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+                      className="ui-row ui-btn--dim"
+                      style={{ gap: 4, padding: "4px 8px 4px 26px" }}
                     >
                        <span style={{ fontSize: "var(--fs-micro)" }}>+ {t("i18n.model")}</span>
                     </div>
@@ -1998,13 +1991,14 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
 
             {/* Add provider */}
             <div style={{ borderTop: "1px solid var(--border)", padding: "8px 6px" }}>
-              <button onClick={() => setPickerOpen(true)} style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                width: "100%", padding: "6px 0", background: "none", border: "1px dashed var(--border)", borderRadius: 5,
-                color: "var(--text-muted)", cursor: "pointer", fontSize: "var(--fs-meta)",
-              }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-muted)"; }}
+              <button onClick={() => setPickerOpen(true)}
+                className="ui-btn ui-btn--outline"
+                style={{
+                  gap: 5,
+                  width: "100%",
+                  borderStyle: "dashed",
+                  fontSize: "var(--fs-meta)",
+                }}
               >
                  + {t("i18n.addProvider")}
               </button>

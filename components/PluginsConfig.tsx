@@ -419,26 +419,15 @@ function AddPluginPanel({
               key={example}
               type="button"
               onClick={() => onSourceChange(example)}
+              className="ui-btn ui-btn--outline ui-btn--card ui-btn--dim"
               style={{
                 width: "100%",
-                minHeight: 30,
+                height: "auto",
+                justifyContent: "flex-start",
                 textAlign: "left",
                 padding: "6px 9px",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                background: "var(--bg-panel)",
-                color: "var(--text-dim)",
-                cursor: "pointer",
                 fontFamily: "var(--font-mono)",
-                fontSize: 11,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--bg-hover)";
-                e.currentTarget.style.color = "var(--text-muted)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--bg-panel)";
-                e.currentTarget.style.color = "var(--text-dim)";
+                fontSize: "var(--fs-micro)",
               }}
             >
               {example}
@@ -859,21 +848,8 @@ export function PluginsConfig({
                             setActionError(null);
                             setActionMessage(null);
                           }}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 7,
-                            padding: "8px 8px",
-                            borderRadius: 5,
-                            cursor: "pointer",
-                            background: isSelected ? "var(--bg-selected)" : "none",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)";
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = "none";
-                          }}
+                          className={`ui-row${isSelected ? " is-active" : ""}`}
+                          style={{ gap: 7, padding: "8px 8px" }}
                         >
                           <span
                             style={{
@@ -940,24 +916,13 @@ export function PluginsConfig({
                   setActionError(null);
                   setActionMessage(null);
                 }}
+                className={`ui-row${addMode ? " is-active" : ""}`}
+                aria-pressed={addMode}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
                   gap: 6,
                   padding: "7px 8px",
-                  borderRadius: 5,
-                  border: "none",
-                  width: "100%",
-                  cursor: "pointer",
-                  background: addMode ? "var(--bg-selected)" : "none",
                   color: addMode ? "var(--accent)" : "var(--text-dim)",
-                  fontSize: 12,
-                }}
-                onMouseEnter={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "none";
+                  fontSize: "var(--fs-meta)",
                 }}
               >
                 <svg

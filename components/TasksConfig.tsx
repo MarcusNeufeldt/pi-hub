@@ -909,17 +909,12 @@ function MenuItem({
   return (
     <div
       onClick={onClick}
+      className="ui-row"
       style={{
         padding: "7px 12px",
-        fontSize: 12,
-        color: danger ? "#ef4444" : "var(--text)",
-        cursor: "pointer",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "var(--bg-hover)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "none";
+        borderRadius: 0,
+        fontSize: "var(--fs-meta)",
+        color: danger ? "var(--danger)" : "var(--text)",
       }}
     >
       {label}
@@ -1780,18 +1775,11 @@ function RunCard({
     >
       <div
         onClick={onToggle}
+        className="ui-row"
         style={{
-          display: "flex",
-          alignItems: "center",
           gap: 10,
           padding: "10px 12px",
-          cursor: "pointer",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--bg-hover)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "transparent";
+          borderRadius: 0,
         }}
       >
         <StatusDot color={RUN_STATUS_COLORS[run.status]} />

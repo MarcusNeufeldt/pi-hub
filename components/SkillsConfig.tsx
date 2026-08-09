@@ -1048,26 +1048,8 @@ export function SkillsConfig({
                           setSelected(skill.filePath);
                           setAddMode(false);
                         }}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 7,
-                          padding: "8px 8px",
-                          borderRadius: 5,
-                          cursor: "pointer",
-                          background: isSelected
-                            ? "var(--bg-selected)"
-                            : "none",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isSelected)
-                            e.currentTarget.style.background =
-                              "var(--bg-hover)";
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isSelected)
-                            e.currentTarget.style.background = "none";
-                        }}
+                        className={`ui-row${isSelected ? " is-active" : ""}`}
+                        style={{ gap: 7, padding: "8px 8px" }}
                       >
                         <span
                           style={{
@@ -1194,23 +1176,12 @@ export function SkillsConfig({
             >
               <div
                 onClick={() => setAddMode(true)}
+                className={`ui-row${addMode ? " is-active" : ""}`}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
                   gap: 6,
                   padding: "7px 8px",
-                  borderRadius: 5,
-                  cursor: "pointer",
-                  background: addMode ? "var(--bg-selected)" : "none",
                   color: addMode ? "var(--accent)" : "var(--text-dim)",
-                  fontSize: 12,
-                }}
-                onMouseEnter={(e) => {
-                  if (!addMode)
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "none";
+                  fontSize: "var(--fs-meta)",
                 }}
               >
                 <svg

@@ -1439,6 +1439,22 @@ span.linenumber {
   }
 }
 
+/* Picker card: rests on the panel surface rather than transparent, so its hover
+   fills to --bg-hover. Combined with --outline for the border treatment. */
+.ui-btn--card {
+  background: var(--bg-panel);
+}
+
+.ui-btn--card:active:not([disabled]) {
+  background: var(--bg-selected);
+}
+
+@media (hover: hover) {
+  .ui-btn--card:hover:not([disabled]) {
+    background: var(--bg-hover);
+  }
+}
+
 /* Filled cap of a segmented control: rests on --bg-hover, so its hover has to
    step up to --bg-selected rather than down. */
 .ui-btn--cap {

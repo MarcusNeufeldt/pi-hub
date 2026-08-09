@@ -11,45 +11,149 @@
   --color-text-dim: var(--text-dim);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-fill: var(--accent-fill);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
   --color-user-bg: var(--user-bg);
   --color-assistant-bg: var(--assistant-bg);
   --color-tool-bg: var(--tool-bg);
   --color-bg-subtle: var(--bg-subtle);
   --font-mono-font: var(--font-mono);
+  --font-sans-font: var(--font-sans);
 }
 
+/* ---------------------------------------------------------------------------
+   Palette — "ink on graphite, one amber signal".
+   Neutrals carry a consistent cool cast (hue ~195) instead of pure grey so
+   surfaces read as calibrated rather than default. The accent is amber and
+   means exactly one thing: live/active. Success and failure stay green/red.
+
+   --accent is AA-contrast against --bg in both modes, because the codebase
+   uses it interchangeably for text and for fills. --accent-fill is the more
+   saturated variant for large areas where contrast rules are non-text (3:1).
+   --------------------------------------------------------------------------- */
+/* Light mode is a cool paper, deliberately not white. The first pass kept it
+   within deltaE ~1-3 of the original #ffffff/#f5f5f5, which is at the
+   just-noticeable threshold — it read as unchanged, and it left bg/panel only
+   deltaE 3 apart, too close to carry structure once hairlines are removed.
+   Surfaces are now separated by ~5-7 so the layout reads by tone. */
 :root {
-  --bg: #ffffff;
-  --bg-panel: #f5f5f5;
-  --bg-hover: #eeeeee;
-  --bg-selected: #e8e8e8;
-  --border: #e0e0e0;
-  --text: #1a1a1a;
-  --text-muted: #6b7280;
-  --text-dim: #9ca3af;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --user-bg: #eff6ff;
-  --assistant-bg: #ffffff;
-  --tool-bg: #f9fafb;
-  --bg-subtle: rgba(0,0,0,0.03);
+  --bg: #f4f8f9;
+  --bg-panel: #dfe9ec;
+  --bg-hover: #cfdde2;
+  --bg-selected: #bdd0d7;
+  /* Recessed ground the panes float on — darker than --bg so they read as
+     surfaces sitting on top rather than regions cut out of a sheet. */
+  --bg-canvas: #e2ebee;
+  --border: #a9c0c9;
+  --border-strong: #6e858e;
+  --text: #0d1418;
+  --text-muted: #495b62;
+  --text-dim: #71858c;
+  --accent: #965d0c;
+  --accent-hover: #7a4a08;
+  --accent-fill: #c9821f;
+  /* Dark ink on the amber fill, not white: white-on-amber is only 3.14:1,
+     dark-on-amber is 5.92:1. Amber is a light colour; it takes dark text. */
+  --accent-on: #0d1418;
+  --success: #12703a;
+  --danger: #b32f1a;
+  --user-bg: #dae7eb;
+  --assistant-bg: #f4f8f9;
+  /* Surface a turn's content sits on: one subtle step off --bg, with --tool-bg a
+     further step, so tool blocks still read as inset *within* a turn card. In
+     light mode inset means darker. */
+  --bg-turn: #eff5f6;
+  --tool-bg: #eaf1f3;
+  --bg-subtle: rgba(13,20,24,0.05);
 }
 
 html.dark {
-  --bg: #1a1a1a;
-  --bg-panel: #242424;
-  --bg-hover: #2e2e2e;
-  --bg-selected: #383838;
-  --border: #3a3a3a;
-  --text: #e8e8e8;
-  --text-muted: #9ca3af;
-  --text-dim: #6b7280;
-  --accent: #60a5fa;
-  --accent-hover: #93c5fd;
-  --user-bg: #1e293b;
-  --assistant-bg: #1a1a1a;
-  --tool-bg: #1f2937;
-  --bg-subtle: rgba(255,255,255,0.04);
+  --bg: #0a1113;
+  --bg-panel: #141e22;
+  --bg-hover: #1e2a2f;
+  --bg-selected: #2a383e;
+  --bg-canvas: #05090b;
+  --border: #31424a;
+  --border-strong: #5a6f77;
+  --text: #e6edef;
+  --text-muted: #9aabb1;
+  --text-dim: #6b7d84;
+  --accent: #f0b357;
+  --accent-hover: #f8ce8c;
+  --accent-fill: #e09c34;
+  --accent-on: #0a1113;
+  --success: #4ade80;
+  --danger: #f87171;
+  --user-bg: #16232a;
+  --assistant-bg: #0a1113;
+  /* Dark mode inverts the convention: inset surfaces go lighter, not darker, so
+     the turn card sits above --bg and --tool-bg sits above the card. */
+  --bg-turn: #0d1418;
+  --tool-bg: #111b1f;
+  --bg-subtle: rgba(190,215,222,0.055);
+}
+
+/* ---------------------------------------------------------------------------
+   Structural tokens. Type sizes are re-declared in the <=640px block below,
+   so every consumer of --fs-* gets the mobile ramp for free.
+   --------------------------------------------------------------------------- */
+:root {
+  /* Type scale. Nothing in the UI may sit below --fs-micro. */
+  --fs-micro: 11px;   /* counts, badges — never prose */
+  --fs-meta: 12px;    /* gutter metadata, tool names */
+  --fs-ui: 13px;      /* buttons, sidebar rows, menu items */
+  --fs-body: 14px;    /* markdown prose, transcript */
+  --fs-code: 13px;    /* code blocks — mono reads larger per px */
+  --fs-title: 16px;   /* panel headers, dialog titles */
+
+  /* Spacing */
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 6px;
+  --sp-4: 8px;
+  --sp-5: 12px;
+  --sp-6: 16px;
+  --sp-7: 24px;
+  --sp-8: 32px;
+
+  /* Radius */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-full: 999px;
+
+  /* Elevation */
+  --sh-1: 0 1px 2px rgba(9,18,22,0.06);
+  --sh-2: 0 4px 16px rgba(9,18,22,0.12);
+  --sh-3: 0 12px 36px rgba(9,18,22,0.20);
+
+  /* Control metrics — promoted to touch sizes on mobile */
+  --h-ctl-sm: 24px;
+  --h-ctl: 28px;
+  --h-topbar: 36px;
+  --tap: 28px;        /* minimum interactive box; becomes 44px on mobile */
+
+  /* Motion */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Stacking order — mirrors the values already used across components */
+  --z-backdrop: 199;
+  --z-drawer: 200;
+  --z-resize: 220;
+  --z-panel-backdrop: 240;
+  --z-panel: 250;
+  --z-overlay: 300;
+  --z-toast: 320;
+}
+
+html.dark {
+  --sh-1: 0 1px 2px rgba(0,0,0,0.40);
+  --sh-2: 0 4px 16px rgba(0,0,0,0.45);
+  --sh-3: 0 12px 36px rgba(0,0,0,0.55);
 }
 
 .catppuccin-file-icon {
@@ -104,9 +208,10 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
   overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -114,23 +219,37 @@ body {
   flex-direction: column;
 }
 
+/* Wider hit area than the visible thumb: the 2px transparent border is clipped
+   out of the paint but still counts for pointer targeting. */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 2px;
+  border: 2px solid transparent;
+  border-radius: var(--r-full);
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-dim);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
+/* Font stacks. IBM Plex Sans/Mono are a designed pair; the CJK and Cyrillic
+   fallbacks after them are load-bearing — the UI ships zh-CN, ja and ru, and
+   Plex covers no CJK. Never trim the tail of these lists. */
 :root {
-  --font-mono: var(--font-noto-mono), 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace, 'PingFang SC', 'Microsoft YaHei', monospace;
+  --font-sans: var(--font-plex-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'PingFang SC', 'Hiragino Sans', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --font-mono: var(--font-plex-mono), 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace,
+    'PingFang SC', 'Microsoft YaHei', monospace;
 }
 
 pre, code {
@@ -142,24 +261,41 @@ pre, code {
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
-  font-size: 14px;
+  font-size: var(--fs-body);
   line-height: 1.7;
   color: var(--text);
   word-break: break-word;
 }
-.markdown-body p { margin: 0 0 8px; }
+/* 0.75em rather than a flat 8px, so paragraph rhythm scales with --fs-body
+   through the mobile ramp instead of tightening as the text grows. */
+.markdown-body p { margin: 0 0 0.75em; }
 .markdown-body p:last-child { margin-bottom: 0; }
+/* Headings were 1.16 / 1.08 / 0.98em — within a hair of body text, so a long
+   answer had no scannable structure. Real steps, tighter tracking at the top of
+   the scale, and asymmetric margins: more space above a heading than below it,
+   so it binds to the text it introduces rather than floating between blocks. */
 .markdown-body h1, .markdown-body h2, .markdown-body h3,
 .markdown-body h4, .markdown-body h5, .markdown-body h6 {
-  font-weight: 600;
-  margin: 10px 0 5px;
+  font-weight: 650;
+  margin: 1.5em 0 0.5em;
   color: var(--text);
-  line-height: 1.35;
-  letter-spacing: 0;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
-.markdown-body h1 { font-size: 1.16em; }
-.markdown-body h2 { font-size: 1.08em; }
-.markdown-body h3 { font-size: 0.98em; color: color-mix(in srgb, var(--text) 88%, var(--text-muted)); }
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+.markdown-body h1 { font-size: 1.5em; }
+.markdown-body h2 { font-size: 1.28em; }
+.markdown-body h3 { font-size: 1.12em; }
+.markdown-body h4 { font-size: 1em; color: color-mix(in srgb, var(--text) 88%, var(--text-muted)); }
+.markdown-body h5, .markdown-body h6 {
+  font-size: 0.95em;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 .markdown-body ul, .markdown-body ol {
   padding-left: 22px;
   margin: 5px 0 8px;
@@ -261,7 +397,8 @@ pre, code {
   border-collapse: separate;
   border-spacing: 0;
   min-width: 100%;
-  font-size: 13px;
+  /* Relative so tables track --fs-body through the mobile ramp. */
+  font-size: 0.95em;
 }
 .markdown-body th, .markdown-body td {
   border: 0;
@@ -351,7 +488,7 @@ pre, code {
   padding-top: 8px;
   border-top: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--fs-meta);
 }
 .compaction-file-details summary {
   cursor: pointer;
@@ -364,7 +501,7 @@ pre, code {
 .compaction-file-title {
   margin-bottom: 4px;
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 650;
 }
 .compaction-file-list {
@@ -376,7 +513,7 @@ pre, code {
   border-radius: 6px;
   background: var(--bg-panel);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   line-height: 1.45;
   list-style: none;
 }
@@ -392,23 +529,25 @@ pre, code {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  margin: 6px 0;
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  /* Relative margin so code keeps its rhythm against prose as --fs-body grows
+     on mobile. Code sits on the inset surface rather than the page background,
+     so a block reads as a distinct object without needing a heavy edge. */
+  margin: 1em 0;
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  border-radius: var(--r-md);
   overflow: hidden;
-  background: var(--bg);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 42%, transparent);
+  background: var(--tool-bg);
 }
 .markdown-code-header {
-  padding: 5px 10px;
+  padding: var(--sp-3) var(--sp-5);
   background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-4);
 }
 .markdown-code-lang {
   color: var(--text-muted);
@@ -421,19 +560,35 @@ pre, code {
   gap: 6px;
 }
 .markdown-code-action {
+  display: inline-flex;
+  align-items: center;
+  /* Tappable on a phone: these were 2px-padded text with no minimum box. */
+  min-height: var(--h-ctl-sm);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  padding: 2px var(--sp-4);
   background: var(--bg);
   color: var(--text-muted);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-micro);
   line-height: 1.25;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.markdown-code-action:hover:not(:disabled) {
+.markdown-code-action:active:not(:disabled) {
+  background: var(--bg-selected);
   color: var(--text);
-  border-color: color-mix(in srgb, var(--border) 70%, var(--text-muted));
+}
+.markdown-code-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* Guarded, so the hover state does not stick after a tap on touch. */
+@media (hover: hover) {
+  .markdown-code-action:hover:not(:disabled) {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
 }
 .markdown-code-action:disabled {
   color: var(--text-dim);
@@ -460,7 +615,7 @@ pre, code {
 .mermaid-block-error {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-meta);
 }
 
 .mermaid-preview-button {
@@ -511,7 +666,7 @@ pre, code {
   overflow: hidden;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -576,7 +731,7 @@ pre, code {
   height: 22px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-meta);
   line-height: 22px;
   text-align: center;
   user-select: none;
@@ -609,9 +764,8 @@ pre, code {
     padding-inline: 8px;
   }
 
-  .mermaid-zoom-title {
-    font-size: 10px;
-  }
+  /* The 10px title override that used to live here is gone on purpose: the
+     mobile type ramp raises --fs-micro instead of shrinking labels further. */
 
   .mermaid-zoom-viewport {
     padding: 12px;
@@ -677,7 +831,7 @@ pre, code {
   border: 0;
   border-left: 1px solid var(--border);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 500;
   letter-spacing: 0;
   cursor: pointer;
@@ -761,11 +915,11 @@ pre, code {
 .markdown-file-preview pre {
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   padding: 12px 16px;
   overflow-x: auto;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-code);
   margin: 12px 0;
 }
 .markdown-file-preview code {
@@ -802,9 +956,38 @@ span.linenumber {
   50%       { opacity: 1;   transform: scale(1.06); }
 }
 
+/* Drop-zone ripple edge. Set here rather than as a Tailwind arbitrary value so
+   it tracks the accent token instead of freezing a literal colour. */
+[data-drop-ripple] {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
 @keyframes drop-ripple {
   0%   { transform: scale(0); opacity: 0.6; }
   100% { transform: scale(1); opacity: 0; }
+}
+
+/* Streaming write head. Attached to the last block rather than the container so
+   it sits at the end of the text instead of dropping onto its own line, and it
+   inherits the text colour so it reads as a cursor, not a decoration.
+   (The `blink` keyframe below already existed but nothing used it.) */
+.markdown-body.is-streaming > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--accent);
+  border-radius: 1px;
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body.is-streaming > :last-child::after {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 @keyframes blink {
@@ -1009,6 +1192,24 @@ span.linenumber {
 
 /* Mobile sidebar: slide in/out as overlay */
 @media (max-width: 640px) {
+  /* Mobile type ramp + touch metrics. Every consumer of these tokens scales
+     with no per-component media query. --fs-body lands on 16px, which is also
+     what stops iOS from zooming when a field takes focus (see the textarea /
+     input / select rule at the end of this block). */
+  :root {
+    --fs-micro: 12px;
+    --fs-meta: 13px;
+    --fs-ui: 15px;
+    --fs-body: 16px;
+    --fs-code: 14px;
+    --fs-title: 18px;
+
+    --h-ctl-sm: 36px;
+    --h-ctl: 44px;
+    --h-topbar: 48px;
+    --tap: 44px;
+  }
+
   .chat-stats-center {
     display: none !important;
   }
@@ -1069,9 +1270,1054 @@ span.linenumber {
     flex-wrap: wrap;
     padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
   }
+  /* iOS zooms any field below 16px on focus. --fs-body is 16px in this block,
+     so this stays a single source of truth rather than a second magic number.
+     !important is retained because the fields carry inline font sizes. */
   textarea,
   input,
   select {
-    font-size: 16px !important;
+    font-size: var(--fs-body) !important;
+  }
+}
+
+/* ===========================================================================
+   Primitive class layer.
+
+   The chrome in this app is built from ~1100 inline style objects, so there is
+   no central place to restyle it. These classes are that place. They are plain
+   CSS rather than Tailwind utilities because the codebase has no Tailwind
+   conventions to build on, and because inline styles cannot express :hover,
+   :active or :focus-visible at all — which is why touch devices currently get
+   no press feedback anywhere in the UI.
+
+   Rules for using them:
+   - Every hover style sits behind @media (hover: hover) so it does not stick
+     to the element after a tap on touch devices.
+   - Every interactive primitive has a visible :focus-visible ring and an
+     :active state.
+   - Interactive boxes are at least --tap (28px desktop / 44px mobile).
+   - Sizes come from --fs-* / --sp-* / --h-* so the mobile ramp applies for
+     free. Do not reintroduce literal px here.
+   =========================================================================== */
+
+.ui-btn,
+.ui-row,
+.ui-tab,
+.ui-chip {
+  font-family: inherit;
+  font-size: var(--fs-ui);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ui-btn:focus-visible,
+.ui-row:focus-visible,
+.ui-tab:focus-visible,
+.ui-chip:focus-visible,
+.ui-field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.ui-btn[disabled],
+.ui-row[disabled],
+.ui-tab[disabled],
+.ui-chip[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---- button ------------------------------------------------------------- */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: var(--tap);
+  height: var(--h-ctl);
+  padding-inline: var(--sp-5);
+  white-space: nowrap;
+}
+
+.ui-btn--icon {
+  width: var(--tap);
+  min-width: var(--tap);
+  padding-inline: 0;
+  flex-shrink: 0;
+}
+
+/* Top-bar icon button. Sized from --h-topbar so it grows with the bar to 48px
+   on mobile rather than staying a 36px desktop target.
+
+   No trailing hairline: the bar used to divide every control with a 1px rule,
+   which is what made the chrome read as a 2010 toolbar. Spacing separates them
+   now, and the hover surface shows the hit area. */
+.ui-btn--bar {
+  width: calc(var(--h-topbar) - var(--sp-3));
+  min-width: calc(var(--h-topbar) - var(--sp-3));
+  height: calc(var(--h-topbar) - var(--sp-3));
+  min-height: calc(var(--h-topbar) - var(--sp-3));
+  padding-inline: 0;
+  border-radius: var(--r-md);
+  flex-shrink: 0;
+}
+
+/* Bar that holds them: gives the buttons room to sit as discrete targets. */
+.ui-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+  padding-inline: var(--sp-3);
+}
+
+.ui-btn--outline {
+  border-color: var(--border);
+}
+
+.ui-btn--primary {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-on);
+  font-weight: 600;
+}
+
+.ui-btn--danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+/* Resting-colour modifiers. These exist as classes rather than inline styles on
+   purpose: an inline `color` beats the class :hover/:active rules, so setting a
+   resting colour inline silently kills the interaction feedback. */
+.ui-btn--dim {
+  color: var(--text-dim);
+}
+
+.ui-btn--accent {
+  color: var(--accent);
+}
+
+/* Toggle in its off state: dimmed, and it comes back to full strength while
+   pressed or hovered so the control still feels live when disabled. */
+.ui-btn--off {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
+.ui-btn--off:active:not([disabled]) {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  /* Accent buttons keep their meaning on hover; only the surface responds. */
+  .ui-btn--accent:hover:not([disabled]) {
+    color: var(--accent);
+  }
+  .ui-btn--off:hover:not([disabled]) {
+    opacity: 1;
+  }
+}
+
+/* Destructive action that is already engaged — abort, stop compaction. Carries a
+   persistent tint rather than revealing one on hover, and deepens on
+   hover/press. A class so the tint does not have to be an inline background,
+   which would then block the hover response entirely. */
+.ui-btn--danger-tint {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger);
+}
+
+.ui-btn--danger-tint:active:not([disabled]) {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+
+/* Small inline action attached to a message — copy, edit-from-here, fork. Dim at
+   rest, accent when reached for, and no surface fill so it stays a text action
+   rather than a button. :active is included because on touch there is no hover
+   at all, so it would otherwise give no feedback whatsoever. */
+.ui-btn--hint {
+  height: auto;
+  min-height: var(--tap);
+  padding-inline: var(--sp-4);
+  color: var(--text-dim);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  gap: var(--sp-2);
+  white-space: nowrap;
+}
+
+.ui-btn--hint:active:not([disabled]) {
+  background: transparent;
+  color: var(--accent);
+}
+
+@media (hover: hover) {
+  .ui-btn--hint:hover:not([disabled]) {
+    background: transparent;
+    color: var(--accent);
+  }
+}
+
+/* Picker card: rests on the panel surface rather than transparent, so its hover
+   fills to --bg-hover. Combined with --outline for the border treatment. */
+.ui-btn--card {
+  background: var(--bg-panel);
+}
+
+.ui-btn--card:active:not([disabled]) {
+  background: var(--bg-selected);
+}
+
+@media (hover: hover) {
+  .ui-btn--card:hover:not([disabled]) {
+    background: var(--bg-hover);
+  }
+}
+
+/* Filled cap of a segmented control: rests on --bg-hover, so its hover has to
+   step up to --bg-selected rather than down. */
+.ui-btn--cap {
+  background: var(--bg-hover);
+}
+
+.ui-btn--cap:active:not([disabled]) {
+  background: var(--bg-selected);
+}
+
+@media (hover: hover) {
+  .ui-btn--danger-tint:hover:not([disabled]) {
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
+    color: var(--danger);
+  }
+  .ui-btn--cap:hover:not([disabled]) {
+    background: var(--bg-selected);
+  }
+}
+
+/* Destructive action that stays quiet until you reach for it. Used by the
+   session delete and worktree remove buttons, which sit inside rows and should
+   not shout red at rest. On touch there is no hover, so :active carries it. */
+.ui-btn--danger-hover:active:not([disabled]) {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
+}
+
+@media (hover: hover) {
+  .ui-btn--danger-hover:hover:not([disabled]) {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+    color: var(--danger);
+  }
+}
+
+/* Dense secondary control. min-height must be restated: the --tap floor on
+   .ui-btn would otherwise win and make this identical to a normal button.
+   --h-ctl-sm is 36px on mobile — below the 44px ideal, deliberately, because
+   these sit in toolbars where a 44px row would push content off a phone. */
+.ui-btn--sm {
+  height: var(--h-ctl-sm);
+  min-height: var(--h-ctl-sm);
+  padding-inline: var(--sp-4);
+  font-size: var(--fs-meta);
+}
+
+/* Active / selected state, however the component expresses it. */
+.ui-btn.is-active,
+.ui-btn[aria-pressed="true"],
+.ui-btn[aria-expanded="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+/* Opt out of the pressed *styling* while keeping the pressed *semantics*.
+   For the theme toggle, aria-pressed must stay for screen readers, but the
+   button would otherwise look permanently selected the whole time dark mode
+   is on — the icon already carries that state visually. */
+.ui-btn--quiet.ui-btn[aria-pressed="true"] {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.ui-btn:active:not([disabled]) {
+  background: var(--bg-selected);
+}
+
+.ui-btn--primary:active:not([disabled]) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+@media (hover: hover) {
+  .ui-btn:hover:not([disabled]) {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  /* Outlined buttons warm their edge toward the accent on hover. Several call
+     sites were hand-writing exactly this with onMouseEnter. */
+  .ui-btn--outline:hover:not([disabled]) {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+  .ui-btn--primary:hover:not([disabled]) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: var(--accent-on);
+  }
+  .ui-btn--danger:hover:not([disabled]) {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
+  }
+}
+
+/* ---- list row ----------------------------------------------------------- */
+.ui-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-3) var(--sp-5);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  text-align: left;
+}
+
+.ui-row.is-active {
+  background: var(--bg-selected);
+}
+
+.ui-row:active {
+  background: var(--bg-selected);
+}
+
+@media (hover: hover) {
+  .ui-row:hover {
+    background: var(--bg-hover);
+  }
+}
+
+/* ---- tab ---------------------------------------------------------------- */
+.ui-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: var(--tap);
+  height: var(--h-ctl);
+  padding-inline: var(--sp-5);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.ui-tab.is-active {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+.ui-tab:active {
+  background: var(--bg-selected);
+}
+
+@media (hover: hover) {
+  .ui-tab:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+}
+
+/* ---- sidebar groups ----------------------------------------------------- */
+/* The tree was one flat run of rows divided by hairlines with 4px of margin, so
+   projects, recent sessions and hidden items all sat at the same visual level
+   with nothing to scan by. Groups are separated by space now; the hairline is a
+   faint secondary cue rather than the structure itself. */
+.sidebar-section {
+  padding-block: var(--sp-3);
+}
+
+.sidebar-section + .sidebar-section {
+  margin-top: var(--sp-4);
+  border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+.sidebar-section__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-2) var(--sp-5);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--fs-micro);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.sidebar-section__header:active {
+  color: var(--text);
+}
+
+@media (hover: hover) {
+  .sidebar-section__header:hover {
+    color: var(--text);
+  }
+}
+
+/* Counts sit beside the label without inheriting its tracking or weight. */
+.sidebar-section__count {
+  color: var(--text-dim);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* ---- segmented control -------------------------------------------------- */
+/* Two flat buttons sharing a bar don't read as a choice between states. A track
+   with an inset selected thumb does: the group is one control, and the active
+   segment is lifted out of it. */
+.ui-segmented {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+  padding: var(--sp-1);
+  border-radius: var(--r-md);
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.ui-segmented > .ui-tab {
+  flex: 1;
+  min-height: var(--h-ctl);
+  height: var(--h-ctl);
+  border-radius: calc(var(--r-md) - 2px);
+  font-size: var(--fs-meta);
+}
+
+/* The selected segment is the raised one, so it needs the top surface and an
+   elevation — not the --bg-selected fill a standalone tab would take. */
+.ui-segmented > .ui-tab.is-active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--sh-1);
+}
+
+@media (hover: hover) {
+  .ui-segmented > .ui-tab:hover:not(.is-active) {
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+}
+
+/* ---- field -------------------------------------------------------------- */
+.ui-field {
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-3) var(--sp-4);
+  font-family: inherit;
+  font-size: var(--fs-ui);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  transition: border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease);
+}
+
+.ui-field::placeholder {
+  color: var(--text-dim);
+}
+
+.ui-field:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* ---- chip --------------------------------------------------------------- */
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--h-ctl-sm);
+  padding-inline: var(--sp-4);
+  border-radius: var(--r-full);
+  border-color: var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}
+
+/* Read-only chip. .ui-chip sits in the interactive group and therefore inherits
+   cursor: pointer, which lies when the chip is just a label. */
+.ui-chip--static {
+  cursor: default;
+}
+
+/* ---- panel header ------------------------------------------------------- */
+.ui-panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-shrink: 0;
+  min-height: var(--h-topbar);
+  padding-inline: var(--sp-4);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+
+/* ---- shell composition -------------------------------------------------- */
+/* The app was edge-to-edge panes welded together with 1px rules, filling every
+   pixel. That partitioned look is the most dated thing about its *shape*, and no
+   amount of palette or type work fixes it.
+
+   The panes are now inset, rounded surfaces sitting on a recessed canvas, so the
+   layout reads as composed rather than divided. The gap and the surface step do
+   the separating; borders stop doing that job and become a hairline ring.
+   Desktop only — a phone has no pixels to spend on a frame, and full bleed there
+   also leaves the existing safe-area handling inside each pane untouched. */
+.app-canvas {
+  display: flex;
+  width: 100%;
+  height: var(--app-viewport-height, 100dvh);
+  overflow: hidden;
+  background: var(--bg);
+  /* Mobile is full bleed apart from the notch. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+@media (min-width: 641px) {
+  /* Desktop insets are 0, so this shorthand correctly supersedes the above. */
+  .app-canvas {
+    background: var(--bg-canvas);
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+  }
+
+  .app-pane {
+    border: none !important;
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    background: var(--bg);
+    box-shadow: 0 0 0 1px var(--border), var(--sh-1);
+  }
+
+  /* A collapsed pane is zero-width; without this its ring shows as a stray line. */
+  .app-pane.sidebar-closed,
+  .app-pane.right-panel-closed {
+    box-shadow: none;
+  }
+}
+
+/* ---- dialog (Radix Dialog) ---------------------------------------------- */
+/* Radix supplies focus trap, Escape, scroll lock and aria wiring; this is only
+   the skin. data-state comes from Radix, so enter/exit animation is CSS. */
+.ui-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-6);
+  background: color-mix(in srgb, #000 46%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.ui-dialog {
+  width: 100%;
+  max-width: var(--dialog-w, 440px);
+  height: var(--dialog-h, auto);
+  max-height: calc(var(--app-viewport-height, 100dvh) - 2 * var(--sp-6));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+}
+
+.ui-dialog:focus-visible {
+  outline: none;
+}
+
+.ui-dialog__head {
+  display: flex;
+  gap: var(--sp-5);
+  align-items: flex-start;
+  flex-shrink: 0;
+  padding: var(--sp-6) var(--sp-6) var(--sp-5);
+}
+
+.ui-dialog__title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.ui-dialog__desc {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.ui-dialog__body {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--sp-6) var(--sp-5);
+}
+
+.ui-dialog__foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  padding: var(--sp-5) var(--sp-6);
+  border-top: 1px solid var(--border);
+}
+
+@keyframes ui-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ui-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+.ui-overlay[data-state="open"] {
+  animation: ui-overlay-in var(--dur) var(--ease);
+}
+
+.ui-dialog[data-state="open"] {
+  animation: ui-dialog-in var(--dur) var(--ease);
+}
+
+/* Mobile: a dialog centred in a 375px viewport wastes the screen and puts
+   controls under the thumb's reach. Dock it to the bottom as a sheet instead. */
+@media (max-width: 640px) {
+  .ui-overlay {
+    place-items: end center;
+    padding: 0;
+  }
+  .ui-dialog {
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* A desktop height like 78vh should not govern the sheet. Panels that declare
+     one fill the sheet; short confirms keep sizing to their content. */
+  .ui-dialog--tall {
+    height: 92dvh;
+  }
+  .ui-dialog[data-state="open"] {
+    animation: ui-sheet-in var(--dur) var(--ease);
+  }
+  /* Sheet actions share the width so both are reachable one-handed. DOM order
+     is preserved (cancel first, primary rightmost) rather than reversed. */
+  .ui-dialog__foot > .ui-btn {
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-overlay[data-state="open"],
+  .ui-dialog[data-state="open"] {
+    animation: none;
+  }
+}
+
+/* Dock the composer sits in. The scrim is a gradient placed immediately *above*
+   the composer, over the last pixels of the transcript, so the conversation
+   appears to fade underneath the card instead of stopping dead against it.
+
+   Done this way on purpose: the composer's height is already measured into a
+   spacer inside the scroll container, and there is separate prompt-anchor scroll
+   math around it. Absolutely positioning the composer to get a true overlay
+   would put a visual change inside that logic, so the fade buys the same read
+   without touching how scrolling works. */
+.composer-dock {
+  position: relative;
+}
+
+.composer-dock::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--sp-7);
+  pointer-events: none;
+  background: linear-gradient(to top, var(--bg), transparent);
+}
+
+/* ---- composer ----------------------------------------------------------- */
+/* The one element you actually touch, so it reads as a card rather than a bar.
+   :focus-within is the point of doing this in CSS: an inline style cannot
+   express it, so the composer previously gave no focus feedback at all. */
+.composer {
+  min-width: 0;
+  display: flex;
+  gap: var(--sp-4);
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: var(--sp-5) var(--sp-5) var(--sp-5) var(--sp-6);
+  box-shadow: var(--sh-2);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: var(--sh-2), 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* The card carries the focus ring, so the textarea inside must not draw its own. */
+.composer textarea:focus,
+.composer textarea:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 640px) {
+  .composer {
+    border-radius: 16px;
+    padding: var(--sp-4);
+  }
+}
+
+/* ---- tool call block ---------------------------------------------------- */
+/* Every successful tool call used to be tinted green with a green border, so a
+   normal transcript was a wall of green boxes competing with the prose. Success
+   is the overwhelmingly common case and therefore the quiet one: a neutral
+   inset surface, no visible border. Colour is reserved for failure, which is
+   the thing you actually need to spot. */
+/* ---- thinking block ----------------------------------------------------- */
+/* Reasoning is aside content — the model thinking out loud — so it takes the
+   quietest of the transcript's three registers: prose is the answer, tool calls
+   are a thread, and this is a note in the margin. It was a bordered card, which
+   gave it the same weight as a tool call and made a turn look like a stack of
+   equal boxes. */
+.think-block {
+  border-left: 2px solid color-mix(in srgb, var(--border) 80%, transparent);
+  padding-left: var(--sp-5);
+  font-size: var(--fs-ui);
+}
+
+.think-block__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-2) 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-micro);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.think-block__header:active {
+  color: var(--text-muted);
+}
+
+.think-block__header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .think-block__header:hover {
+    color: var(--text-muted);
+  }
+}
+
+.think-block__body {
+  padding: 0 0 var(--sp-4);
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.think-block__body.is-error {
+  color: var(--danger);
+}
+
+/* A tool call is a step in a sequence, so it reads as a node on a thread rather
+   than a standalone card. The rail is drawn inside each block and clipped by its
+   own overflow, so adjacent blocks in a merged run form one continuous line
+   without any element spanning the group. */
+.tool-block {
+  position: relative;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  font-size: var(--fs-meta);
+  background: var(--tool-bg);
+  border: 1px solid transparent;
+  padding-left: 26px;
+}
+
+/* The thread. */
+.tool-block::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+/* The node. Ringed in the block's own background so the thread appears to pass
+   behind it rather than through it. */
+.tool-block::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 13px;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--text-dim);
+  box-shadow: 0 0 0 3px var(--tool-bg);
+}
+
+.tool-block--error::after {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 7%, var(--tool-bg));
+}
+
+/* In flight: amber, the one thing amber means here, with a halo that breathes. */
+.tool-block--running::after {
+  background: var(--accent);
+  animation: tool-node-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tool-node-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--tool-bg), 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+  50%      { box-shadow: 0 0 0 3px var(--tool-bg), 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-block--running::after {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--tool-bg), 0 0 0 5px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+}
+
+/* A turn's blocks. Consecutive tool calls collapse into a single grouped list —
+   shared rounding, hairline separators, no gaps between them — so a run of eight
+   tool calls reads as one sequence instead of eight free-floating cards. Prose
+   blocks keep their spacing. */
+.turn-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.turn-blocks > .tool-block + .tool-block {
+  margin-top: calc(-1 * var(--sp-4));
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.turn-blocks > .tool-block:has(+ .tool-block) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.tool-block--error {
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+/* ---- transcript gutter rail -------------------------------------------- */
+/* The signature element: one mono rail carrying per-turn time, model, token
+   and cost deltas, with an amber dot while the turn is live. Amber means
+   "live" everywhere in this UI and nothing else. On mobile the rail flattens
+   into a single meta line above the content instead of a column. */
+/* Per-turn provenance as a caption, replacing the two-column gutter rail.
+   The rail stacked model, tokens, cost and time as four lines in a 108px column:
+   a ragged list that competed with the content and spent permanent horizontal
+   space on reference data. One dim line of dot-separated values reads as a
+   caption and gives the content its width back. Values are separated by a
+   generated middot so no separator elements are needed. */
+.turn-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin-bottom: var(--sp-3);
+  padding-inline: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-meta--end {
+  justify-content: flex-end;
+}
+
+.turn-meta > * + *::before {
+  content: "·";
+  margin-right: var(--sp-2);
+  color: color-mix(in srgb, var(--text-dim) 55%, transparent);
+}
+
+/* The model id is the one value long enough to need truncating. */
+.turn-meta__model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
+}
+
+/* An assistant turn's content as a discrete surface. It used to sit straight on
+   the pane background, so a long session read as one undifferentiated column of
+   text; each exchange is now a distinct block. */
+.turn-surface {
+  background: var(--bg-turn);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5) var(--sp-6);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+/* The turn being generated right now. An amber ring plus a faint halo, so in a
+   long transcript your eye lands on the live exchange without scanning. It also
+   rises in once on mount — deliberately scoped to the live turn only, because
+   animating every card in a 900-message session on load would be a jank source
+   for no benefit. */
+.turn-surface--live {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--accent) 8%, transparent);
+  animation: turn-rise 260ms var(--ease) both;
+}
+
+@keyframes turn-rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Tool header: a disclosure control, so it should respond to the pointer. */
+.tool-block__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-3) var(--sp-5);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--fs-meta);
+  text-align: left;
+  min-width: 0;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.tool-block__header:active {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.tool-block__header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (hover: hover) {
+  .tool-block__header:hover {
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+  }
+}
+
+@media (max-width: 640px) {
+  .turn-surface {
+    padding: var(--sp-5);
+    border-radius: var(--r-md);
+  }
+  .turn-surface--live {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-surface--live {
+    animation: none;
+  }
+}
+
+/* Live indicator in the turn caption. Kept from the removed rail — it is the
+   only part that earned its place — but no longer named after a gutter that no
+   longer exists. The rest of the .ui-rail* rules are deleted rather than left
+   orphaned. */
+.ui-rail__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.ui-rail__dot.is-live {
+  background: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-btn,
+  .ui-row,
+  .ui-tab,
+  .ui-chip,
+  .ui-field {
+    transition: none;
+  }
+  .ui-rail__dot.is-live {
+    animation: none;
   }
 }

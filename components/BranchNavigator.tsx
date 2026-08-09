@@ -164,11 +164,14 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
         {/* Role badge */}
         {role && (
           <span style={{
-            fontSize: 9,
+            fontSize: "var(--fs-micro)",
             fontFamily: "var(--font-mono)",
             color: role === "user" ? "var(--accent)" : "var(--text-dim)",
-            background: role === "user" ? "rgba(37,99,235,0.08)" : "var(--bg-hover)",
-            border: `1px solid ${role === "user" ? "rgba(37,99,235,0.2)" : "var(--border)"}`,
+            // Was the pre-reskin blue. User branches take the same neutral
+            // surface tint their messages do, not an accent — amber is reserved
+            // for live state.
+            background: role === "user" ? "var(--user-bg)" : "var(--bg-hover)",
+            border: "1px solid var(--border)",
             borderRadius: 3,
             padding: "0 4px",
             marginRight: 5,
@@ -181,7 +184,7 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
 
         {/* Skipped indicator */}
         {skipped > 0 && (
-          <span style={{ fontSize: 10, color: "var(--text-dim)", marginRight: 5, flexShrink: 0 }}>
+          <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", marginRight: 5, flexShrink: 0 }}>
             +{skipped}
           </span>
         )}
@@ -280,24 +283,18 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
         <button
           ref={btnRef}
           onClick={() => onToggle ? onToggle() : setOpenInternal((v) => !v)}
+          // Matches the session strip in AppShell: aria-pressed drives the
+          // selected surface, only the accent top edge stays inline, and the
+          // hairline divider is gone.
+          className="ui-btn"
           style={{
-            display: "flex",
-            alignItems: "center",
             gap: 6,
             height: "100%",
-            padding: "0 12px",
-            background: open ? "var(--bg-selected)" : "none",
-            border: "none",
+            borderRadius: 0,
             borderTop: open ? "2px solid var(--accent)" : "2px solid transparent",
-            borderRight: "1px solid var(--border)",
-            cursor: "pointer",
-            color: open ? "var(--text)" : "var(--text-muted)",
-            fontSize: 11,
+            fontSize: "var(--fs-micro)",
             whiteSpace: "nowrap",
-            transition: "color 0.1s, background 0.1s",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = open ? "var(--text)" : "var(--text-muted)"; }}
            title={t("i18n.branches")}
            aria-label={t("i18n.branches")}
           aria-pressed={open}

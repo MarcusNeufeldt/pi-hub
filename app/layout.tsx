@@ -1,12 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { Noto_Sans_Mono } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
-const notoSansMono = Noto_Sans_Mono({
+// IBM Plex Sans/Mono are a designed pair. Subsets match the previous mono
+// (latin + cyrillic) — CJK is served by the fallbacks in globals.css, since
+// Plex has no CJK coverage and the UI ships zh-CN and ja.
+const plexSans = IBM_Plex_Sans({
   subsets: ["latin", "cyrillic"],
-  variable: "--font-noto-mono",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+  display: "swap",
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
   display: "swap",
 });
 
@@ -47,8 +58,9 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#1a1a1a" },
+    // Must track --bg in app/globals.css so the browser chrome matches the app.
+    { media: "(prefers-color-scheme: light)", color: "#fcfdfd" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1416" },
   ],
 };
 
@@ -58,7 +70,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" translate="no" className={`${notoSansMono.variable} notranslate`} suppressHydrationWarning>
+    <html lang="en" translate="no" className={`${plexSans.variable} ${plexMono.variable} notranslate`} suppressHydrationWarning>
       <head>
         <meta name="google" content="notranslate" />
         <script

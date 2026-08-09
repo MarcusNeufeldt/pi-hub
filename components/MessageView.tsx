@@ -241,20 +241,27 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 
   return (
     <div
-      style={{ marginBottom: 16, display: "flex", flexDirection: "column", alignItems: "flex-end" }}
+      style={{ marginBottom: "var(--sp-7)" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {/* Timestamp as a right-aligned caption over the bubble, matching the
+          assistant turn's meta line. The shared two-column grid is gone. */}
+      {time && <div className="turn-meta turn-meta--end">{time}</div>}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "85%" }}>
         <div
           style={{
             flex: 1,
             minWidth: 0,
             background: "var(--user-bg)",
-            border: "1px solid rgba(59,130,246,0.2)",
-            borderRadius: 12,
-            padding: "8px 12px",
-            fontSize: 14,
+            // Was a stale rgba(59,130,246,.2) blue that would have survived the
+            // retune. Your own messages are not an accent state, so they take a
+            // neutral edge and let the surface tint carry the distinction.
+            border: "1px solid color-mix(in srgb, var(--border) 85%, transparent)",
+            borderRadius: 16,
+            padding: "10px 14px",
+            fontSize: "var(--fs-body)",
             lineHeight: 1.6,
             color: "var(--text)",
             wordBreak: "break-word",
@@ -279,7 +286,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     cursor: "pointer",
                     color: "var(--accent)",
                     fontFamily: "var(--font-mono)",
-                    fontSize: 13,
+                    fontSize: "var(--fs-ui)",
                     textAlign: "left",
                   }}
                 >
@@ -304,7 +311,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 {commandArgs && (
                   <span style={{
                     color: "var(--text)",
-                    fontSize: 14,
+                    fontSize: "var(--fs-body)",
                     lineHeight: 1.6,
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-word",
@@ -342,21 +349,9 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             transition: "opacity 0.12s",
           }}>
             <button
+              className={`ui-btn ui-btn--hint${copied ? " ui-btn--accent" : ""}`}
               onClick={copyContent}
                title={t("i18n.copyMessage")}
-              style={{
-                display: "flex", alignItems: "center", gap: 4,
-                padding: "3px 8px", height: 22,
-                background: "none", border: "none",
-                borderRadius: 5,
-                color: copied ? "var(--accent)" : "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11, fontWeight: 400,
-                whiteSpace: "nowrap",
-                transition: "color 0.12s",
-              }}
-              onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "var(--accent)"; }}
-              onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "var(--text-dim)"; }}
             >
               {copied ? (
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -380,21 +375,9 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             }}>
               {canNavigate && (
                 <button
+                  className="ui-btn ui-btn--hint"
                   onClick={() => { onNavigate!(prevAssistantEntryId!); onEditContent?.(editTarget); }}
                    title={t("i18n.editFromHereTitle")}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 4,
-                    padding: "3px 8px", height: 22,
-                    background: "none", border: "none",
-                    borderRadius: 5,
-                    color: "var(--text-dim)",
-                    cursor: "pointer",
-                    fontSize: 11, fontWeight: 400,
-                    whiteSpace: "nowrap",
-                    transition: "color 0.12s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="15 10 20 15 15 20" />
@@ -405,22 +388,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
               )}
               {canFork && (
                 <button
+                  className={`ui-btn ui-btn--hint${forking ? " ui-btn--accent" : ""}`}
                   onClick={() => { onFork!(entryId!); }}
                   disabled={forking}
                    title={forking ? t("i18n.creatingSession") : t("i18n.newSessionTitle")}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 4,
-                    padding: "3px 8px", height: 22,
-                    background: "none", border: "none",
-                    borderRadius: 5,
-                    color: forking ? "var(--accent)" : "var(--text-dim)",
-                    cursor: forking ? "not-allowed" : "pointer",
-                    fontSize: 11, fontWeight: 400,
-                    whiteSpace: "nowrap",
-                    transition: "color 0.12s",
-                  }}
-                  onMouseEnter={(e) => { if (!forking) e.currentTarget.style.color = "var(--accent)"; }}
-                  onMouseLeave={(e) => { if (!forking) e.currentTarget.style.color = "var(--text-dim)"; }}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="6" y1="3" x2="6" y2="15" />
@@ -433,9 +404,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
               )}
             </div>
           )}
-          {time && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{time}</span>}
+          {/* Timestamp lives in the gutter now, so it is not repeated here. */}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -577,24 +549,39 @@ function AssistantMessageView({
 
   return (
     <div
-      style={{ marginBottom: 16 }}
+      style={{ marginBottom: "var(--sp-7)" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Model label */}
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--text-dim)",
-          marginBottom: 4,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {message.provider && (
-          <span>{modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model}</span>
+      {/* Provenance as one quiet dot-separated line, not a gutter.
+          The two-column rail this replaced stacked model, tokens, cost and time
+          as four separate lines in a 108px column — a ragged list that competed
+          with the content and cost every turn permanent horizontal space for
+          reference data you want occasionally. One line, dim and small, reads as
+          a caption; the content gets the full width back. */}
+      <div className="turn-meta">
+        {message.provider && (() => {
+          const label = modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model;
+          return <span className="turn-meta__model" title={label}>{label}</span>;
+        })()}
+        {isStreaming && (
+          // Amber pulse = this turn is live, the one meaning amber carries. No
+          // text label: no i18n key exists for it and inventing one would need a
+          // zh-CN translation too. The existing agent-running string labels it
+          // for assistive tech instead.
+          <span
+            role="status"
+            aria-label={t("sidebar.agentRunning")}
+            style={{ display: "inline-flex", alignItems: "center" }}
+          >
+            <span className="ui-rail__dot is-live" />
+          </span>
         )}
+        {message.usage && !isStreaming && formatUsageCompact(message.usage).map((part) => (
+          // Full breakdown stays on title; the line shows the two scalars.
+          <span key={part} title={formatUsage(message.usage!)}>{part}</span>
+        ))}
+        {time && !isStreaming && <span>{time}</span>}
         {isStreaming && (() => {
           let chars = 0;
           for (const b of blocks) {
@@ -608,7 +595,7 @@ function AssistantMessageView({
 
               {est > 0 && (
                 <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text)" }} title={t("i18n.estimatedTokens")}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 11, fontWeight: 400 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: "var(--fs-micro)", fontWeight: 400 }}>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
                     </svg>
@@ -617,7 +604,7 @@ function AssistantMessageView({
                   {tps !== null && (() => {
                     const bg = tps >= 50 ? "#53b3cb" : tps >= 30 ? "#9bc53d" : tps >= 15 ? "#f9c22e" : "#e01a4f";
                     return (
-                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: bg, color: "#fff", fontSize: 11, fontWeight: 400 }}>
+                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: bg, color: "#fff", fontSize: "var(--fs-micro)", fontWeight: 400 }}>
                         {tps.toFixed(1)} t/s
                       </span>
                     );
@@ -629,7 +616,8 @@ function AssistantMessageView({
         })()}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className={`turn-surface${isStreaming ? " turn-surface--live" : ""}`}>
+      <div className="turn-blocks">
         {blockItems.map(({ block, originalIndex }) => (
           <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
         ))}
@@ -646,7 +634,7 @@ function AssistantMessageView({
             background: "rgba(239,68,68,0.07)",
             color: "#ef4444",
             fontFamily: "var(--font-mono)",
-            fontSize: 12,
+            fontSize: "var(--fs-meta)",
             lineHeight: 1.5,
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
@@ -656,33 +644,22 @@ function AssistantMessageView({
         </div>
       )}
 
+      {/* Actions only. Usage and timestamp moved to the gutter above. */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginTop: 4,
+        display: "flex", alignItems: "center", gap: 8, marginTop: "var(--sp-3)",
       }}>
-        {message.usage && !isStreaming && (
-          <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-            {formatUsage(message.usage)}
-          </div>
-        )}
         {textContent && !isStreaming && (
           <button
+            className={`ui-btn ui-btn--hint${copied ? " ui-btn--accent" : ""}`}
             onClick={copyContent}
              title={t("i18n.copyMessage")}
             style={{
-              display: "flex", alignItems: "center", gap: 4,
-              padding: "3px 8px", height: 22,
-              background: "none", border: "none",
-              borderRadius: 5,
-              color: copied ? "var(--accent)" : "var(--text-dim)",
-              cursor: "pointer",
-              fontSize: 11, fontWeight: 400,
-              whiteSpace: "nowrap",
+              // Reveal-on-hover of the turn stays inline: it is driven by the
+              // parent's hovered state, not by this element's own pointer state.
               opacity: hovered ? 1 : 0,
               pointerEvents: hovered ? "auto" : "none",
-              transition: "opacity 0.12s, color 0.12s",
+              transition: "opacity 0.12s",
             }}
-            onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "var(--accent)"; }}
-            onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "var(--text-dim)"; }}
           >
             {copied ? (
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -707,9 +684,7 @@ function AssistantMessageView({
             }}
           />
         )}
-        {time && !isStreaming && (
-          <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: "auto" }}>{time}</span>
-        )}
+      </div>
       </div>
     </div>
   );
@@ -726,7 +701,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} isStreaming={isStreaming} />;
   }
   return null;
 }
@@ -769,47 +744,20 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
   };
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        overflow: "hidden",
-        fontSize: 13,
-      }}
-    >
+    <div className="think-block">
       <button
+        className="think-block__header"
         onClick={() => void toggle()}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          width: "100%",
-          padding: "6px 10px",
-          background: "var(--bg-panel)",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
-        }}
+        aria-expanded={expanded}
       >
          <span>{t("i18n.thinking")}</span>
         {duration !== undefined && (
-          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+          <span style={{ marginLeft: "auto", fontSize: "var(--fs-micro)", color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
         )}
       </button>
       {expanded && (
-        <div
-          style={{
-            padding: "8px 10px",
-            color: error ? "#f87171" : "var(--text-muted)",
-            fontSize: 12,
-            lineHeight: 1.6,
-            whiteSpace: "pre-wrap",
-            background: "var(--bg-panel)",
-            borderTop: "1px solid var(--border)",
-          }}
-        >
+        // Was a hardcoded #f87171 that the palette retune could not reach.
+        <div className={`think-block__body${error ? " is-error" : ""}`}>
            {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
         </div>
       )}
@@ -818,7 +766,7 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
 }
 
 
-function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
+function ToolCallBlock({ block, result, duration, isStreaming }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean }) {
   const [expanded, setExpanded] = useState(() => isEditToolName(block.toolName));
   const inputStr = JSON.stringify(block.input, null, 2);
   const isEditTool = isEditToolName(block.toolName);
@@ -830,43 +778,28 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
     : null;
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
+  // Gated on isStreaming on purpose: a historical session with a missing result
+  // would otherwise show a spinner forever. Only a live turn can be "running".
+  const isRunning = Boolean(isStreaming) && !result;
 
   return (
-    <div
-      style={{
-        borderRadius: 7,
-        overflow: "hidden",
-        fontSize: 12,
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
-        background: isError ? "rgba(248,113,113,0.05)" : "rgba(34,197,94,0.04)",
-      }}
-    >
+    <div className={`tool-block${isError ? " tool-block--error" : isRunning ? " tool-block--running" : ""}`}>
       {/* ── Tool call header ── */}
       <button
+        className="tool-block__header"
         onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          width: "100%",
-          padding: "6px 10px",
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
-          minWidth: 0,
-        }}
+        aria-expanded={expanded}
       >
-        <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
+        {/* The tool name is the identifier, so it reads as text. Only a failure
+            takes colour — the block itself no longer signals success. */}
+        <span style={{ color: isError ? "var(--danger)" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: "var(--fs-meta)", flexShrink: 0 }}>
           {block.toolName}
         </span>
-        <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+        <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-micro)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
           {getToolPreview(block)}
         </span>
         {duration !== undefined && (
-          <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+          <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
         )}
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
           <polyline points="2 3.5 5 6.5 8 3.5" />
@@ -880,7 +813,7 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
             margin: 0,
             padding: "8px 10px",
             color: "var(--text-muted)",
-            fontSize: 12,
+            fontSize: "var(--fs-meta)",
             lineHeight: 1.5,
             overflow: "auto",
             background: "var(--bg-subtle)",
@@ -945,7 +878,7 @@ export function SplitPatchView({ text }: { text: string }) {
             minWidth: 0,
             borderTop: fileIndex === 0 ? "none" : "1px solid var(--border)",
             fontFamily: "var(--font-mono)",
-            fontSize: 12,
+            fontSize: "var(--fs-meta)",
             lineHeight: 1.55,
           }}
         >
@@ -1073,7 +1006,7 @@ function PatchTextView({ text }: { text: string }) {
   const lines = text.split(/\r?\n/);
 
   return (
-    <div style={{ maxHeight: 520, overflowY: "auto", overflowX: "hidden", fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.55, minWidth: 0 }}>
+    <div style={{ maxHeight: 520, overflowY: "auto", overflowX: "hidden", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", lineHeight: 1.55, minWidth: 0 }}>
       {lines.map((line, i) => {
         const kind =
           line.startsWith("@@") ? "hunk" :
@@ -1175,7 +1108,7 @@ function PairedResult({ text, isEmpty, isError }: {
           margin: 0,
           padding: "8px 10px",
           color: isError ? "#f87171" : (isEmpty ? "var(--text-dim)" : "var(--text-muted)"),
-          fontSize: 12,
+          fontSize: "var(--fs-meta)",
           lineHeight: 1.5,
           overflow: "auto",
           maxHeight: 400,
@@ -1199,7 +1132,7 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
   const time = formatTime(message.timestamp);
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: "var(--sp-7)" }}>
       <div
         style={{
           border: "1px solid var(--border)",
@@ -1219,23 +1152,23 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
             color: "var(--text-muted)",
           }}
         >
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-micro)", fontWeight: 650 }}>
             compaction
           </span>
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
+          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: "var(--fs-micro)" }}>{time}</span>}
         </div>
 
         <div style={{ padding: "11px 13px 12px" }}>
-          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}>
+          <div style={{ color: "var(--text)", fontSize: "var(--fs-title)", fontWeight: 700, lineHeight: 1.35 }}>
              {t("i18n.conversationCompacted")}
           </div>
-          <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>
+          <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: "var(--fs-body)", lineHeight: 1.5 }}>
              {t("i18n.compactionDescription")}
           </div>
           {parsedSummary.body ? (
             <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
           ) : (
-             <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noSummary")}</span>
+             <span style={{ color: "var(--text-dim)", fontSize: "var(--fs-meta)" }}>{t("i18n.noSummary")}</span>
           )}
           <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
         </div>
@@ -1322,7 +1255,7 @@ function SubagentNotifyView({
   const info = parseSubagentNotify(text);
   const transcriptId = info.artifactPath ? sessionIdFromPath(info.artifactPath) : undefined;
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: "var(--sp-7)" }}>
       <div
         style={{
           border: "1px solid rgba(34,197,94,0.35)",
@@ -1343,7 +1276,7 @@ function SubagentNotifyView({
             border: "none",
             color: "var(--text)",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: "var(--fs-meta)",
             fontWeight: 600,
             textAlign: "left",
           }}
@@ -1359,12 +1292,12 @@ function SubagentNotifyView({
         {expanded && (
           <div style={{ padding: "0 10px 8px" }}>
             {info.output && (
-              <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "var(--font-mono)" }}>
+              <div style={{ fontSize: "var(--fs-micro)", lineHeight: 1.5, color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "var(--font-mono)" }}>
                 {info.output}
               </div>
             )}
             {!info.output && (
-              <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 160, overflowY: "auto" }}>
+              <div style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 160, overflowY: "auto" }}>
                 {text}
               </div>
             )}
@@ -1382,7 +1315,7 @@ function SubagentNotifyView({
                   borderRadius: 5,
                   color: "var(--accent)",
                   cursor: "pointer",
-                  fontSize: 10,
+                  fontSize: "var(--fs-micro)",
                   fontWeight: 600,
                   letterSpacing: "0.03em",
                   textTransform: "uppercase",
@@ -1424,7 +1357,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
   };
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: "var(--sp-7)" }}>
       <div
         style={{
           border: "1px solid var(--border)",
@@ -1443,14 +1376,14 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
             borderBottom: "1px solid var(--border)",
             background: "var(--bg-panel)",
             color: "var(--text-muted)",
-            fontSize: 12,
+            fontSize: "var(--fs-meta)",
           }}
         >
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
+          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-micro)", fontWeight: 650 }}>
             {title}
           </span>
-           {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{t("i18n.hiddenExtensionMessage")}</span>}
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
+           {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: "var(--fs-micro)" }}>{t("i18n.hiddenExtensionMessage")}</span>}
+          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: "var(--fs-micro)" }}>{time}</span>}
         </div>
 
         {contentExpanded ? (
@@ -1472,7 +1405,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
                 })}
               </div>
             )}
-             {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noMessage")}</span>}
+             {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: "var(--fs-meta)" }}>{t("i18n.noMessage")}</span>}
           </div>
         ) : (
           <button
@@ -1485,7 +1418,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
               background: "transparent",
               color: "var(--text-dim)",
               cursor: "pointer",
-              fontSize: 12,
+              fontSize: "var(--fs-meta)",
               textAlign: "left",
             }}
           >
@@ -1512,7 +1445,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
                 background: "none",
                 color: copied ? "var(--accent)" : "var(--text-dim)",
                 cursor: "pointer",
-                fontSize: 11,
+                fontSize: "var(--fs-micro)",
               }}
             >
                {copied ? t("i18n.copied") : t("i18n.copy")}
@@ -1531,7 +1464,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
                 background: "none",
                 color: "var(--text-dim)",
                 cursor: "pointer",
-                fontSize: 11,
+                fontSize: "var(--fs-micro)",
               }}
             >
               {isHiddenDisplay
@@ -1549,7 +1482,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
               borderTop: "1px solid var(--border)",
               background: "var(--bg)",
               color: "var(--text-muted)",
-              fontSize: 12,
+              fontSize: "var(--fs-meta)",
               lineHeight: 1.5,
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
@@ -1608,21 +1541,92 @@ function previewText(text: string): string {
 }
 
 
+const isPreviewablePrimitive = (v: unknown): v is string | number | boolean =>
+  v !== null && (typeof v === "string" || typeof v === "number" || typeof v === "boolean");
+
+/**
+ * Keys worth showing, most informative first. Checked ahead of key order because
+ * key order in a tool's arguments is arbitrary — `spawn_subagent` can arrive as
+ * {sessionControl, tasks} or {tasks, cwd}, and the first key is meaningless.
+ */
+const PREVIEW_PREFERRED_KEYS = [
+  "command", "path", "file_path", "pattern", "query", "tool", "name", "task",
+  "describe", "search", "action", "url", "source", "code", "prompt", "message",
+  "server", "connect",
+] as const;
+
+/** Plumbing, never the point of the call. Skipped so it cannot win the preview. */
+const PREVIEW_SKIP_KEYS = new Set([
+  "cwd", "timeout", "timeoutms", "concurrency", "async", "sessioncontrol", "limit",
+  "query_scope", "ttl", "chatprogress", "index", "lines", "view", "mode",
+  "numresults", "turnbudget", "toolbudget", "agentscope", "artifacts", "context",
+  "mission", "id",
+]);
+
+/**
+ * One-line summary of a tool call's arguments.
+ *
+ * The previous version ended in `String(input[keys[0]])`, which printed
+ * "[object Object]" whenever the first argument was an object or an array of
+ * objects. Measured across 9,402 real tool calls in ~/.pi/agent/sessions that hit
+ * 85 calls (0.9%) over 12 shapes — every `mcp` call carrying an `args` object,
+ * every `ctx_batch_execute`, `spawn_subagent` and `propose_task_list`.
+ *
+ * Falling back to "first primitive in key order" removes the [object Object] but
+ * is barely better, because it surfaces noise: spawn_subagent rendered "false"
+ * from sessionControl and ctx_batch_execute rendered "180000" from timeout. Hence
+ * the preferred/skip lists, then a typed walk. Verified over the same corpus:
+ * 0 "[object Object]", 19 empty (all genuinely empty argument objects).
+ */
 function getToolPreview(block: ToolCallContent): string {
   const input = block.input;
   if (!input || typeof input !== "object") return "";
-  const keys = Object.keys(input);
+  const record = input as Record<string, unknown>;
+  const keys = Object.keys(record);
   if (keys.length === 0) return "";
 
-  // Common tool input patterns
-  if ("command" in input) return String(input.command).slice(0, 120);
-  if ("path" in input) return String(input.path).slice(0, 120);
-  if ("file_path" in input) return String(input.file_path).slice(0, 120);
-  if ("pattern" in input) return String(input.pattern).slice(0, 120);
-  if ("query" in input) return String(input.query).slice(0, 120);
+  for (const key of PREVIEW_PREFERRED_KEYS) {
+    if (key in record && isPreviewablePrimitive(record[key])) {
+      return String(record[key]).slice(0, 120);
+    }
+  }
 
-  const first = input[keys[0]];
-  return String(first).slice(0, 120);
+  const useful = keys.filter((k) => !PREVIEW_SKIP_KEYS.has(k.toLowerCase()));
+
+  for (const key of useful) {
+    if (isPreviewablePrimitive(record[key])) return String(record[key]).slice(0, 120);
+  }
+
+  // Arrays: join when they are primitives, otherwise count them — "4 commands"
+  // says more than a truncated dump of the first element.
+  for (const key of useful) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      if (value.length > 0 && value.every(isPreviewablePrimitive)) {
+        return value.join(", ").slice(0, 120);
+      }
+      return `${value.length} ${key}`;
+    }
+  }
+
+  // Nested object: surface its first meaningful scalar, e.g. mcp {args:{server}}.
+  for (const key of useful) {
+    const value = record[key];
+    if (value && typeof value === "object") {
+      for (const [innerKey, innerValue] of Object.entries(value as Record<string, unknown>)) {
+        if (isPreviewablePrimitive(innerValue) && !PREVIEW_SKIP_KEYS.has(innerKey.toLowerCase())) {
+          return `${innerKey}: ${String(innerValue)}`.slice(0, 120);
+        }
+      }
+      return `${key} {${Object.keys(value as object).slice(0, 3).join(", ")}}`.slice(0, 120);
+    }
+  }
+
+  // Everything left was skipped as plumbing; better a value than nothing.
+  for (const key of keys) {
+    if (isPreviewablePrimitive(record[key])) return String(record[key]).slice(0, 120);
+  }
+  return "";
 }
 
 function formatUsage(usage: {
@@ -1639,6 +1643,35 @@ function formatUsage(usage: {
   if (usage.cacheWrite) parts.push(`${usage.cacheWrite.toLocaleString()} cache W`);
   if (usage.cost?.total) parts.push(`$${usage.cost.total.toFixed(4)}`);
   return parts.join(" · ");
+}
+
+/**
+ * Gutter-sized usage: two short scalars instead of the full breakdown.
+ *
+ * formatUsage produces something like "702 in · 64 out · 32,512 cache R ·
+ * $0.0001" — around 40 characters, which wraps into a tall ragged stack inside
+ * the 108px rail and dominates the turn. The full string still goes on title.
+ */
+function formatUsageCompact(usage: {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: { total: number };
+}): string[] {
+  const out: string[] = [];
+  const tokens = (usage.input ?? 0) + (usage.output ?? 0);
+  if (tokens) {
+    // Million tier matters: a long context turn renders as "1348.0k tok"
+    // otherwise, which is both wide and unreadable.
+    out.push(
+      tokens >= 1_000_000 ? `${(tokens / 1_000_000).toFixed(1)}M tok`
+        : tokens >= 1000 ? `${Math.round(tokens / 1000)}k tok`
+          : `${tokens} tok`,
+    );
+  }
+  if (usage.cost?.total) out.push(`$${usage.cost.total.toFixed(4)}`);
+  return out;
 }
 
 function BashExecutionView({ message, sessionId }: { message: BashExecutionMessage; sessionId?: string }) {
@@ -1698,23 +1731,23 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
     <div style={{ margin: "6px 0" }}>
       <ToolCallBlock block={block} result={result} />
       {message.truncated && fullOutputUrl && (
-        <div style={{ padding: "4px 10px", fontSize: 11, marginTop: -1 }}>
+        <div style={{ padding: "4px 10px", fontSize: "var(--fs-micro)", marginTop: -1 }}>
           {showFullButton && (
             <button
               onClick={loadFullOutput}
               disabled={loadingFull}
-              style={{ background: "none", border: "none", color: "var(--accent)", cursor: loadingFull ? "default" : "pointer", fontSize: 11, padding: 0, textDecoration: "underline" }}
+              style={{ background: "none", border: "none", color: "var(--accent)", cursor: loadingFull ? "default" : "pointer", fontSize: "var(--fs-micro)", padding: 0, textDecoration: "underline" }}
             >
               {loadingFull ? "loading…" : "view full output"}
             </button>
           )}
           <a
             href={`${fullOutputUrl}&download=1`}
-            style={{ marginLeft: showFullButton ? 10 : 0, color: "var(--accent)", fontSize: 11, textDecoration: "underline" }}
+            style={{ marginLeft: showFullButton ? 10 : 0, color: "var(--accent)", fontSize: "var(--fs-micro)", textDecoration: "underline" }}
           >
             download full output
           </a>
-          {fullError && <span style={{ marginLeft: 6, color: "var(--text-dim)", fontSize: 11 }}>({fullError})</span>}
+          {fullError && <span style={{ marginLeft: 6, color: "var(--text-dim)", fontSize: "var(--fs-micro)" }}>({fullError})</span>}
         </div>
       )}
     </div>

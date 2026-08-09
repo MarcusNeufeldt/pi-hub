@@ -50,7 +50,9 @@ type AutoNameStatus =
   | { kind: "success" }
   | { kind: "error"; message: string };
 
-const TOP_BAR_ICON_BUTTON_SIZE = 36;
+// Top-bar icon buttons are sized by --h-topbar via .ui-btn--bar in globals.css,
+// so they follow the mobile ramp (36px desktop / 48px mobile) instead of being
+// pinned to a desktop-only 36px here.
 const LANGUAGE_MENU_WIDTH = 176;
 
 export function AppShell() {
@@ -752,15 +754,13 @@ export function AppShell() {
             onClick={onClick}
             disabled={disabled}
             title={label}
+            className="ui-btn"
             style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              height: 32, padding: 0, background: "none", border: "none",
-              borderRadius: 9, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
-              fontSize: 12, opacity: disabled ? 0.35 : 1,
-              transition: "background 0.12s, color 0.12s",
+              flex: 1,
+              gap: 6,
+              borderRadius: "var(--r-md)",
+              fontSize: "var(--fs-meta)",
             }}
-            onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {icon}
             {label}
@@ -785,7 +785,7 @@ export function AppShell() {
           transform: translateY(0);
           filter: blur(0);
           background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
-          box-shadow: 0 18px 44px rgba(37,99,235,0.16);
+          box-shadow: var(--sh-3);
         }
         100% {
           opacity: 1;
@@ -843,15 +843,7 @@ export function AppShell() {
         }
       }
     `}</style>
-    <div style={{
-      display: "flex",
-      width: "100%",
-      height: "var(--app-viewport-height, 100dvh)",
-      paddingLeft: "env(safe-area-inset-left)",
-      paddingRight: "env(safe-area-inset-right)",
-      overflow: "hidden",
-      background: "var(--bg)",
-    }}>
+    <div className="app-canvas">
       {/* Mobile overlay backdrop */}
       <div
         className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
@@ -871,10 +863,12 @@ export function AppShell() {
       <div
         ref={sidebarResizer.panelRef}
         id="session-sidebar"
-        className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
+        className={`app-pane sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
         style={{
           "--sidebar-width": `${sidebarResizer.width}px`,
-          background: "var(--bg-panel)",
+          // Was --bg-panel. As a floating pane it takes the top surface like the
+          // others; --bg-panel now only layers *inside* a pane (bars, headers).
+          background: "var(--bg)",
           borderRight: "1px solid var(--border)",
           display: "flex",
           flexDirection: "column",
@@ -897,21 +891,14 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div className="app-pane" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}>
+        <div ref={topBarRef} className="ui-bar" style={{ borderBottom: "1px solid var(--border)", height: "calc(var(--h-topbar) + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}>
           <button
+            className="ui-btn ui-btn--bar"
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
              aria-label={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-              background: "none", border: "none", borderRight: "1px solid var(--border)",
-              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {sidebarOpen ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -924,6 +911,7 @@ export function AppShell() {
             )}
           </button>
           <button
+            className="ui-btn ui-btn--bar ui-btn--quiet"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               toggleTheme({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
@@ -931,14 +919,6 @@ export function AppShell() {
              title={isDark ? translate("theme.light") : translate("theme.dark")}
              aria-label={isDark ? translate("theme.light") : translate("theme.dark")}
             aria-pressed={isDark}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-              background: "none", border: "none", borderRight: "1px solid var(--border)",
-              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {isDark ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -955,6 +935,7 @@ export function AppShell() {
             )}
            </button>
            <button
+             className="ui-btn ui-btn--bar"
              ref={languageBtnRef}
              type="button"
              onClick={() => toggleTopPanel("language")}
@@ -963,18 +944,6 @@ export function AppShell() {
              aria-haspopup="menu"
              aria-expanded={activeTopPanel === "language"}
              aria-pressed={activeTopPanel === "language"}
-             style={{
-               display: "flex", alignItems: "center", justifyContent: "center",
-               width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-               background: activeTopPanel === "language" ? "var(--bg-selected)" : "none",
-               border: "none", borderRight: "1px solid var(--border)",
-               color: activeTopPanel === "language" ? "var(--text)" : "var(--text-muted)",
-               cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-             }}
-             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-             onMouseLeave={(e) => {
-               e.currentTarget.style.color = activeTopPanel === "language" ? "var(--text)" : "var(--text-muted)";
-             }}
            >
              <svg
                width="16"
@@ -1004,19 +973,13 @@ export function AppShell() {
               }}
               title={translate("trust.resourcesNotLoaded")}
               aria-label={translate("trust.resourcesNotLoaded")}
+              // --accent as a class, not an inline colour: inline would beat the
+              // class :hover/:active rules and kill the press feedback.
+              // Untrusted project is an attention state, which is what amber
+              // means throughout this UI.
+              className="ui-btn ui-btn--accent"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                height: "100%",
-                padding: isMobile ? "0 10px" : "0 12px",
-                background: "none",
-                border: "none",
-                borderRight: "1px solid var(--border)",
-                color: "#d97706",
-                cursor: "pointer",
-                flexShrink: 0,
-                fontSize: 11,
+                fontSize: "var(--fs-micro)",
                 whiteSpace: "nowrap",
               }}
             >
@@ -1045,32 +1008,16 @@ export function AppShell() {
                 disabled={!selectedSession}
                  title={selectedSession ? translate("history.full") : translate("history.unsaved")}
                  aria-label={translate("history.full")}
+                // disabled drives the dim state; the hairline divider is dropped
+                // for the same reason as the toolbar's — spacing separates these.
+                className="ui-btn"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
                   gap: 6,
                   height: "100%",
-                  padding: "0 12px",
-                  background: "none",
-                  border: "none",
+                  borderRadius: 0,
                   borderTop: "2px solid transparent",
-                  borderRight: "1px solid var(--border)",
-                  color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
-                  cursor: selectedSession ? "pointer" : "not-allowed",
-                  opacity: selectedSession ? 1 : 0.45,
-                  flexShrink: 0,
-                  fontSize: 11,
+                  fontSize: "var(--fs-micro)",
                   whiteSpace: "nowrap",
-                  transition: "color 0.1s, background 0.1s, opacity 0.1s",
-                }}
-                onMouseEnter={(e) => {
-                  if (!selectedSession) return;
-                  e.currentTarget.style.color = "var(--text)";
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = selectedSession ? "var(--text-muted)" : "var(--text-dim)";
-                  e.currentTarget.style.background = "none";
                 }}
               >
                 <svg
@@ -1123,26 +1070,17 @@ export function AppShell() {
                     disabled={disabled}
                     title={title}
                     aria-label={label}
+                    // Error/success are resting colours, so they are classes:
+                    // #dc2626 becomes var(--danger), success takes the accent.
+                    className={`ui-btn${isError ? " ui-btn--danger" : isSuccess ? " ui-btn--accent" : ""}`}
                     style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      height: "100%", padding: "0 12px",
-                      background: "none", border: "none",
+                      gap: 6,
+                      height: "100%",
+                      borderRadius: 0,
                       borderTop: "2px solid transparent",
-                      borderRight: "1px solid var(--border)",
-                      color: isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)",
-                      cursor: disabled ? "not-allowed" : "pointer",
-                      opacity: disabled && autoNameStatus.kind !== "naming" ? 0.45 : 1,
-                      flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
-                      transition: "color 0.1s, background 0.1s, opacity 0.1s",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (disabled) return;
-                      e.currentTarget.style.color = isError ? "#dc2626" : "var(--text)";
-                      e.currentTarget.style.background = "var(--bg-hover)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)";
-                      e.currentTarget.style.background = "none";
+                      borderColor: "transparent",
+                      fontSize: "var(--fs-micro)",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {autoNameStatus.kind === "naming" ? (
@@ -1182,19 +1120,17 @@ export function AppShell() {
                  title={translate("system.prompt")}
                  aria-label={translate("system.prompt")}
                 aria-pressed={activeTopPanel === "system"}
+                // aria-pressed already drives the selected surface via .ui-btn;
+                // only the accent top-edge indicator stays inline.
+                className="ui-btn"
                 style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  height: "100%", padding: "0 12px",
-                  background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
-                  border: "none",
+                  gap: 6,
+                  height: "100%",
+                  borderRadius: 0,
                   borderTop: activeTopPanel === "system" ? "2px solid var(--accent)" : "2px solid transparent",
-                  borderRight: "1px solid var(--border)",
-                  cursor: "pointer",
-                  color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-                  fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+                  fontSize: "var(--fs-micro)",
+                  whiteSpace: "nowrap",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)"; }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}>
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -1243,22 +1179,19 @@ export function AppShell() {
                title={tooltip || translate("session.title")}
                  aria-label={translate("session.title")}
                 aria-pressed={activeTopPanel === "session"}
+                className="ui-btn"
                 style={{
                   marginLeft: "auto",
-                  display: "flex", alignItems: "center", gap: 10,
+                  gap: 10,
                   paddingLeft: 12,
                   paddingRight: rightPanelOpen ? 12 : 48,
                   height: "100%",
-                  background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
-                  border: "none",
+                  borderRadius: 0,
                   borderTop: activeTopPanel === "session" ? "2px solid var(--accent)" : "2px solid transparent",
-                  fontSize: 11, color: "var(--text-muted)",
-                  whiteSpace: "nowrap", cursor: "pointer",
+                  fontSize: "var(--fs-micro)",
+                  whiteSpace: "nowrap",
                   fontVariantNumeric: "tabular-nums",
-                  transition: "color 0.1s, background 0.1s",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)"; }}
               >
                 {isMobile && (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1339,20 +1272,8 @@ export function AppShell() {
                       }}
                       role="menuitemradio"
                       aria-checked={locale === plugin.id}
-                      style={{
-                        display: "flex", alignItems: "center",
-                        width: "100%", height: 34, padding: "0 10px",
-                        border: "none", borderRadius: 4,
-                        background: locale === plugin.id ? "var(--bg-selected)" : "transparent",
-                        color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 12,
-                        transition: "background 0.1s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (locale !== plugin.id) e.currentTarget.style.background = "var(--bg-hover)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (locale !== plugin.id) e.currentTarget.style.background = "transparent";
-                      }}
+                      className={`ui-row${locale === plugin.id ? " is-active" : ""}`}
+                      style={{ fontSize: "var(--fs-meta)" }}
                     >
                       <span>{plugin.label}</span>
                     </button>
@@ -1458,31 +1379,11 @@ export function AppShell() {
                           type="button"
                            title={copied ? translate("session.copied") : translate(field === "file" ? "session.copyFile" : "session.copyId")}
                           onClick={() => handleCopySessionField(field, value)}
+                          className={`ui-btn ui-btn--icon ui-btn--outline ${copied ? "ui-btn--accent" : "ui-btn--dim"}`}
                           style={{
                             alignSelf: "start",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 22,
-                            height: 22,
                             marginTop: -2,
-                            color: copied ? "var(--accent)" : "var(--text-dim)",
-                            background: "transparent",
-                            border: "1px solid var(--border)",
-                            borderRadius: 4,
-                            cursor: "pointer",
                             flex: "0 0 auto",
-                            transition: "color 0.12s, border-color 0.12s, background 0.12s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.color = "var(--accent)";
-                            e.currentTarget.style.borderColor = "var(--accent)";
-                            e.currentTarget.style.background = "var(--bg-hover)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.color = copied ? "var(--accent)" : "var(--text-dim)";
-                            e.currentTarget.style.borderColor = "var(--border)";
-                            e.currentTarget.style.background = "transparent";
                           }}
                         >
                           {copied ? (
@@ -1585,7 +1486,7 @@ export function AppShell() {
               role="alert"
               style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
             >
-               <div style={{ fontSize: 14, color: "#dc2626" }}>{translate("workspace.unable")}</div>
+               <div style={{ fontSize: "var(--fs-body)", color: "var(--danger)" }}>{translate("workspace.unable")}</div>
               <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontFamily: "var(--font-mono)", fontSize: 12 }}>
                 {initialNavigation.requestedCwd}
               </div>
@@ -1633,7 +1534,7 @@ export function AppShell() {
       <div
         ref={rightPanelResizer.panelRef}
         id="file-panel"
-        className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
+        className={`app-pane right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
           "--right-panel-width": `${rightPanelResizer.width}px`,
           display: "flex",
@@ -1646,38 +1547,31 @@ export function AppShell() {
         <div style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
           flexShrink: 0,
-          height: "calc(36px + env(safe-area-inset-top))",
+          height: "calc(var(--h-topbar) + env(safe-area-inset-top))",
           paddingTop: "env(safe-area-inset-top)",
-          paddingLeft: 8,
-          paddingRight: 8,
+          paddingLeft: "var(--sp-4)",
+          paddingRight: "var(--sp-4)",
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
         }}>
+          {/* One segmented control rather than two loose buttons in a bar. */}
+          <div className="ui-segmented" style={{ flex: 1 }} role="tablist">
           {(["review", "subagents"] as const).map((view) => (
             <button
               key={view}
+              role="tab"
+              className={`ui-tab${rightView === view ? " is-active" : ""}`}
+              aria-selected={rightView === view}
               onClick={() => {
                 setRightView(view);
                 setActiveFileTabId(null);
-              }}
-              style={{
-                flex: 1,
-                height: 26,
-                borderRadius: 6,
-                border: "none",
-                background: rightView === view ? "var(--bg-selected)" : "none",
-                color: rightView === view ? "var(--text)" : "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: "0.02em",
               }}
             >
               {view === "review" ? translate("panel.review") : translate("panel.subagents")}
             </button>
           ))}
+          </div>
         </div>
 
         {/* File tabs — shown when files are open */}
@@ -1738,16 +1632,19 @@ export function AppShell() {
        aria-expanded={rightPanelOpen}
        title={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
        aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
+      // aria-expanded above already drives the open/selected surface.
+      className="ui-btn ui-btn--bar"
       style={{
-        position: "fixed", top: "env(safe-area-inset-top)", right: "env(safe-area-inset-right)", zIndex: 300,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: 36, height: 36, padding: 0,
-        background: "var(--bg-panel)", border: "none", borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
-        color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
-        cursor: "pointer", transition: "color 0.12s",
+        position: "fixed",
+        top: "env(safe-area-inset-top)",
+        right: "env(safe-area-inset-right)",
+        zIndex: "var(--z-overlay)",
+        background: "var(--bg-panel)",
+        borderRight: "none",
+        borderLeft: "1px solid var(--border)",
+        borderBottom: "1px solid var(--border)",
+        borderRadius: "0 0 0 var(--r-md)",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />

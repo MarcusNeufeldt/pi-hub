@@ -17,7 +17,24 @@ const nextConfig: NextConfig = {
     "@earendil-works/pi-ai",
     "@earendil-works/pi-tui",
   ],
-  allowedDevOrigins: ['192.168.*.*', '*.tail*.ts.net', '*.ts.net', 'vita.tail914baa.ts.net'],
+  // Dev-only: governs who may fetch Next's /_next dev resources (the HMR
+  // websocket and the error-overlay font). It has no effect on production and
+  // is NOT the app's own host gate — that stays in proxy.ts /
+  // lib/request-security.ts and is unaffected by this list.
+  //
+  // Loopback and the Tailscale IP are listed because binding the dev server to
+  // 0.0.0.0 (needed to reach it from a phone) stops Next from inferring its own
+  // origin, so every host looks cross-origin and HMR silently stops working.
+  // 192.168.*.* does not cover Tailscale's 100.x range.
+  allowedDevOrigins: [
+    'localhost',
+    '127.0.0.1',
+    '192.168.*.*',
+    '100.*.*.*',
+    '*.tail*.ts.net',
+    '*.ts.net',
+    'vita.tail914baa.ts.net',
+  ],
   async headers() {
     return [
       {

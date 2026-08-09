@@ -63,29 +63,9 @@ export function SpeakButton({
       }}
       title={playing ? t("i18n.speakStop") : t("i18n.speak")}
       aria-label={playing ? t("i18n.speakStop") : t("i18n.speak")}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "3px 8px",
-        height: 22,
-        background: "none",
-        border: "none",
-        borderRadius: 5,
-        color: playing ? "var(--accent)" : "var(--text-dim)",
-        cursor: "pointer",
-        fontSize: 11,
-        fontWeight: 400,
-        whiteSpace: "nowrap",
-        transition: "color 0.12s",
-        ...style,
-      }}
-      onMouseEnter={(e) => {
-        if (!playing) e.currentTarget.style.color = "var(--accent)";
-      }}
-      onMouseLeave={(e) => {
-        if (!playing) e.currentTarget.style.color = "var(--text-dim)";
-      }}
+      // Same inline message action as copy / fork in MessageView.
+      className={`ui-btn ui-btn--hint${playing ? " ui-btn--accent" : ""}`}
+      style={style}
     >
       <svg
         width="11"

@@ -668,24 +668,32 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       onDrop={handleDrop}
     >
       {isDragOver && !sessionBusy && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex animate-[drop-zone-in_0.15s_ease_both] items-center justify-center bg-[rgba(37,99,235,0.06)] backdrop-blur-[1px]">
+        <div
+          className="pointer-events-none absolute inset-0 z-50 flex animate-[drop-zone-in_0.15s_ease_both] items-center justify-center backdrop-blur-[1px]"
+          style={{ background: "color-mix(in srgb, var(--accent) 7%, transparent)" }}
+        >
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             {[0, 0.8, 1.6].map((delay) => (
               <div
                 key={delay}
-                className="absolute h-[720px] w-[720px] rounded-full border-[1.5px] border-solid border-[rgba(37,99,235,0.5)] animate-[drop-ripple_2.4s_ease-out_infinite_backwards]"
+                className="absolute h-[720px] w-[720px] rounded-full border-[1.5px] border-solid animate-[drop-ripple_2.4s_ease-out_infinite_backwards]"
+                data-drop-ripple
                 style={{ transformOrigin: "center", animationDelay: `${delay}s` }}
               />
             ))}
           </div>
           <svg
             width="280" height="280" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg"
-            className="drop-shadow-[0_6px_18px_rgba(37,99,235,0.18)]"
+            className="drop-shadow-[0_6px_18px_rgba(9,18,22,0.18)]"
           >
-            <rect x="28" y="44" width="84" height="60" rx="8" fill="rgba(37,99,235,0.08)" stroke="rgba(37,99,235,0.50)" strokeWidth="1.8"/>
-            <path d="M36 100 L54 72 L68 88 L80 74 L104 100Z" fill="rgba(37,99,235,0.16)" stroke="rgba(37,99,235,0.40)" strokeWidth="1.4" strokeLinejoin="round"/>
-            <circle cx="96" cy="58" r="8" fill="rgba(37,99,235,0.22)" stroke="rgba(37,99,235,0.55)" strokeWidth="1.6"/>
-            <g stroke="rgba(37,99,235,0.45)" strokeWidth="1.4" strokeLinecap="round">
+            {/* Eight hardcoded rgba(37,99,235,...) blues lived here and survived
+                the palette retune untouched, because nothing in a token sweep
+                reaches SVG fill/stroke attributes. Dropping a file is an active
+                state, so it takes the accent. */}
+            <rect x="28" y="44" width="84" height="60" rx="8" fill="color-mix(in srgb, var(--accent) 8%, transparent)" stroke="color-mix(in srgb, var(--accent) 50%, transparent)" strokeWidth="1.8"/>
+            <path d="M36 100 L54 72 L68 88 L80 74 L104 100Z" fill="color-mix(in srgb, var(--accent) 16%, transparent)" stroke="color-mix(in srgb, var(--accent) 40%, transparent)" strokeWidth="1.4" strokeLinejoin="round"/>
+            <circle cx="96" cy="58" r="8" fill="color-mix(in srgb, var(--accent) 22%, transparent)" stroke="color-mix(in srgb, var(--accent) 55%, transparent)" strokeWidth="1.6"/>
+            <g stroke="color-mix(in srgb, var(--accent) 45%, transparent)" strokeWidth="1.4" strokeLinecap="round">
               <line x1="96" y1="46" x2="96" y2="43"/>
               <line x1="96" y1="70" x2="96" y2="73"/>
               <line x1="84" y1="58" x2="81" y2="58"/>
@@ -728,16 +736,21 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 fontFamily: "var(--font-mono)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
+              {/* First thing you see on a new session, so it gets to be a
+                  wordmark rather than a label: the glyph carries the accent at
+                  display size, the name sits tight beside it, and the two
+                  version numbers become quiet mono chips instead of a stack of
+                  grey text competing with it. */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: "var(--sp-4)", minWidth: 0, flex: 1, lineHeight: 1.1, overflow: "hidden" }}>
+                <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: "-0.03em", color: "var(--accent)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
+                <span style={{ fontSize: 26, color: "var(--text)", fontWeight: 700, letterSpacing: "-0.03em", flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "var(--sp-2)", flexShrink: 0 }}>
+                <span className="ui-chip ui-chip--static" style={{ color: "var(--text-muted)" }}>
+                  web&nbsp;<span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
                 </span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
+                <span className="ui-chip ui-chip--static" style={{ color: "var(--text-muted)" }}>
+                  pi&nbsp;<span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
                 </span>
               </div>
             </div>
@@ -792,7 +805,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 {t("subagents.toastTitle", { agent: completionToast.agent })}
               </div>
               {completionToast.output && (
-                <div style={{ fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={completionToast.output}>
+                <div style={{ fontSize: "var(--fs-micro)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={completionToast.output}>
                   {completionToast.output.slice(0, 140)}
                 </div>
               )}
@@ -808,7 +821,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                   borderRadius: 5,
                   color: "var(--accent)",
                   cursor: "pointer",
-                  fontSize: 9,
+                  fontSize: "var(--fs-micro)",
                   fontWeight: 600,
                   textTransform: "uppercase",
                   letterSpacing: "0.03em",
@@ -1092,7 +1105,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
         )}
       </div>
 
-      <div ref={bottomComposerRef} className="relative">
+      <div ref={bottomComposerRef} className="composer-dock">
         <div
           style={{
             padding: `0 ${CHAT_COLUMN_PADDING}px`,

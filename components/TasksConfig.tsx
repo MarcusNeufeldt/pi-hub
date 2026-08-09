@@ -14,8 +14,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useIsMobile } from "@/hooks/useIsMobile";
+// Sizing that used to branch on isMobile now lives in the Modal shell and its
+// mobile sheet rules, so this component no longer needs the breakpoint.
 import { useI18n } from "@/hooks/useI18n";
+import { Modal } from "./ui/Modal";
 import { displayCwd, getRecentProjects } from "@/lib/projects";
 import type { SessionInfo } from "@/lib/types";
 import {
@@ -201,7 +203,6 @@ export function TasksConfig({
   initialTaskId?: string | null;
   onTasksChanged?: () => void;
 }) {
-  const isMobile = useIsMobile();
   const { t } = useI18n();
 
   const [tasks, setTasks] = useState<TaskDto[]>([]);
@@ -374,41 +375,22 @@ export function TasksConfig({
   }
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.35)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        style={{
-          width: isMobile ? "calc(100vw - 16px)" : 860,
-          maxWidth: "calc(100vw - 16px)",
-          height: isMobile ? "calc(100dvh - 16px)" : "78vh",
-          maxHeight: "calc(100dvh - 16px)",
-          background: "var(--bg)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-          overflow: "hidden",
-        }}
-      >
+    <Modal
+      open
+      onClose={onClose}
+      title={t("task.title")}
+      width={860}
+      height="78vh"
+      padded={false}
+      head={(
         <Header
           title={t("task.title")}
           showBack={view.name !== "dashboard"}
           onBack={() => setView({ name: "dashboard" })}
           onClose={onClose}
         />
+      )}
+    >
 
         {error && (
           <div
@@ -498,8 +480,7 @@ export function TasksConfig({
             <RunsView task={view.task} />
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -520,50 +501,38 @@ function Header({
 }) {
   return (
     <div
+      className="ui-dialog__head"
       style={{
-        display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "12px 18px",
+        paddingBottom: "var(--sp-5)",
         borderBottom: "1px solid var(--border)",
-        flexShrink: 0,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-5)", minWidth: 0 }}>
         {showBack && (
           <button
+            className="ui-btn ui-btn--icon"
             onClick={onBack}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 16,
-              padding: "2px 6px",
-              marginRight: 2,
-            }}
             title="Back"
+            aria-label="Back"
           >
-            ‹
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
           </button>
         )}
-        <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
-          {title}
-        </span>
+        <h2 className="ui-dialog__title">{title}</h2>
       </div>
       <button
+        className="ui-btn ui-btn--icon"
         onClick={onClose}
-        style={{
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 20,
-          lineHeight: 1,
-          padding: "2px 6px",
-        }}
+        aria-label="Close"
+        title="Close"
       >
-        ×
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" />
+        </svg>
       </button>
     </div>
   );
@@ -940,17 +909,12 @@ function MenuItem({
   return (
     <div
       onClick={onClick}
+      className="ui-row"
       style={{
         padding: "7px 12px",
-        fontSize: 12,
-        color: danger ? "#ef4444" : "var(--text)",
-        cursor: "pointer",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "var(--bg-hover)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "none";
+        borderRadius: 0,
+        fontSize: "var(--fs-meta)",
+        color: danger ? "var(--danger)" : "var(--text)",
       }}
     >
       {label}
@@ -1241,7 +1205,7 @@ function CreateTaskView({
             {resumeMode && resumeSessionPath && (
               <div
                 style={{
-                  fontSize: 10,
+                  fontSize: "var(--fs-micro)",
                   color: "var(--text-dim)",
                   marginTop: 4,
                   fontFamily: "var(--font-mono)",
@@ -1811,18 +1775,11 @@ function RunCard({
     >
       <div
         onClick={onToggle}
+        className="ui-row"
         style={{
-          display: "flex",
-          alignItems: "center",
           gap: 10,
           padding: "10px 12px",
-          cursor: "pointer",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--bg-hover)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "transparent";
+          borderRadius: 0,
         }}
       >
         <StatusDot color={RUN_STATUS_COLORS[run.status]} />

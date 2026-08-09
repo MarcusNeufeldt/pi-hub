@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import { Modal } from "./ui/Modal";
 import type {
   SkillInfo as Skill,
   SkillInstallScope,
@@ -134,7 +135,7 @@ function SkillDetail({
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span
             style={{
-              fontSize: 10,
+              fontSize: "var(--fs-micro)",
               padding: "1px 5px",
               borderRadius: 3,
               flexShrink: 0,
@@ -898,55 +899,20 @@ export function SkillsConfig({
   const selectedSkill = skills.find((s) => s.filePath === selected) ?? null;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.35)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        style={{
-          width: isMobile ? "calc(100vw - 16px)" : 860,
-          maxWidth: "calc(100vw - 16px)",
-          height: isMobile ? "calc(100dvh - 16px)" : "78vh",
-          maxHeight: "calc(100dvh - 16px)",
-          background: "var(--bg)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "12px 18px",
-            borderBottom: "1px solid var(--border)",
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <span
-              style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}
-            >
-               {t("common.skills")}
-            </span>
+    <Modal
+      open
+      onClose={onClose}
+      title={t("common.skills")}
+      width={860}
+      height="78vh"
+      padded={false}
+      head={(
+        <div className="ui-dialog__head" style={{ alignItems: "center", justifyContent: "space-between", paddingBottom: "var(--sp-5)", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: "var(--sp-5)", minWidth: 0 }}>
+            <h2 className="ui-dialog__title">{t("common.skills")}</h2>
             <code
               style={{
-                fontSize: 11,
+                fontSize: "var(--fs-micro)",
                 color: "var(--text-muted)",
                 fontFamily: "var(--font-mono)",
                 maxWidth: 320,
@@ -959,20 +925,18 @@ export function SkillsConfig({
             </code>
           </div>
           <button
+            className="ui-btn ui-btn--icon"
             onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 20,
-              lineHeight: 1,
-              padding: "2px 6px",
-            }}
+            aria-label={t("i18n.close")}
+            title={t("i18n.close")}
           >
-            ×
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" />
+            </svg>
           </button>
         </div>
+      )}
+    >
 
         {!projectResourcesLoaded && (
           <div
@@ -1084,26 +1048,8 @@ export function SkillsConfig({
                           setSelected(skill.filePath);
                           setAddMode(false);
                         }}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 7,
-                          padding: "8px 8px",
-                          borderRadius: 5,
-                          cursor: "pointer",
-                          background: isSelected
-                            ? "var(--bg-selected)"
-                            : "none",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isSelected)
-                            e.currentTarget.style.background =
-                              "var(--bg-hover)";
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isSelected)
-                            e.currentTarget.style.background = "none";
-                        }}
+                        className={`ui-row${isSelected ? " is-active" : ""}`}
+                        style={{ gap: 7, padding: "8px 8px" }}
                       >
                         <span
                           style={{
@@ -1172,7 +1118,7 @@ export function SkillsConfig({
                           <div
                             style={{
                               padding: "4px 8px 3px",
-                              fontSize: 10,
+                              fontSize: "var(--fs-micro)",
                               fontWeight: 600,
                               color: "var(--text-dim)",
                               textTransform: "uppercase",
@@ -1196,7 +1142,7 @@ export function SkillsConfig({
                                   alignItems: "center",
                                   gap: 5,
                                   padding: "4px 8px 3px",
-                                  fontSize: 10,
+                                  fontSize: "var(--fs-micro)",
                                   fontWeight: 600,
                                   color: "var(--text-dim)",
                                   textTransform: "uppercase",
@@ -1205,7 +1151,7 @@ export function SkillsConfig({
                                   userSelect: "none",
                                 }}
                               >
-                                <span style={{ fontSize: 8 }}>
+                                <span style={{ fontSize: "var(--fs-micro)" }}>
                                   {dormantOpen ? "▾" : "▸"}
                                 </span>
                                 {t("i18n.dormant")} ({dormantSkills.length})
@@ -1230,23 +1176,12 @@ export function SkillsConfig({
             >
               <div
                 onClick={() => setAddMode(true)}
+                className={`ui-row${addMode ? " is-active" : ""}`}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
                   gap: 6,
                   padding: "7px 8px",
-                  borderRadius: 5,
-                  cursor: "pointer",
-                  background: addMode ? "var(--bg-selected)" : "none",
                   color: addMode ? "var(--accent)" : "var(--text-dim)",
-                  fontSize: 12,
-                }}
-                onMouseEnter={(e) => {
-                  if (!addMode)
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "none";
+                  fontSize: "var(--fs-meta)",
                 }}
               >
                 <svg
@@ -1394,7 +1329,6 @@ export function SkillsConfig({
              {t("i18n.close")}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

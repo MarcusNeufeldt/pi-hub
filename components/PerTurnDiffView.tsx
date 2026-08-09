@@ -231,16 +231,16 @@ export function PerTurnDiffView({
                       </button>
                     )}
                     {stats.add > 0 && (
-                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#16a34a", flexShrink: 0 }}>
+                      <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "#16a34a", flexShrink: 0 }}>
                         +{stats.add}
                       </span>
                     )}
                     {stats.del > 0 && (
-                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#ef4444", flexShrink: 0 }}>
+                      <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "#ef4444", flexShrink: 0 }}>
                         −{stats.del}
                       </span>
                     )}
-                    <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
+                    <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
                       {c.tool}
                     </span>
                   </div>

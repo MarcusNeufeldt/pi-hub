@@ -170,7 +170,9 @@ export function SidebarTasks({
   onOpenSession: (sessionId: string) => void;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(true);
+  // Collapsed by default, like Recent. The header's live light means you can see
+  // that a task is working without expanding the section.
+  const [open, setOpen] = useState(false);
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [runs, setRuns] = useState<RunSummaryDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,18 +223,36 @@ export function SidebarTasks({
     };
   }, [refresh]);
 
+  // "A task is active" means a run is in flight, not TaskDto.status === "active"
+  // — that only means un-paused, so it would light permanently for any enabled
+  // task and stop signalling anything. Both sources are checked because the runs
+  // list is filtered to entries that already have a sessionId, so a just-started
+  // run can be missing from it while task.lastRun already reports "running".
+  const hasRunningTask = tasks.some((task) => task.lastRun?.status === "running")
+    || runs.some((run) => run.status === "running");
+
   return (
     <div style={{ borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", flex: open ? "1 1 0" : "0 0 auto", minHeight: 0, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
         <button
+          className="sidebar-section__header"
           onClick={() => setOpen((value) => !value)}
-          style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, padding: "7px 10px", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", textAlign: "left" }}
+          aria-expanded={open}
+          style={{ flex: 1 }}
         >
           <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>
             <polyline points="3 2 7 5 3 8" />
           </svg>
           <span>{t("common.tasks")}</span>
-          {!loading && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>({tasks.length})</span>}
+          {!loading && <span className="sidebar-section__count">({tasks.length})</span>}
+          {hasRunningTask && (
+            <span
+              className="task-live-light"
+              role="status"
+              aria-label={t("task.runs.running")}
+              title={t("task.runs.running")}
+            />
+          )}
         </button>
         <button
           onClick={() => onOpenTasks()}

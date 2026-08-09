@@ -338,7 +338,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [homeDir, setHomeDir] = useState<string>("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projectFilter, setProjectFilter] = useState("");
-  const [recentCollapsed, setRecentCollapsed] = useState(false);
+  // Collapsed by default: the sidebar opens on projects, and Recent is a
+  // secondary list you expand when you want it.
+  const [recentCollapsed, setRecentCollapsed] = useState(true);
   const [hiddenProjects, setHiddenProjects] = useState<string[]>(() => loadHiddenProjects());
   const [confirmHideProject, setConfirmHideProject] = useState<string | null>(null);
   const [hoveredProject, setHoveredProject] = useState<string | null>(null);

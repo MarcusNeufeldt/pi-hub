@@ -374,6 +374,9 @@ export interface SubagentChild {
   events?: SubagentTimelineEvent[];
   finalOutput?: string;
   outputPath?: string;
+  /** Authoritative child artifact transcript used after foreground runs/reload. */
+  transcriptPath?: string;
+  sessionFile?: string;
   timelineSource?: string;
   timelineCursor?: number;
   timelineComplete?: boolean;
@@ -430,10 +433,10 @@ function mergeSubagentEvents(
 function sessionIdFromArtifactPath(filePath: string | undefined): string | undefined {
   if (!filePath) return undefined;
   const name = filePath.split(/[\\/]/).pop() ?? "";
-  const direct = name.match(/^session\.jsonl$/)
-    ? filePath.match(/[\\/]([0-9a-f-]{8,})[\\/]run-\d+[\\/]session\.jsonl$/i)?.[1]
-    : name.match(/^.*?_([0-9a-f-]+)\.jsonl$/i)?.[1];
-  return direct;
+  // A nested `run-N/session.jsonl` parent is the workflow run id, not the
+  // child session id. The artifact endpoint reads the real header id.
+  if (/^session\.jsonl$/i.test(name)) return undefined;
+  return name.match(/^.*?_([0-9a-f-]+)\.jsonl$/i)?.[1];
 }
 
 /**
@@ -525,6 +528,10 @@ function cleanTaskLabel(task: string | undefined): string | undefined {
   return cleaned || undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Rebuilds delegations from loaded session messages — so a page refresh
  * restores the fleet (completed runs from their results, in-flight runs
@@ -539,8 +546,6 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
   }
   const delegations: SubagentDelegation[] = [];
   const seen = new Set<string>();
-  const isRecord = (v: unknown): v is Record<string, unknown> =>
-    typeof v === "object" && v !== null && !Array.isArray(v);
   for (const m of messages) {
     if (m.role !== "assistant") continue;
     for (const block of (m as AssistantMessage).content ?? []) {
@@ -595,6 +600,21 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
                   : r.interrupted
                     ? "interrupted"
                     : "failed";
+            const artifactPaths = isRecord(r.artifactPaths) ? r.artifactPaths : undefined;
+            const outputReference = isRecord(r.outputReference) ? r.outputReference : undefined;
+            const progressSummary = isRecord(r.progressSummary) ? r.progressSummary : undefined;
+            const usage = isRecord(r.usage) ? r.usage : undefined;
+            const finalOutput = typeof r.finalOutput === "string" ? r.finalOutput : undefined;
+            const transcriptPath =
+              (typeof r.transcriptPath === "string" ? r.transcriptPath : undefined)
+              ?? (typeof artifactPaths?.transcriptPath === "string" ? artifactPaths.transcriptPath : undefined);
+            const sessionFile =
+              (typeof r.sessionFile === "string" ? r.sessionFile : undefined)
+              ?? (typeof artifactPaths?.sessionFile === "string" ? artifactPaths.sessionFile : undefined);
+            const outputPath =
+              (typeof r.savedOutputPath === "string" ? r.savedOutputPath : undefined)
+              ?? (typeof outputReference?.path === "string" ? outputReference.path : undefined)
+              ?? (typeof artifactPaths?.outputPath === "string" ? artifactPaths.outputPath : undefined);
             return {
               ...existing,
               agent,
@@ -603,8 +623,30 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
               ),
               status,
               exitCode: typeof r.exitCode === "number" ? r.exitCode : undefined,
-              recentOutput: existing?.recentOutput ?? resultOutput,
+              recentOutput:
+                existing?.recentOutput
+                ?? finalOutput?.split("\n").find((line) => line.trim())?.slice(0, 500)
+                ?? resultOutput,
               recentOutputLines: existing?.recentOutputLines ?? resultOutputLines,
+              finalOutput: finalOutput ?? existing?.finalOutput,
+              transcriptPath: transcriptPath ?? existing?.transcriptPath,
+              sessionFile: sessionFile ?? existing?.sessionFile,
+              outputPath: outputPath ?? existing?.outputPath,
+              toolCount:
+                typeof progressSummary?.toolCount === "number"
+                  ? progressSummary.toolCount
+                  : existing?.toolCount,
+              turnCount: typeof usage?.turns === "number" ? usage.turns : existing?.turnCount,
+              tokens:
+                typeof progressSummary?.tokens === "number"
+                  ? progressSummary.tokens
+                  : existing?.tokens,
+              model: typeof r.model === "string" ? r.model : existing?.model,
+              thinking: typeof r.thinking === "string" ? r.thinking : existing?.thinking,
+              durationMs:
+                typeof progressSummary?.durationMs === "number"
+                  ? progressSummary.durationMs
+                  : existing?.durationMs,
             } as SubagentChild;
           })
           .filter((c): c is SubagentChild => c !== null);
@@ -636,6 +678,9 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
       // them running so the status.json poller resumes after a refresh. Stale
       // progress rows are not real completion evidence when a run dir exists.
       const detached = Boolean(asyncDir) && !resultOutput && rrows.length === 0;
+      const transcriptSessionId = finalChildren
+        .map((child) => sessionIdFromArtifactPath(child.sessionFile))
+        .find(Boolean);
       delegations.push({
         toolCallId: tc.toolCallId,
         task,
@@ -645,6 +690,7 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
           : finalChildren,
         asyncDir,
         runId,
+        transcriptSessionId,
       });
     }
   }
@@ -717,14 +763,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const poll = async () => {
       if (polling || cancelled) return;
-      const targets = subagentsPollRef.current.filter((delegation) =>
-        delegation.asyncDir
-        && (
+      const targets = subagentsPollRef.current.filter((delegation) => {
+        const needsAsyncRun = Boolean(delegation.asyncDir) && (
           delegation.running
           || !delegation.transcriptSessionId
           || delegation.children.some((child) => child.timelineComplete === false)
-        ),
-      );
+        );
+        const needsArtifactTimeline = delegation.children.some(
+          (child) => child.transcriptPath && child.timelineComplete !== true,
+        );
+        return needsAsyncRun || needsArtifactTimeline;
+      });
       if (targets.length === 0) return;
       polling = true;
       try {
@@ -735,10 +784,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               source: child.timelineSource,
             }]),
           );
-          const query = new URLSearchParams({
-            dir: delegation.asyncDir!,
-            cursors: JSON.stringify(cursors),
-          });
+          const query = new URLSearchParams({ cursors: JSON.stringify(cursors) });
+          if (delegation.asyncDir) {
+            query.set("dir", delegation.asyncDir);
+          } else {
+            query.set("artifacts", JSON.stringify(delegation.children.map((child) => ({
+              agent: child.agent,
+              task: child.task,
+              transcriptPath: child.transcriptPath,
+              sessionFile: child.sessionFile,
+              outputReference: child.outputPath,
+            }))));
+          }
           try {
             const response = await fetch(`/api/subagent-run?${query.toString()}`);
             if (!response.ok || cancelled) return;
@@ -795,6 +852,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                   ),
                   finalOutput: view.finalOutput ?? existing?.finalOutput,
                   outputPath: view.outputPath ?? existing?.outputPath,
+                  transcriptPath: view.transcriptPath ?? existing?.transcriptPath,
+                  sessionFile: view.sessionFile ?? existing?.sessionFile,
                   timelineSource: view.timelineSource ?? existing?.timelineSource,
                   timelineCursor: view.timelineCursor,
                   timelineCompletePolls: view.timelineComplete
@@ -1880,6 +1939,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                           : r.interrupted
                             ? "interrupted"
                             : "failed";
+                    const artifactPaths = isRecord(r.artifactPaths) ? r.artifactPaths : undefined;
+                    const outputReference = isRecord(r.outputReference) ? r.outputReference : undefined;
+                    const progressSummary = isRecord(r.progressSummary) ? r.progressSummary : undefined;
+                    const usage = isRecord(r.usage) ? r.usage : undefined;
+                    const finalOutput = typeof r.finalOutput === "string" ? r.finalOutput : undefined;
+                    const transcriptPath =
+                      (typeof r.transcriptPath === "string" ? r.transcriptPath : undefined)
+                      ?? (typeof artifactPaths?.transcriptPath === "string" ? artifactPaths.transcriptPath : undefined);
+                    const sessionFile =
+                      (typeof r.sessionFile === "string" ? r.sessionFile : undefined)
+                      ?? (typeof artifactPaths?.sessionFile === "string" ? artifactPaths.sessionFile : undefined);
+                    const outputPath =
+                      (typeof r.savedOutputPath === "string" ? r.savedOutputPath : undefined)
+                      ?? (typeof outputReference?.path === "string" ? outputReference.path : undefined)
+                      ?? (typeof artifactPaths?.outputPath === "string" ? artifactPaths.outputPath : undefined);
                     return {
                       ...existing,
                       agent,
@@ -1888,8 +1962,30 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                       ),
                       status,
                       exitCode: typeof r.exitCode === "number" ? r.exitCode : existing?.exitCode,
-                      recentOutput: existing?.recentOutput ?? resultOutput,
+                      recentOutput:
+                        existing?.recentOutput
+                        ?? finalOutput?.split("\n").find((line) => line.trim())?.slice(0, 500)
+                        ?? resultOutput,
                       recentOutputLines: existing?.recentOutputLines ?? resultOutputLines,
+                      finalOutput: finalOutput ?? existing?.finalOutput,
+                      transcriptPath: transcriptPath ?? existing?.transcriptPath,
+                      sessionFile: sessionFile ?? existing?.sessionFile,
+                      outputPath: outputPath ?? existing?.outputPath,
+                      toolCount:
+                        typeof progressSummary?.toolCount === "number"
+                          ? progressSummary.toolCount
+                          : existing?.toolCount,
+                      turnCount: typeof usage?.turns === "number" ? usage.turns : existing?.turnCount,
+                      tokens:
+                        typeof progressSummary?.tokens === "number"
+                          ? progressSummary.tokens
+                          : existing?.tokens,
+                      model: typeof r.model === "string" ? r.model : existing?.model,
+                      thinking: typeof r.thinking === "string" ? r.thinking : existing?.thinking,
+                      durationMs:
+                        typeof progressSummary?.durationMs === "number"
+                          ? progressSummary.durationMs
+                          : existing?.durationMs,
                     } as SubagentChild;
                   })
                   .filter((c): c is SubagentChild => c !== null);
@@ -1942,6 +2038,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                 running: detached ? true : false,
                 asyncDir: d.asyncDir ?? asyncDir,
                 runId: d.runId ?? runId,
+                transcriptSessionId:
+                  d.transcriptSessionId
+                  ?? children.map((child) => sessionIdFromArtifactPath(child.sessionFile)).find(Boolean),
               };
             }),
           );

@@ -518,23 +518,25 @@ pre, code {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  margin: 6px 0;
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  /* Relative margin so code keeps its rhythm against prose as --fs-body grows
+     on mobile. Code sits on the inset surface rather than the page background,
+     so a block reads as a distinct object without needing a heavy edge. */
+  margin: 1em 0;
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  border-radius: var(--r-md);
   overflow: hidden;
-  background: var(--bg);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 42%, transparent);
+  background: var(--tool-bg);
 }
 .markdown-code-header {
-  padding: 5px 10px;
+  padding: var(--sp-3) var(--sp-5);
   background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
   color: var(--text-dim);
   font-size: var(--fs-micro);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-4);
 }
 .markdown-code-lang {
   color: var(--text-muted);
@@ -547,19 +549,35 @@ pre, code {
   gap: 6px;
 }
 .markdown-code-action {
+  display: inline-flex;
+  align-items: center;
+  /* Tappable on a phone: these were 2px-padded text with no minimum box. */
+  min-height: var(--h-ctl-sm);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  padding: 2px var(--sp-4);
   background: var(--bg);
   color: var(--text-muted);
   cursor: pointer;
   font: inherit;
   font-size: var(--fs-micro);
   line-height: 1.25;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.markdown-code-action:hover:not(:disabled) {
+.markdown-code-action:active:not(:disabled) {
+  background: var(--bg-selected);
   color: var(--text);
-  border-color: color-mix(in srgb, var(--border) 70%, var(--text-muted));
+}
+.markdown-code-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* Guarded, so the hover state does not stick after a tap on touch. */
+@media (hover: hover) {
+  .markdown-code-action:hover:not(:disabled) {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
 }
 .markdown-code-action:disabled {
   color: var(--text-dim);

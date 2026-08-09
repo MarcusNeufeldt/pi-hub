@@ -18,6 +18,13 @@ test("does not register row-level session deletion shortcuts", () => {
   assert.doesNotMatch(sessionItemSource, /tabIndex=\{0\}/);
 });
 
+test("filters subagent sessions from visible lists without breaking direct transcript restore", () => {
+  assert.match(source, /allSessions\.filter\(\(session\) => !isSubagentSession\(session\)\)/);
+  assert.match(source, /const recentProjects = getRecentProjects\(sidebarSessions\)/);
+  assert.match(source, /const recentSessions = \[\.\.\.sidebarSessions\]/);
+  assert.match(source, /const target = allSessions\.find\(\(s\) => s\.id === initialSessionId\)/);
+});
+
 test("polls running sessions only while the tab is visible", () => {
   assert.doesNotMatch(source, /new EventSource\("\/api\/agent\/running\/events"\)/);
   assert.match(source, /fetch\("\/api\/agent\/running"/);

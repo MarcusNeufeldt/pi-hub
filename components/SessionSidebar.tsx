@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
 import { loadHiddenProjects, saveHiddenProjects } from "@/lib/project-visibility";
+import { isSubagentSession } from "@/lib/session-visibility";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 
@@ -388,6 +389,10 @@ function PiWebTitle() {
 export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
+  const sidebarSessions = useMemo(
+    () => allSessions.filter((session) => !isSubagentSession(session)),
+    [allSessions],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
@@ -678,10 +683,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         // Session not found — notify parent so it can show the placeholder
         onInitialRestoreDone?.();
       }
-      const projects = getRecentProjects(allSessions).filter((p) => !hiddenProjects.includes(p));
+      const projects = getRecentProjects(sidebarSessions).filter((p) => !hiddenProjects.includes(p));
       if (projects.length > 0) setSelectedCwd(projects[0]);
     }
-  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone, hiddenProjects]);
+  }, [allSessions, sidebarSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone, hiddenProjects]);
 
   const commitCustomPath = useCallback(async (candidate?: string) => {
     const path = (candidate ?? customPathValue).trim();
@@ -844,10 +849,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       if (!cwd) return cwd;
       const root = projectRootFor(cwd);
       if (root !== project) return cwd;
-      const visible = getRecentProjects(allSessions).filter((p) => p !== project);
+      const visible = getRecentProjects(sidebarSessions).filter((p) => p !== project);
       return visible[0] ?? null;
     });
-  }, [allSessions, projectRootFor]);
+  }, [sidebarSessions, projectRootFor]);
 
   const handleNewSession = useCallback(() => {
     if (!selectedCwd) return;
@@ -859,7 +864,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onNewSession?.(tempId, selectedCwd);
   }, [selectedCwd, onNewSession]);
 
-  const recentProjects = getRecentProjects(allSessions).filter((p) => !hiddenProjects.includes(p));
+  const recentProjects = getRecentProjects(sidebarSessions).filter((p) => !hiddenProjects.includes(p));
   const showProjectFilter = recentProjects.length > 8;
   const visibleProjects = projectFilter.trim()
     ? recentProjects.filter((p) => p.toLowerCase().includes(projectFilter.trim().toLowerCase()))
@@ -868,8 +873,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // Sessions of every worktree in the selected project are shown together
   const selectedProject = projectRootFor(selectedCwd);
   const filteredSessions = selectedProject
-    ? allSessions.filter((s) => (s.projectRoot ?? s.cwd) === selectedProject)
-    : allSessions;
+    ? sidebarSessions.filter((s) => (s.projectRoot ?? s.cwd) === selectedProject)
+    : sidebarSessions;
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -904,7 +909,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // All chats across every project, most recent first — the Codex-style
   // "Recent" list. Clicking one switches the workspace to its project.
-  const recentSessions = [...allSessions]
+  const recentSessions = [...sidebarSessions]
     .filter((s) => !hiddenProjects.includes(s.projectRoot ?? s.cwd))
     .sort((a, b) => b.modified.localeCompare(a.modified))
     .slice(0, 10);

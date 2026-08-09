@@ -89,7 +89,9 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
   }), [cwd, isStreaming, onOpenFile]);
 
   return (
-    <div className={["markdown-body", className].filter(Boolean).join(" ")}>
+    // is-streaming drives a caret on the last block (see app/globals.css) so text
+    // arriving from the model has a visible write head instead of just appearing.
+    <div className={["markdown-body", isStreaming ? "is-streaming" : null, className].filter(Boolean).join(" ")}>
       <ReactMarkdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={markdownRehypePlugins}

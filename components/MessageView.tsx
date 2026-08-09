@@ -756,29 +756,11 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
   };
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        overflow: "hidden",
-        fontSize: "var(--fs-ui)",
-      }}
-    >
+    <div className="think-block">
       <button
+        className="think-block__header"
         onClick={() => void toggle()}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          width: "100%",
-          padding: "6px 10px",
-          background: "var(--bg-panel)",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: "var(--fs-meta)",
-          textAlign: "left",
-        }}
+        aria-expanded={expanded}
       >
          <span>{t("i18n.thinking")}</span>
         {duration !== undefined && (
@@ -786,17 +768,8 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
         )}
       </button>
       {expanded && (
-        <div
-          style={{
-            padding: "8px 10px",
-            color: error ? "#f87171" : "var(--text-muted)",
-            fontSize: "var(--fs-meta)",
-            lineHeight: 1.6,
-            whiteSpace: "pre-wrap",
-            background: "var(--bg-panel)",
-            borderTop: "1px solid var(--border)",
-          }}
-        >
+        // Was a hardcoded #f87171 that the palette retune could not reach.
+        <div className={`think-block__body${error ? " is-error" : ""}`}>
            {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
         </div>
       )}

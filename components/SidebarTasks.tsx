@@ -93,7 +93,7 @@ function TaskRow({ task, onOpen }: { task: TaskDto; onOpen: () => void }) {
         <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, color: "var(--text)" }}>
           {task.name}
         </span>
-        <span style={{ display: "flex", gap: 6, marginTop: 2, minWidth: 0, fontSize: 10, color: "var(--text-dim)" }}>
+        <span style={{ display: "flex", gap: 6, marginTop: 2, minWidth: 0, fontSize: "var(--fs-micro)", color: "var(--text-dim)" }}>
           <span>{statusLabel}</span>
           {task.status === "active" && <span>{formatNextRun(task.nextRunAt)}</span>}
         </span>
@@ -148,7 +148,7 @@ function RecentRunRow({ run, onOpen }: { run: RunSummaryDto; onOpen: () => void 
         <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "var(--text)" }}>
           {run.taskNameSnapshot}
         </span>
-        <span style={{ display: "flex", gap: 6, marginTop: 1, fontSize: 10, color: "var(--text-dim)" }}>
+        <span style={{ display: "flex", gap: 6, marginTop: 1, fontSize: "var(--fs-micro)", color: "var(--text-dim)" }}>
           <span>{statusLabel}</span>
           <span>{formatRunTime(run)}</span>
         </span>
@@ -266,7 +266,7 @@ export function SidebarTasks({
               ))}
               {runs.length > 0 && (
                 <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--border)" }}>
-                  <div style={{ padding: "3px 14px 4px", color: "var(--text-dim)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                  <div style={{ padding: "3px 14px 4px", color: "var(--text-dim)", fontSize: "var(--fs-micro)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
                     {t("task.runs.recent")}
                   </div>
                   {runs.map((run) => (

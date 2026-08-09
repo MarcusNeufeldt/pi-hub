@@ -164,7 +164,7 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
         {/* Role badge */}
         {role && (
           <span style={{
-            fontSize: 9,
+            fontSize: "var(--fs-micro)",
             fontFamily: "var(--font-mono)",
             color: role === "user" ? "var(--accent)" : "var(--text-dim)",
             // Was the pre-reskin blue. User branches take the same neutral
@@ -184,7 +184,7 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
 
         {/* Skipped indicator */}
         {skipped > 0 && (
-          <span style={{ fontSize: 10, color: "var(--text-dim)", marginRight: 5, flexShrink: 0 }}>
+          <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", marginRight: 5, flexShrink: 0 }}>
             +{skipped}
           </span>
         )}

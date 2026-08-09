@@ -66,7 +66,7 @@ function ActivityEventRow({ event }: { event: SubagentTimelineEvent }) {
   const failed = event.phase === "failed";
   return (
     <div style={{ display: "grid", gridTemplateColumns: "46px 14px minmax(0, 1fr)", gap: 6, padding: "5px 0", borderBottom: "1px solid color-mix(in srgb, var(--border) 55%, transparent)" }}>
-      <span style={{ paddingTop: 1, fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+      <span style={{ paddingTop: 1, fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
         {formatEventTime(event.timestamp)}
       </span>
       <span style={{ paddingTop: 1, color: failed ? "#ef4444" : running ? "var(--accent)" : event.kind === "assistant" ? "var(--text-muted)" : "#4ade80" }}>
@@ -80,36 +80,36 @@ function ActivityEventRow({ event }: { event: SubagentTimelineEvent }) {
       </span>
       <div style={{ minWidth: 0 }}>
         {event.kind === "assistant" ? (
-          <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 10.5, fontWeight: 500, lineHeight: 1.5, color: "var(--text-muted)" }}>
+          <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: "var(--fs-micro)", fontWeight: 500, lineHeight: 1.5, color: "var(--text-muted)" }}>
             {event.detail}
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: event.kind === "tool" ? 600 : 500, fontFamily: event.kind === "tool" ? "var(--font-mono)" : undefined, color: running ? "var(--accent)" : "var(--text-muted)" }}>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-micro)", fontWeight: event.kind === "tool" ? 600 : 500, fontFamily: event.kind === "tool" ? "var(--font-mono)" : undefined, color: running ? "var(--accent)" : "var(--text-muted)" }}>
               {event.title}
             </span>
             {event.durationMs !== undefined && (
-              <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+              <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
                 {(event.durationMs / 1000).toFixed(event.durationMs < 10_000 ? 1 : 0)}s
               </span>
             )}
           </div>
         )}
         {event.kind !== "assistant" && event.detail && (
-          <div title={event.detail} style={{ marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+          <div title={event.detail} style={{ marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
             {event.detail}
           </div>
         )}
         {event.result && (
           <button
             onClick={() => setShowResult((value) => !value)}
-            style={{ marginTop: 3, padding: 0, background: "none", border: 0, color: "var(--text-dim)", cursor: "pointer", fontSize: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}
+            style={{ marginTop: 3, padding: 0, background: "none", border: 0, color: "var(--text-dim)", cursor: "pointer", fontSize: "var(--fs-micro)", textTransform: "uppercase", letterSpacing: "0.04em" }}
           >
             {showResult ? t("subagents.hideResult") : t("subagents.showResult")}
           </button>
         )}
         {showResult && event.result && (
-          <div style={{ marginTop: 4, maxHeight: 150, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 9, lineHeight: 1.4, fontFamily: "var(--font-mono)", color: "var(--text-dim)", background: "var(--bg-hover)", borderRadius: 5, padding: 6 }}>
+          <div style={{ marginTop: 4, maxHeight: 150, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: "var(--fs-micro)", lineHeight: 1.4, fontFamily: "var(--font-mono)", color: "var(--text-dim)", background: "var(--bg-hover)", borderRadius: 5, padding: 6 }}>
             {event.result}
           </div>
         )}
@@ -159,10 +159,10 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
           {child.agent}
         </span>
-        <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: running ? "var(--accent)" : child.status === "completed" ? "#4ade80" : "#ef4444", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: running ? "var(--accent)" : child.status === "completed" ? "#4ade80" : "#ef4444", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
           {child.status}
         </span>
-        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
+        <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
           {formatDuration(child.durationMs)}
         </span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>
@@ -176,7 +176,7 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
         </div>
       )}
       {!expanded && latestEvent && (
-        <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontSize: 10, color: latestEvent.phase === "running" ? "var(--accent)" : "var(--text-dim)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontSize: "var(--fs-micro)", color: latestEvent.phase === "running" ? "var(--accent)" : "var(--text-dim)" }}>
           {latestEvent.phase === "running" && <StatusIndicator status="running" />}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: latestEvent.kind === "tool" ? "var(--font-mono)" : undefined }}>
             {latestEvent.kind === "assistant" ? latestEvent.detail : latestEvent.title}
@@ -184,7 +184,7 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
         </div>
       )}
       {!expanded && !latestEvent && child.recentOutput && (
-        <div style={{ fontSize: 10, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.recentOutput}>
+        <div style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.recentOutput}>
           {child.recentOutput}
         </div>
       )}
@@ -192,7 +192,7 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
       {expanded && (
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 6, paddingTop: 7 }}>
           {child.task && (
-            <div style={{ marginBottom: 8, fontSize: 10, color: "var(--text-muted)", lineHeight: 1.45 }}>
+            <div style={{ marginBottom: 8, fontSize: "var(--fs-micro)", color: "var(--text-muted)", lineHeight: 1.45 }}>
               {child.task}
             </div>
           )}
@@ -208,7 +208,7 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
                     manualTabRef.current = true;
                     setTab(value);
                   }}
-                  style={{ flex: 1, padding: "4px 6px", border: 0, borderRadius: 4, background: tab === value ? "var(--bg-panel)" : "transparent", color: disabled ? "var(--text-dim)" : tab === value ? "var(--text)" : "var(--text-muted)", cursor: disabled ? "default" : "pointer", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", boxShadow: tab === value ? "0 1px 3px rgba(0,0,0,.12)" : "none" }}
+                  style={{ flex: 1, padding: "4px 6px", border: 0, borderRadius: 4, background: tab === value ? "var(--bg-panel)" : "transparent", color: disabled ? "var(--text-dim)" : tab === value ? "var(--text)" : "var(--text-muted)", cursor: disabled ? "default" : "pointer", fontSize: "var(--fs-micro)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", boxShadow: tab === value ? "0 1px 3px rgba(0,0,0,.12)" : "none" }}
                 >
                   {t(value === "activity" ? "subagents.activity" : "subagents.result")}
                   {value === "activity" && events.length > 0 ? ` ${events.length}` : ""}
@@ -228,13 +228,13 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
             >
               {events.map((event) => <ActivityEventRow key={event.id} event={event} />)}
               {events.length === 0 && child.currentTool && (
-                <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "7px 2px", fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent)" }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "7px 2px", fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--accent)" }}>
                   <StatusIndicator status="running" />
                   {child.currentTool}{child.currentToolArgs ? ` ${child.currentToolArgs}` : ""}
                 </div>
               )}
               {events.length === 0 && !child.currentTool && (
-                <div style={{ padding: "8px 2px", fontSize: 10, color: "var(--text-dim)" }}>
+                <div style={{ padding: "8px 2px", fontSize: "var(--fs-micro)", color: "var(--text-dim)" }}>
                   {hasDetails ? t("subagents.waitingActivity") : t("subagents.noActivity")}
                 </div>
               )}
@@ -245,7 +245,7 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
             <div style={{ fontSize: 11, lineHeight: 1.5, overflowWrap: "anywhere" }}>
               <MarkdownBody className="markdown-custom-message">{child.finalOutput}</MarkdownBody>
               {child.outputPath && (
-                <div title={child.outputPath} style={{ marginTop: 9, paddingTop: 7, borderTop: "1px solid var(--border)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+                <div title={child.outputPath} style={{ marginTop: 9, paddingTop: 7, borderTop: "1px solid var(--border)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
                   {t("subagents.saved")}: {child.outputPath.split(/[\\/]/).pop()}
                 </div>
               )}
@@ -255,7 +255,7 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
       )}
 
       {(child.toolCount !== undefined || child.turnCount !== undefined || child.tokens !== undefined || child.model) && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 8px", fontSize: 9, color: "var(--text-dim)", marginTop: expanded ? 8 : 4 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 8px", fontSize: "var(--fs-micro)", color: "var(--text-dim)", marginTop: expanded ? 8 : 4 }}>
           {child.tokens !== undefined && <span>{child.tokens.toLocaleString()} tok</span>}
           {child.toolCount !== undefined && <span>{child.toolCount} tools</span>}
           {child.turnCount !== undefined && <span>{child.turnCount} turns</span>}
@@ -289,7 +289,7 @@ export function SubagentsView({
           {t("subagents.title")}
         </span>
         {runningChildren > 0 && (
-          <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--accent)" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "var(--fs-micro)", color: "var(--accent)" }}>
             <StatusIndicator status="running" />
             {runningChildren} {t("subagents.running")}
           </span>
@@ -309,7 +309,7 @@ export function SubagentsView({
               borderRadius: 5,
               color: "var(--text-dim)",
               cursor: "pointer",
-              fontSize: 9,
+              fontSize: "var(--fs-micro)",
               fontWeight: 600,
               letterSpacing: "0.03em",
               textTransform: "uppercase",
@@ -335,7 +335,7 @@ export function SubagentsView({
           <div key={d.toolCallId} style={{ marginBottom: 4 }}>
             {(d.children.length > 1 || d.task) && d.task && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5, padding: "0 2px" }}>
-                <div style={{ flex: 1, minWidth: 0, fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.task}>
+                <div style={{ flex: 1, minWidth: 0, fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.task}>
                   {d.task}
                 </div>
                 {d.transcriptSessionId && onOpenTranscript && (
@@ -353,7 +353,7 @@ export function SubagentsView({
                       borderRadius: 5,
                       color: "var(--accent)",
                       cursor: "pointer",
-                      fontSize: 9,
+                      fontSize: "var(--fs-micro)",
                       fontWeight: 600,
                       letterSpacing: "0.03em",
                       textTransform: "uppercase",

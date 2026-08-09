@@ -621,9 +621,15 @@ function AssistantMessageView({
           </span>
         )}
         {message.usage && !isStreaming && (
-          <span>{formatUsage(message.usage)}</span>
+          // Compact scalars only; the full breakdown is on title so the gutter
+          // stays one short line per value instead of a wrapped block.
+          <span className="ui-rail__usage" title={formatUsage(message.usage)}>
+            {formatUsageCompact(message.usage).map((part) => (
+              <span key={part} style={{ whiteSpace: "nowrap" }}>{part}</span>
+            ))}
+          </span>
         )}
-        {time && !isStreaming && <span>{time}</span>}
+        {time && !isStreaming && <span style={{ whiteSpace: "nowrap" }}>{time}</span>}
         {isStreaming && (() => {
           let chars = 0;
           for (const b of blocks) {
@@ -1657,6 +1663,35 @@ function formatUsage(usage: {
   if (usage.cacheWrite) parts.push(`${usage.cacheWrite.toLocaleString()} cache W`);
   if (usage.cost?.total) parts.push(`$${usage.cost.total.toFixed(4)}`);
   return parts.join(" · ");
+}
+
+/**
+ * Gutter-sized usage: two short scalars instead of the full breakdown.
+ *
+ * formatUsage produces something like "702 in · 64 out · 32,512 cache R ·
+ * $0.0001" — around 40 characters, which wraps into a tall ragged stack inside
+ * the 108px rail and dominates the turn. The full string still goes on title.
+ */
+function formatUsageCompact(usage: {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: { total: number };
+}): string[] {
+  const out: string[] = [];
+  const tokens = (usage.input ?? 0) + (usage.output ?? 0);
+  if (tokens) {
+    // Million tier matters: a long context turn renders as "1348.0k tok"
+    // otherwise, which is both wide and unreadable.
+    out.push(
+      tokens >= 1_000_000 ? `${(tokens / 1_000_000).toFixed(1)}M tok`
+        : tokens >= 1000 ? `${Math.round(tokens / 1000)}k tok`
+          : `${tokens} tok`,
+    );
+  }
+  if (usage.cost?.total) out.push(`$${usage.cost.total.toFixed(4)}`);
+  return out;
 }
 
 function BashExecutionView({ message, sessionId }: { message: BashExecutionMessage; sessionId?: string }) {

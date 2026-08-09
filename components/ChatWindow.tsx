@@ -805,7 +805,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 {t("subagents.toastTitle", { agent: completionToast.agent })}
               </div>
               {completionToast.output && (
-                <div style={{ fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={completionToast.output}>
+                <div style={{ fontSize: "var(--fs-micro)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={completionToast.output}>
                   {completionToast.output.slice(0, 140)}
                 </div>
               )}
@@ -821,7 +821,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                   borderRadius: 5,
                   color: "var(--accent)",
                   cursor: "pointer",
-                  fontSize: 9,
+                  fontSize: "var(--fs-micro)",
                   fontWeight: 600,
                   textTransform: "uppercase",
                   letterSpacing: "0.03em",

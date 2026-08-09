@@ -1790,6 +1790,16 @@ span.linenumber {
   min-width: 0;
 }
 
+/* Token count and cost stack in the narrow desktop gutter and sit side by side
+   in the mobile meta row. A class rather than an inline style so both
+   breakpoints are expressible — inline flex-direction cannot be overridden by a
+   media query without !important. */
+.ui-rail__usage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
 .ui-rail__dot {
   display: inline-block;
   width: 6px;
@@ -1816,6 +1826,10 @@ span.linenumber {
     padding-top: 0;
     text-align: left;
     flex-wrap: wrap;
+  }
+  .ui-rail__usage {
+    flex-direction: row;
+    gap: var(--sp-4);
   }
 }
 

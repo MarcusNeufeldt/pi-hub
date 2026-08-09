@@ -11,45 +11,129 @@
   --color-text-dim: var(--text-dim);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-fill: var(--accent-fill);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
   --color-user-bg: var(--user-bg);
   --color-assistant-bg: var(--assistant-bg);
   --color-tool-bg: var(--tool-bg);
   --color-bg-subtle: var(--bg-subtle);
   --font-mono-font: var(--font-mono);
+  --font-sans-font: var(--font-sans);
 }
 
+/* ---------------------------------------------------------------------------
+   Palette — "ink on graphite, one amber signal".
+   Neutrals carry a consistent cool cast (hue ~195) instead of pure grey so
+   surfaces read as calibrated rather than default. The accent is amber and
+   means exactly one thing: live/active. Success and failure stay green/red.
+
+   --accent is AA-contrast against --bg in both modes, because the codebase
+   uses it interchangeably for text and for fills. --accent-fill is the more
+   saturated variant for large areas where contrast rules are non-text (3:1).
+   --------------------------------------------------------------------------- */
 :root {
-  --bg: #ffffff;
-  --bg-panel: #f5f5f5;
-  --bg-hover: #eeeeee;
-  --bg-selected: #e8e8e8;
-  --border: #e0e0e0;
-  --text: #1a1a1a;
-  --text-muted: #6b7280;
-  --text-dim: #9ca3af;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --user-bg: #eff6ff;
-  --assistant-bg: #ffffff;
-  --tool-bg: #f9fafb;
-  --bg-subtle: rgba(0,0,0,0.03);
+  --bg: #fcfdfd;
+  --bg-panel: #f2f5f6;
+  --bg-hover: #e8edef;
+  --bg-selected: #dde5e8;
+  --border: #dae2e5;
+  --text: #12191b;
+  --text-muted: #57676d;
+  --text-dim: #8a9aa0;
+  --accent: #a2650f;
+  --accent-hover: #85520b;
+  --accent-fill: #c9821f;
+  --accent-on: #ffffff;
+  --success: #157f3c;
+  --danger: #c2361f;
+  --user-bg: #edf2f4;
+  --assistant-bg: #fcfdfd;
+  --tool-bg: #f7fafb;
+  --bg-subtle: rgba(15,25,30,0.04);
 }
 
 html.dark {
-  --bg: #1a1a1a;
-  --bg-panel: #242424;
-  --bg-hover: #2e2e2e;
-  --bg-selected: #383838;
-  --border: #3a3a3a;
-  --text: #e8e8e8;
-  --text-muted: #9ca3af;
-  --text-dim: #6b7280;
-  --accent: #60a5fa;
-  --accent-hover: #93c5fd;
-  --user-bg: #1e293b;
-  --assistant-bg: #1a1a1a;
-  --tool-bg: #1f2937;
-  --bg-subtle: rgba(255,255,255,0.04);
+  --bg: #0f1416;
+  --bg-panel: #151b1e;
+  --bg-hover: #1c2427;
+  --bg-selected: #263236;
+  --border: #2a353a;
+  --text: #e4ebed;
+  --text-muted: #9baab0;
+  --text-dim: #6b7c83;
+  --accent: #f0b357;
+  --accent-hover: #f8ce8c;
+  --accent-fill: #e09c34;
+  --accent-on: #12191b;
+  --success: #4ade80;
+  --danger: #f87171;
+  --user-bg: #1b2529;
+  --assistant-bg: #0f1416;
+  --tool-bg: #131a1d;
+  --bg-subtle: rgba(190,215,222,0.05);
+}
+
+/* ---------------------------------------------------------------------------
+   Structural tokens. Type sizes are re-declared in the <=640px block below,
+   so every consumer of --fs-* gets the mobile ramp for free.
+   --------------------------------------------------------------------------- */
+:root {
+  /* Type scale. Nothing in the UI may sit below --fs-micro. */
+  --fs-micro: 11px;   /* counts, badges — never prose */
+  --fs-meta: 12px;    /* gutter metadata, tool names */
+  --fs-ui: 13px;      /* buttons, sidebar rows, menu items */
+  --fs-body: 14px;    /* markdown prose, transcript */
+  --fs-code: 13px;    /* code blocks — mono reads larger per px */
+  --fs-title: 16px;   /* panel headers, dialog titles */
+
+  /* Spacing */
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 6px;
+  --sp-4: 8px;
+  --sp-5: 12px;
+  --sp-6: 16px;
+  --sp-7: 24px;
+  --sp-8: 32px;
+
+  /* Radius */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-full: 999px;
+
+  /* Elevation */
+  --sh-1: 0 1px 2px rgba(9,18,22,0.06);
+  --sh-2: 0 4px 16px rgba(9,18,22,0.12);
+  --sh-3: 0 12px 36px rgba(9,18,22,0.20);
+
+  /* Control metrics — promoted to touch sizes on mobile */
+  --h-ctl-sm: 24px;
+  --h-ctl: 28px;
+  --h-topbar: 36px;
+  --tap: 28px;        /* minimum interactive box; becomes 44px on mobile */
+
+  /* Motion */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Stacking order — mirrors the values already used across components */
+  --z-backdrop: 199;
+  --z-drawer: 200;
+  --z-resize: 220;
+  --z-panel-backdrop: 240;
+  --z-panel: 250;
+  --z-overlay: 300;
+  --z-toast: 320;
+}
+
+html.dark {
+  --sh-1: 0 1px 2px rgba(0,0,0,0.40);
+  --sh-2: 0 4px 16px rgba(0,0,0,0.45);
+  --sh-3: 0 12px 36px rgba(0,0,0,0.55);
 }
 
 .catppuccin-file-icon {
@@ -104,9 +188,10 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
   overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -114,23 +199,37 @@ body {
   flex-direction: column;
 }
 
+/* Wider hit area than the visible thumb: the 2px transparent border is clipped
+   out of the paint but still counts for pointer targeting. */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 2px;
+  border: 2px solid transparent;
+  border-radius: var(--r-full);
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-dim);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
+/* Font stacks. IBM Plex Sans/Mono are a designed pair; the CJK and Cyrillic
+   fallbacks after them are load-bearing — the UI ships zh-CN, ja and ru, and
+   Plex covers no CJK. Never trim the tail of these lists. */
 :root {
-  --font-mono: var(--font-noto-mono), 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace, 'PingFang SC', 'Microsoft YaHei', monospace;
+  --font-sans: var(--font-plex-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'PingFang SC', 'Hiragino Sans', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --font-mono: var(--font-plex-mono), 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace,
+    'PingFang SC', 'Microsoft YaHei', monospace;
 }
 
 pre, code {
@@ -142,7 +241,7 @@ pre, code {
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
-  font-size: 14px;
+  font-size: var(--fs-body);
   line-height: 1.7;
   color: var(--text);
   word-break: break-word;
@@ -261,7 +360,8 @@ pre, code {
   border-collapse: separate;
   border-spacing: 0;
   min-width: 100%;
-  font-size: 13px;
+  /* Relative so tables track --fs-body through the mobile ramp. */
+  font-size: 0.95em;
 }
 .markdown-body th, .markdown-body td {
   border: 0;
@@ -351,7 +451,7 @@ pre, code {
   padding-top: 8px;
   border-top: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--fs-meta);
 }
 .compaction-file-details summary {
   cursor: pointer;
@@ -364,7 +464,7 @@ pre, code {
 .compaction-file-title {
   margin-bottom: 4px;
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 650;
 }
 .compaction-file-list {
@@ -376,7 +476,7 @@ pre, code {
   border-radius: 6px;
   background: var(--bg-panel);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   line-height: 1.45;
   list-style: none;
 }
@@ -404,7 +504,7 @@ pre, code {
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -428,7 +528,7 @@ pre, code {
   color: var(--text-muted);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-micro);
   line-height: 1.25;
 }
 .markdown-code-action:hover:not(:disabled) {
@@ -460,7 +560,7 @@ pre, code {
 .mermaid-block-error {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-meta);
 }
 
 .mermaid-preview-button {
@@ -511,7 +611,7 @@ pre, code {
   overflow: hidden;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -576,7 +676,7 @@ pre, code {
   height: 22px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-meta);
   line-height: 22px;
   text-align: center;
   user-select: none;
@@ -609,9 +709,8 @@ pre, code {
     padding-inline: 8px;
   }
 
-  .mermaid-zoom-title {
-    font-size: 10px;
-  }
+  /* The 10px title override that used to live here is gone on purpose: the
+     mobile type ramp raises --fs-micro instead of shrinking labels further. */
 
   .mermaid-zoom-viewport {
     padding: 12px;
@@ -677,7 +776,7 @@ pre, code {
   border: 0;
   border-left: 1px solid var(--border);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 500;
   letter-spacing: 0;
   cursor: pointer;
@@ -761,11 +860,11 @@ pre, code {
 .markdown-file-preview pre {
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   padding: 12px 16px;
   overflow-x: auto;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-code);
   margin: 12px 0;
 }
 .markdown-file-preview code {
@@ -1009,6 +1108,24 @@ span.linenumber {
 
 /* Mobile sidebar: slide in/out as overlay */
 @media (max-width: 640px) {
+  /* Mobile type ramp + touch metrics. Every consumer of these tokens scales
+     with no per-component media query. --fs-body lands on 16px, which is also
+     what stops iOS from zooming when a field takes focus (see the textarea /
+     input / select rule at the end of this block). */
+  :root {
+    --fs-micro: 12px;
+    --fs-meta: 13px;
+    --fs-ui: 15px;
+    --fs-body: 16px;
+    --fs-code: 14px;
+    --fs-title: 18px;
+
+    --h-ctl-sm: 36px;
+    --h-ctl: 44px;
+    --h-topbar: 48px;
+    --tap: 44px;
+  }
+
   .chat-stats-center {
     display: none !important;
   }
@@ -1069,9 +1186,326 @@ span.linenumber {
     flex-wrap: wrap;
     padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
   }
+  /* iOS zooms any field below 16px on focus. --fs-body is 16px in this block,
+     so this stays a single source of truth rather than a second magic number.
+     !important is retained because the fields carry inline font sizes. */
   textarea,
   input,
   select {
-    font-size: 16px !important;
+    font-size: var(--fs-body) !important;
+  }
+}
+
+/* ===========================================================================
+   Primitive class layer.
+
+   The chrome in this app is built from ~1100 inline style objects, so there is
+   no central place to restyle it. These classes are that place. They are plain
+   CSS rather than Tailwind utilities because the codebase has no Tailwind
+   conventions to build on, and because inline styles cannot express :hover,
+   :active or :focus-visible at all — which is why touch devices currently get
+   no press feedback anywhere in the UI.
+
+   Rules for using them:
+   - Every hover style sits behind @media (hover: hover) so it does not stick
+     to the element after a tap on touch devices.
+   - Every interactive primitive has a visible :focus-visible ring and an
+     :active state.
+   - Interactive boxes are at least --tap (28px desktop / 44px mobile).
+   - Sizes come from --fs-* / --sp-* / --h-* so the mobile ramp applies for
+     free. Do not reintroduce literal px here.
+   =========================================================================== */
+
+:root {
+  --rail-w: 92px;
+}
+
+.ui-btn,
+.ui-row,
+.ui-tab,
+.ui-chip {
+  font-family: inherit;
+  font-size: var(--fs-ui);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ui-btn:focus-visible,
+.ui-row:focus-visible,
+.ui-tab:focus-visible,
+.ui-chip:focus-visible,
+.ui-field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.ui-btn[disabled],
+.ui-row[disabled],
+.ui-tab[disabled],
+.ui-chip[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---- button ------------------------------------------------------------- */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: var(--tap);
+  height: var(--h-ctl);
+  padding-inline: var(--sp-5);
+  white-space: nowrap;
+}
+
+.ui-btn--icon {
+  width: var(--tap);
+  min-width: var(--tap);
+  padding-inline: 0;
+  flex-shrink: 0;
+}
+
+.ui-btn--outline {
+  border-color: var(--border);
+}
+
+.ui-btn--primary {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-on);
+  font-weight: 600;
+}
+
+.ui-btn--danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+.ui-btn--sm {
+  height: var(--h-ctl-sm);
+  padding-inline: var(--sp-4);
+  font-size: var(--fs-meta);
+}
+
+/* Active / selected state, however the component expresses it. */
+.ui-btn.is-active,
+.ui-btn[aria-pressed="true"],
+.ui-btn[aria-expanded="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+.ui-btn:active:not([disabled]) {
+  background: var(--bg-selected);
+}
+
+.ui-btn--primary:active:not([disabled]) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+@media (hover: hover) {
+  .ui-btn:hover:not([disabled]) {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .ui-btn--primary:hover:not([disabled]) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: var(--accent-on);
+  }
+  .ui-btn--danger:hover:not([disabled]) {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
+  }
+}
+
+/* ---- list row ----------------------------------------------------------- */
+.ui-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-3) var(--sp-5);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  text-align: left;
+}
+
+.ui-row.is-active {
+  background: var(--bg-selected);
+}
+
+.ui-row:active {
+  background: var(--bg-selected);
+}
+
+@media (hover: hover) {
+  .ui-row:hover {
+    background: var(--bg-hover);
+  }
+}
+
+/* ---- tab ---------------------------------------------------------------- */
+.ui-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: var(--tap);
+  height: var(--h-ctl);
+  padding-inline: var(--sp-5);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.ui-tab.is-active {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+.ui-tab:active {
+  background: var(--bg-selected);
+}
+
+@media (hover: hover) {
+  .ui-tab:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+}
+
+/* ---- field -------------------------------------------------------------- */
+.ui-field {
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-3) var(--sp-4);
+  font-family: inherit;
+  font-size: var(--fs-ui);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  transition: border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease);
+}
+
+.ui-field::placeholder {
+  color: var(--text-dim);
+}
+
+.ui-field:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* ---- chip --------------------------------------------------------------- */
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--h-ctl-sm);
+  padding-inline: var(--sp-4);
+  border-radius: var(--r-full);
+  border-color: var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}
+
+/* ---- panel header ------------------------------------------------------- */
+.ui-panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-shrink: 0;
+  min-height: var(--h-topbar);
+  padding-inline: var(--sp-4);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+
+/* ---- transcript gutter rail -------------------------------------------- */
+/* The signature element: one mono rail carrying per-turn time, model, token
+   and cost deltas, with an amber dot while the turn is live. Amber means
+   "live" everywhere in this UI and nothing else. On mobile the rail flattens
+   into a single meta line above the content instead of a column. */
+.ui-rail {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  column-gap: var(--sp-5);
+  align-items: start;
+}
+
+.ui-rail__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding-top: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-rail__body {
+  min-width: 0;
+}
+
+.ui-rail__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.ui-rail__dot.is-live {
+  background: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@media (max-width: 640px) {
+  .ui-rail {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--sp-2);
+  }
+  .ui-rail__meta {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--sp-4);
+    padding-top: 0;
+    text-align: left;
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-btn,
+  .ui-row,
+  .ui-tab,
+  .ui-chip,
+  .ui-field {
+    transition: none;
+  }
+  .ui-rail__dot.is-live {
+    animation: none;
   }
 }

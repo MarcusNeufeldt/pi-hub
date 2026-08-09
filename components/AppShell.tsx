@@ -981,14 +981,15 @@ export function AppShell() {
               }}
               title={translate("trust.resourcesNotLoaded")}
               aria-label={translate("trust.resourcesNotLoaded")}
-              className="ui-btn"
+              // --accent as a class, not an inline colour: inline would beat the
+              // class :hover/:active rules and kill the press feedback.
+              // Untrusted project is an attention state, which is what amber
+              // means throughout this UI.
+              className="ui-btn ui-btn--accent"
               style={{
                 height: "100%",
                 borderRadius: 0,
                 borderRight: "1px solid var(--border)",
-                // Untrusted project is an attention state, which is what the
-                // amber accent means throughout this UI.
-                color: "var(--accent)",
                 fontSize: "var(--fs-micro)",
                 whiteSpace: "nowrap",
               }}

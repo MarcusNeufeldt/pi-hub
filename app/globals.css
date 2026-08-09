@@ -1303,6 +1303,41 @@ span.linenumber {
   border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
+/* Resting-colour modifiers. These exist as classes rather than inline styles on
+   purpose: an inline `color` beats the class :hover/:active rules, so setting a
+   resting colour inline silently kills the interaction feedback. */
+.ui-btn--dim {
+  color: var(--text-dim);
+}
+
+.ui-btn--accent {
+  color: var(--accent);
+}
+
+@media (hover: hover) {
+  /* Accent buttons keep their meaning on hover; only the surface responds. */
+  .ui-btn--accent:hover:not([disabled]) {
+    color: var(--accent);
+  }
+}
+
+/* Destructive action that stays quiet until you reach for it. Used by the
+   session delete and worktree remove buttons, which sit inside rows and should
+   not shout red at rest. On touch there is no hover, so :active carries it. */
+.ui-btn--danger-hover:active:not([disabled]) {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
+}
+
+@media (hover: hover) {
+  .ui-btn--danger-hover:hover:not([disabled]) {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+    color: var(--danger);
+  }
+}
+
 /* Dense secondary control. min-height must be restated: the --tap floor on
    .ui-btn would otherwise win and make this identical to a normal button.
    --h-ctl-sm is 36px on mobile — below the 44px ideal, deliberately, because

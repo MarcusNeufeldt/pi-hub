@@ -2096,18 +2096,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                     setModelFilter("");
                                     if (!isActive || isAutoModelSelection) onModelChange(opt.provider, opt.modelId);
                                   }}
+                                  className={`ui-row${isActive ? " is-active" : ""}`}
+                                  aria-pressed={isActive}
                                   style={{
-                                    display: "flex", alignItems: "center", gap: 8,
-                                    width: "100%", padding: "7px 12px",
-                                    background: isActive ? "var(--bg-selected)" : "none",
-                                    border: "none",
+                                    gap: 8,
+                                    padding: "7px 12px",
+                                    borderRadius: 0,
                                     color: isActive ? "var(--text)" : "var(--text-muted)",
-                                    cursor: "pointer", fontSize: "var(--fs-meta)", textAlign: "left",
+                                    fontSize: "var(--fs-meta)",
                                     fontWeight: isActive ? 600 : 400,
                                     whiteSpace: "nowrap",
                                   }}
-                                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
                                 >
                                   {isActive
                                     ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
@@ -2262,19 +2261,22 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       return (
                         <button
                           key={lvl}
+                          // .ui-row carries background for hover/active/selected.
+                          // No inline background: it would beat the class rules
+                          // and the tapped state would stick on touch. Also
+                          // lifts the row to a 44px target on mobile.
+                          className={`ui-row${isActive ? " is-active" : ""}`}
+                          aria-pressed={isActive}
                           onClick={() => { setThinkingDropdownOpen(false); if (!isActive) onThinkingLevelChange(lvl); }}
                           style={{
-                            display: "flex", alignItems: "center", gap: 8,
-                            width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "none",
-                            border: "none",
+                            gap: 8,
+                            padding: "7px 12px",
+                            borderRadius: 0,
                             color: isActive ? "var(--text)" : "var(--text-muted)",
-                            cursor: "pointer", fontSize: "var(--fs-meta)", textAlign: "left",
+                            fontSize: "var(--fs-meta)",
                             fontWeight: isActive ? 600 : 400,
                             whiteSpace: "nowrap",
                           }}
-                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
                         >
                           {isActive
                             ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
@@ -2341,19 +2343,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       return (
                         <button
                           key={lvl}
+                          className={`ui-row${isActive ? " is-active" : ""}`}
+                          aria-pressed={isActive}
                           onClick={() => { setToolDropdownOpen(false); if (!isActive) onToolPresetChange(preset); }}
                           style={{
-                            display: "flex", alignItems: "center", gap: 8,
-                            width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "none",
-                            border: "none",
+                            gap: 8,
+                            padding: "7px 12px",
+                            borderRadius: 0,
                             color: isActive ? "var(--text)" : "var(--text-muted)",
-                            cursor: "pointer", fontSize: "var(--fs-meta)", textAlign: "left",
+                            fontSize: "var(--fs-meta)",
                             fontWeight: isActive ? 600 : 400,
                             whiteSpace: "nowrap",
                           }}
-                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
                         >
                           {isActive
                             ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
@@ -2442,29 +2443,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 onClick={onSoundToggle}
                  title={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
                  aria-label={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                  width: isMobile ? 32 : 32,
-                  height: 32,
-                  padding: 0,
-                  background: "none",
-                  border: "none",
-                  borderRadius: 9,
-                  color: soundEnabled ? "var(--text-muted)" : "var(--text-dim)",
-                  cursor: "pointer",
-                  opacity: soundEnabled ? 1 : 0.55,
-                  transition: "background 0.12s, color 0.12s, opacity 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
-                  e.currentTarget.style.opacity = "1";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "none";
-                  e.currentTarget.style.color = soundEnabled ? "var(--text-muted)" : "var(--text-dim)";
-                  e.currentTarget.style.opacity = soundEnabled ? "1" : "0.55";
-                }}
+                aria-pressed={soundEnabled}
+                // Off state is a class, not an inline colour/opacity: inline
+                // would beat the class :hover/:active and leave the control
+                // stuck at whatever the last pointer event wrote.
+                className={`ui-btn ui-btn--icon ui-btn--quiet${soundEnabled ? "" : " ui-btn--off"}`}
+                style={{ borderRadius: "var(--r-md)" }}
               >
                 {soundEnabled ? (
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2486,29 +2470,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 onClick={onNotifyTelegramToggle}
                 title={notifyTelegramEnabled ? t("chat.disableTelegramNotify") : t("chat.enableTelegramNotify")}
                 aria-label={notifyTelegramEnabled ? t("chat.disableTelegramNotify") : t("chat.enableTelegramNotify")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                  width: isMobile ? 32 : 32,
-                  height: 32,
-                  padding: 0,
-                  background: "none",
-                  border: "none",
-                  borderRadius: 9,
-                  color: notifyTelegramEnabled ? "var(--accent)" : "var(--text-dim)",
-                  cursor: "pointer",
-                  opacity: notifyTelegramEnabled ? 1 : 0.55,
-                  transition: "background 0.12s, color 0.12s, opacity 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
-                  e.currentTarget.style.opacity = "1";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "none";
-                  e.currentTarget.style.color = notifyTelegramEnabled ? "var(--accent)" : "var(--text-dim)";
-                  e.currentTarget.style.opacity = notifyTelegramEnabled ? "1" : "0.55";
-                }}
+                aria-pressed={notifyTelegramEnabled}
+                // On = accent (notifications are live), off = dimmed. Both are
+                // classes so :hover/:active still reach the element on touch.
+                className={`ui-btn ui-btn--icon ui-btn--quiet ${notifyTelegramEnabled ? "ui-btn--accent" : "ui-btn--off"}`}
+                style={{ borderRadius: "var(--r-md)" }}
               >
                 {/* Paper-plane icon; filled (accent) when enabled. */}
                 <svg width="13" height="13" viewBox="0 0 24 24" fill={notifyTelegramEnabled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

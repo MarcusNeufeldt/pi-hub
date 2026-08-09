@@ -1376,10 +1376,24 @@ span.linenumber {
   color: var(--accent);
 }
 
+/* Toggle in its off state: dimmed, and it comes back to full strength while
+   pressed or hovered so the control still feels live when disabled. */
+.ui-btn--off {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
+.ui-btn--off:active:not([disabled]) {
+  opacity: 1;
+}
+
 @media (hover: hover) {
   /* Accent buttons keep their meaning on hover; only the surface responds. */
   .ui-btn--accent:hover:not([disabled]) {
     color: var(--accent);
+  }
+  .ui-btn--off:hover:not([disabled]) {
+    opacity: 1;
   }
 }
 

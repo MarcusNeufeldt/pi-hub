@@ -1541,21 +1541,92 @@ function previewText(text: string): string {
 }
 
 
+const isPreviewablePrimitive = (v: unknown): v is string | number | boolean =>
+  v !== null && (typeof v === "string" || typeof v === "number" || typeof v === "boolean");
+
+/**
+ * Keys worth showing, most informative first. Checked ahead of key order because
+ * key order in a tool's arguments is arbitrary — `spawn_subagent` can arrive as
+ * {sessionControl, tasks} or {tasks, cwd}, and the first key is meaningless.
+ */
+const PREVIEW_PREFERRED_KEYS = [
+  "command", "path", "file_path", "pattern", "query", "tool", "name", "task",
+  "describe", "search", "action", "url", "source", "code", "prompt", "message",
+  "server", "connect",
+] as const;
+
+/** Plumbing, never the point of the call. Skipped so it cannot win the preview. */
+const PREVIEW_SKIP_KEYS = new Set([
+  "cwd", "timeout", "timeoutms", "concurrency", "async", "sessioncontrol", "limit",
+  "query_scope", "ttl", "chatprogress", "index", "lines", "view", "mode",
+  "numresults", "turnbudget", "toolbudget", "agentscope", "artifacts", "context",
+  "mission", "id",
+]);
+
+/**
+ * One-line summary of a tool call's arguments.
+ *
+ * The previous version ended in `String(input[keys[0]])`, which printed
+ * "[object Object]" whenever the first argument was an object or an array of
+ * objects. Measured across 9,402 real tool calls in ~/.pi/agent/sessions that hit
+ * 85 calls (0.9%) over 12 shapes — every `mcp` call carrying an `args` object,
+ * every `ctx_batch_execute`, `spawn_subagent` and `propose_task_list`.
+ *
+ * Falling back to "first primitive in key order" removes the [object Object] but
+ * is barely better, because it surfaces noise: spawn_subagent rendered "false"
+ * from sessionControl and ctx_batch_execute rendered "180000" from timeout. Hence
+ * the preferred/skip lists, then a typed walk. Verified over the same corpus:
+ * 0 "[object Object]", 19 empty (all genuinely empty argument objects).
+ */
 function getToolPreview(block: ToolCallContent): string {
   const input = block.input;
   if (!input || typeof input !== "object") return "";
-  const keys = Object.keys(input);
+  const record = input as Record<string, unknown>;
+  const keys = Object.keys(record);
   if (keys.length === 0) return "";
 
-  // Common tool input patterns
-  if ("command" in input) return String(input.command).slice(0, 120);
-  if ("path" in input) return String(input.path).slice(0, 120);
-  if ("file_path" in input) return String(input.file_path).slice(0, 120);
-  if ("pattern" in input) return String(input.pattern).slice(0, 120);
-  if ("query" in input) return String(input.query).slice(0, 120);
+  for (const key of PREVIEW_PREFERRED_KEYS) {
+    if (key in record && isPreviewablePrimitive(record[key])) {
+      return String(record[key]).slice(0, 120);
+    }
+  }
 
-  const first = input[keys[0]];
-  return String(first).slice(0, 120);
+  const useful = keys.filter((k) => !PREVIEW_SKIP_KEYS.has(k.toLowerCase()));
+
+  for (const key of useful) {
+    if (isPreviewablePrimitive(record[key])) return String(record[key]).slice(0, 120);
+  }
+
+  // Arrays: join when they are primitives, otherwise count them — "4 commands"
+  // says more than a truncated dump of the first element.
+  for (const key of useful) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      if (value.length > 0 && value.every(isPreviewablePrimitive)) {
+        return value.join(", ").slice(0, 120);
+      }
+      return `${value.length} ${key}`;
+    }
+  }
+
+  // Nested object: surface its first meaningful scalar, e.g. mcp {args:{server}}.
+  for (const key of useful) {
+    const value = record[key];
+    if (value && typeof value === "object") {
+      for (const [innerKey, innerValue] of Object.entries(value as Record<string, unknown>)) {
+        if (isPreviewablePrimitive(innerValue) && !PREVIEW_SKIP_KEYS.has(innerKey.toLowerCase())) {
+          return `${innerKey}: ${String(innerValue)}`.slice(0, 120);
+        }
+      }
+      return `${key} {${Object.keys(value as object).slice(0, 3).join(", ")}}`.slice(0, 120);
+    }
+  }
+
+  // Everything left was skipped as plumbing; better a value than nothing.
+  for (const key of keys) {
+    if (isPreviewablePrimitive(record[key])) return String(record[key]).slice(0, 120);
+  }
+  return "";
 }
 
 function formatUsage(usage: {

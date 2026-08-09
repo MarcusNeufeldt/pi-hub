@@ -255,19 +255,36 @@ pre, code {
   color: var(--text);
   word-break: break-word;
 }
-.markdown-body p { margin: 0 0 8px; }
+/* 0.75em rather than a flat 8px, so paragraph rhythm scales with --fs-body
+   through the mobile ramp instead of tightening as the text grows. */
+.markdown-body p { margin: 0 0 0.75em; }
 .markdown-body p:last-child { margin-bottom: 0; }
+/* Headings were 1.16 / 1.08 / 0.98em — within a hair of body text, so a long
+   answer had no scannable structure. Real steps, tighter tracking at the top of
+   the scale, and asymmetric margins: more space above a heading than below it,
+   so it binds to the text it introduces rather than floating between blocks. */
 .markdown-body h1, .markdown-body h2, .markdown-body h3,
 .markdown-body h4, .markdown-body h5, .markdown-body h6 {
-  font-weight: 600;
-  margin: 10px 0 5px;
+  font-weight: 650;
+  margin: 1.5em 0 0.5em;
   color: var(--text);
-  line-height: 1.35;
-  letter-spacing: 0;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
-.markdown-body h1 { font-size: 1.16em; }
-.markdown-body h2 { font-size: 1.08em; }
-.markdown-body h3 { font-size: 0.98em; color: color-mix(in srgb, var(--text) 88%, var(--text-muted)); }
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+.markdown-body h1 { font-size: 1.5em; }
+.markdown-body h2 { font-size: 1.28em; }
+.markdown-body h3 { font-size: 1.12em; }
+.markdown-body h4 { font-size: 1em; color: color-mix(in srgb, var(--text) 88%, var(--text-muted)); }
+.markdown-body h5, .markdown-body h6 {
+  font-size: 0.95em;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 .markdown-body ul, .markdown-body ol {
   padding-left: 22px;
   margin: 5px 0 8px;

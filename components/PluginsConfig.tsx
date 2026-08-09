@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { Modal } from "./ui/Modal";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
 
@@ -106,7 +107,7 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
         >
           <div
             style={{
-              fontSize: 10,
+              fontSize: "var(--fs-micro)",
               fontWeight: 700,
               color: "var(--text-dim)",
               textTransform: "uppercase",
@@ -133,7 +134,7 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
                 </div>
                 <div
                   style={{
-                    fontSize: 10,
+                    fontSize: "var(--fs-micro)",
                     color: "var(--text-dim)",
                     fontFamily: "var(--font-mono)",
                     overflow: "hidden",
@@ -158,7 +159,7 @@ function ScopeTag({ scope }: { scope: PluginScope }) {
   return (
     <span
       style={{
-        fontSize: 10,
+        fontSize: "var(--fs-micro)",
         padding: "1px 5px",
         borderRadius: 3,
         flexShrink: 0,
@@ -494,7 +495,7 @@ function PackageDetail({
           {pkg.disabled ? (
             <span
               style={{
-                fontSize: 10,
+                fontSize: "var(--fs-micro)",
                 padding: "1px 5px",
                 borderRadius: 3,
                 background: "rgba(120,120,120,0.12)",
@@ -506,7 +507,7 @@ function PackageDetail({
           ) : pkg.filtered && (
             <span
               style={{
-                fontSize: 10,
+                fontSize: "var(--fs-micro)",
                 padding: "1px 5px",
                 borderRadius: 3,
                 background: "rgba(245,158,11,0.12)",
@@ -753,52 +754,20 @@ export function PluginsConfig({
   const addBusy = busyKey?.startsWith("install:") ?? false;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.35)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        style={{
-          width: isMobile ? "calc(100vw - 16px)" : 860,
-          maxWidth: "calc(100vw - 16px)",
-          height: isMobile ? "calc(100dvh - 16px)" : "76vh",
-          maxHeight: "calc(100dvh - 16px)",
-          background: "var(--bg)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "12px 18px",
-            borderBottom: "1px solid var(--border)",
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
-              {t("common.plugins")}
-            </span>
+    <Modal
+      open
+      onClose={onClose}
+      title={t("common.plugins")}
+      width={860}
+      height="76vh"
+      padded={false}
+      head={(
+        <div className="ui-dialog__head" style={{ alignItems: "center", justifyContent: "space-between", paddingBottom: "var(--sp-5)", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: "var(--sp-5)", minWidth: 0 }}>
+            <h2 className="ui-dialog__title">{t("common.plugins")}</h2>
             <code
               style={{
-                fontSize: 11,
+                fontSize: "var(--fs-micro)",
                 color: "var(--text-muted)",
                 fontFamily: "var(--font-mono)",
                 overflow: "hidden",
@@ -810,20 +779,18 @@ export function PluginsConfig({
             </code>
           </div>
           <button
+            className="ui-btn ui-btn--icon"
             onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 20,
-              lineHeight: 1,
-              padding: "2px 6px",
-            }}
+            aria-label={t("i18n.close")}
+            title={t("i18n.close")}
           >
-            ×
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" />
+            </svg>
           </button>
         </div>
+      )}
+    >
 
         {!projectResourcesLoaded && (
           <div
@@ -872,7 +839,7 @@ export function PluginsConfig({
                     <div
                       style={{
                         padding: "4px 8px 3px",
-                        fontSize: 10,
+                        fontSize: "var(--fs-micro)",
                         fontWeight: 600,
                         color: "var(--text-dim)",
                         textTransform: "uppercase",
@@ -933,7 +900,7 @@ export function PluginsConfig({
                             </div>
                             <div
                               style={{
-                                fontSize: 10,
+                                fontSize: "var(--fs-micro)",
                                 color: "var(--text-dim)",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
@@ -946,7 +913,7 @@ export function PluginsConfig({
                             {(pkg.version || pkg.configuredVersion) && (
                               <div
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: "var(--fs-micro)",
                                   color: "var(--text-dim)",
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
@@ -1085,7 +1052,6 @@ export function PluginsConfig({
              {t("i18n.close")}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

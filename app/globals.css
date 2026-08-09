@@ -1282,18 +1282,29 @@ span.linenumber {
   flex-shrink: 0;
 }
 
-/* Top-bar / panel-header icon button: square, fills the bar height, hairline
-   divider on the trailing edge. Sized from --h-topbar so it grows with the bar
-   to 48px on mobile instead of staying a 36px desktop target. */
+/* Top-bar icon button. Sized from --h-topbar so it grows with the bar to 48px
+   on mobile rather than staying a 36px desktop target.
+
+   No trailing hairline: the bar used to divide every control with a 1px rule,
+   which is what made the chrome read as a 2010 toolbar. Spacing separates them
+   now, and the hover surface shows the hit area. */
 .ui-btn--bar {
-  width: var(--h-topbar);
-  min-width: var(--h-topbar);
-  height: var(--h-topbar);
-  min-height: var(--h-topbar);
+  width: calc(var(--h-topbar) - var(--sp-3));
+  min-width: calc(var(--h-topbar) - var(--sp-3));
+  height: calc(var(--h-topbar) - var(--sp-3));
+  min-height: calc(var(--h-topbar) - var(--sp-3));
   padding-inline: 0;
-  border-radius: 0;
-  border-right: 1px solid var(--border);
+  border-radius: var(--r-md);
   flex-shrink: 0;
+}
+
+/* Bar that holds them: gives the buttons room to sit as discrete targets. */
+.ui-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+  padding-inline: var(--sp-3);
 }
 
 .ui-btn--outline {

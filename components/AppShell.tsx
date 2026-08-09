@@ -901,7 +901,7 @@ export function AppShell() {
       {/* Center: chat */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: "calc(var(--h-topbar) + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}>
+        <div ref={topBarRef} className="ui-bar" style={{ borderBottom: "1px solid var(--border)", height: "calc(var(--h-topbar) + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}>
           <button
             className="ui-btn ui-btn--bar"
             onClick={handleSidebarToggle}
@@ -987,9 +987,6 @@ export function AppShell() {
               // means throughout this UI.
               className="ui-btn ui-btn--accent"
               style={{
-                height: "100%",
-                borderRadius: 0,
-                borderRight: "1px solid var(--border)",
                 fontSize: "var(--fs-micro)",
                 whiteSpace: "nowrap",
               }}

@@ -628,7 +628,7 @@ function AssistantMessageView({
         })()}
       </div>
 
-      <div className="ui-rail__body turn-surface">
+      <div className={`ui-rail__body turn-surface${isStreaming ? " turn-surface--live" : ""}`}>
       <div className="turn-blocks">
         {blockItems.map(({ block, originalIndex }) => (
           <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
@@ -713,7 +713,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} isStreaming={isStreaming} />;
   }
   return null;
 }
@@ -805,7 +805,7 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
 }
 
 
-function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
+function ToolCallBlock({ block, result, duration, isStreaming }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean }) {
   const [expanded, setExpanded] = useState(() => isEditToolName(block.toolName));
   const inputStr = JSON.stringify(block.input, null, 2);
   const isEditTool = isEditToolName(block.toolName);
@@ -817,26 +817,17 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
     : null;
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
+  // Gated on isStreaming on purpose: a historical session with a missing result
+  // would otherwise show a spinner forever. Only a live turn can be "running".
+  const isRunning = Boolean(isStreaming) && !result;
 
   return (
-    <div className={`tool-block${isError ? " tool-block--error" : ""}`}>
+    <div className={`tool-block${isError ? " tool-block--error" : isRunning ? " tool-block--running" : ""}`}>
       {/* ── Tool call header ── */}
       <button
+        className="tool-block__header"
         onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          width: "100%",
-          padding: "var(--sp-3) var(--sp-5)",
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: "var(--fs-meta)",
-          textAlign: "left",
-          minWidth: 0,
-        }}
+        aria-expanded={expanded}
       >
         {/* The tool name is the identifier, so it reads as text. Only a failure
             takes colour — the block itself no longer signals success. */}

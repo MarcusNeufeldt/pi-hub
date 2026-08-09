@@ -1510,6 +1510,132 @@ span.linenumber {
   font-weight: 600;
 }
 
+/* ---- dialog (Radix Dialog) ---------------------------------------------- */
+/* Radix supplies focus trap, Escape, scroll lock and aria wiring; this is only
+   the skin. data-state comes from Radix, so enter/exit animation is CSS. */
+.ui-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-6);
+  background: color-mix(in srgb, #000 46%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.ui-dialog {
+  width: 100%;
+  max-width: var(--dialog-w, 440px);
+  max-height: calc(var(--app-viewport-height, 100dvh) - 2 * var(--sp-6));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+}
+
+.ui-dialog:focus-visible {
+  outline: none;
+}
+
+.ui-dialog__head {
+  display: flex;
+  gap: var(--sp-5);
+  align-items: flex-start;
+  flex-shrink: 0;
+  padding: var(--sp-6) var(--sp-6) var(--sp-5);
+}
+
+.ui-dialog__title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.ui-dialog__desc {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.ui-dialog__body {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--sp-6) var(--sp-5);
+}
+
+.ui-dialog__foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  padding: var(--sp-5) var(--sp-6);
+  border-top: 1px solid var(--border);
+}
+
+@keyframes ui-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ui-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+.ui-overlay[data-state="open"] {
+  animation: ui-overlay-in var(--dur) var(--ease);
+}
+
+.ui-dialog[data-state="open"] {
+  animation: ui-dialog-in var(--dur) var(--ease);
+}
+
+/* Mobile: a dialog centred in a 375px viewport wastes the screen and puts
+   controls under the thumb's reach. Dock it to the bottom as a sheet instead. */
+@media (max-width: 640px) {
+  .ui-overlay {
+    place-items: end center;
+    padding: 0;
+  }
+  .ui-dialog {
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .ui-dialog[data-state="open"] {
+    animation: ui-sheet-in var(--dur) var(--ease);
+  }
+  /* Sheet actions share the width so both are reachable one-handed. DOM order
+     is preserved (cancel first, primary rightmost) rather than reversed. */
+  .ui-dialog__foot > .ui-btn {
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-overlay[data-state="open"],
+  .ui-dialog[data-state="open"] {
+    animation: none;
+  }
+}
+
 /* ---- composer ----------------------------------------------------------- */
 /* The one element you actually touch, so it reads as a card rather than a bar.
    :focus-within is the point of doing this in CSS: an inline style cannot

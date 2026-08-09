@@ -508,6 +508,7 @@ export const enLocale: LocalePlugin = {
     "task.detail.workspace": "Workspace",
     "task.detail.none": "—",
     "task.runs.title": "Execution History",
+    "task.runs.recent": "Recent runs",
     "task.runs.empty": "No runs yet.",
     "task.runs.started": "Started",
     "task.runs.finished": "Finished",

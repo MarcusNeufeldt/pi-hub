@@ -508,6 +508,7 @@ export const zhCNLocale: LocalePlugin = {
     "task.detail.workspace": "工作目录",
     "task.detail.none": "—",
     "task.runs.title": "执行历史",
+    "task.runs.recent": "最近运行",
     "task.runs.empty": "暂无执行记录。",
     "task.runs.started": "开始时间",
     "task.runs.finished": "结束时间",

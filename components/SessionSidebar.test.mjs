@@ -18,8 +18,8 @@ test("does not register row-level session deletion shortcuts", () => {
   assert.doesNotMatch(sessionItemSource, /tabIndex=\{0\}/);
 });
 
-test("filters subagent sessions from visible lists without breaking direct transcript restore", () => {
-  assert.match(source, /allSessions\.filter\(\(session\) => !isSubagentSession\(session\)\)/);
+test("filters worker and task-run sessions without breaking direct transcript restore", () => {
+  assert.match(source, /allSessions\.filter\(isSidebarConversationSession\)/);
   assert.match(source, /const recentProjects = getRecentProjects\(sidebarSessions\)/);
   assert.match(source, /const recentSessions = \[\.\.\.sidebarSessions\]/);
   assert.match(source, /const target = allSessions\.find\(\(s\) => s\.id === initialSessionId\)/);

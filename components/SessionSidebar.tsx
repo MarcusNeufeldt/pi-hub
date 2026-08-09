@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, typ
 import type { SessionInfo } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
 import { loadHiddenProjects, saveHiddenProjects } from "@/lib/project-visibility";
-import { isSubagentSession } from "@/lib/session-visibility";
+import { isSidebarConversationSession } from "@/lib/session-visibility";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { SidebarTasks } from "./SidebarTasks";
 
@@ -29,6 +29,7 @@ interface Props {
   onCwdChange?: (cwd: string | null, projectRoot?: string | null) => void;
   tasksRefreshKey?: number;
   onOpenTasks: (taskId?: string) => void;
+  onOpenTaskRunSession: (sessionId: string) => void;
 }
 
 interface WorktreeEntry {
@@ -324,11 +325,11 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, tasksRefreshKey, onOpenTasks }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, tasksRefreshKey, onOpenTasks, onOpenTaskRunSession }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const sidebarSessions = useMemo(
-    () => allSessions.filter((session) => !isSubagentSession(session)),
+    () => allSessions.filter(isSidebarConversationSession),
     [allSessions],
   );
   const [loading, setLoading] = useState(true);
@@ -1709,7 +1710,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         ))}
       </div>
 
-      <SidebarTasks refreshKey={tasksRefreshKey} onOpenTasks={onOpenTasks} />
+      <SidebarTasks
+        refreshKey={tasksRefreshKey}
+        onOpenTasks={onOpenTasks}
+        onOpenSession={onOpenTaskRunSession}
+      />
     </div>
   );
 }

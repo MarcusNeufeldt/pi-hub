@@ -13,3 +13,19 @@ export function isSubagentSession(
     || /[\\/]subagents[\\/]/i.test(session.path)
     || /^Parent agent:\s/i.test(firstMessage);
 }
+
+/** Scheduled task runs belong under Tasks rather than user conversations. */
+export function isTaskRunSession(
+  session: Pick<SessionInfo, "name" | "firstMessage">,
+): boolean {
+  const name = session.name?.trimStart() ?? "";
+  const firstMessage = session.firstMessage?.trimStart() ?? "";
+  return /^\[Task\]\s/.test(name)
+    || /^\[Pi Hub Scheduled Execution\]/.test(firstMessage);
+}
+
+export function isSidebarConversationSession(
+  session: Pick<SessionInfo, "name" | "path" | "firstMessage">,
+): boolean {
+  return !isSubagentSession(session) && !isTaskRunSession(session);
+}

@@ -413,7 +413,12 @@ export function AppShell() {
       if (!res.ok) return;
       const data = (await res.json()) as { sessions?: SessionInfo[] };
       const info = data.sessions?.find((s) => s.id === sessionId);
-      if (info) handleSelectSession(info);
+      if (info) {
+        // Task runs are global and may belong to a different project. Keep the
+        // selected transcript open while the sidebar syncs to that cwd.
+        suppressCwdBumpRef.current = true;
+        handleSelectSession(info);
+      }
     } catch {
       // ignore
     }
@@ -677,6 +682,7 @@ export function AppShell() {
         onCwdChange={handleCwdChange}
         tasksRefreshKey={tasksRefreshKey}
         onOpenTasks={openTasksConfig}
+        onOpenTaskRunSession={handleOpenTranscript}
       />
       <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
         {([

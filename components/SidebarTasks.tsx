@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { listTasks, type TaskDto } from "@/lib/scheduler-client";
+import {
+  listRecentRuns,
+  listTasks,
+  type RunSummaryDto,
+  type TaskDto,
+} from "@/lib/scheduler-client";
 
 const TASKS_POLL_MS = 15_000;
 
@@ -11,6 +16,26 @@ const STATUS_COLORS: Record<TaskDto["status"], string> = {
   paused: "#d97706",
   completed: "var(--text-dim)",
 };
+
+function runStatusColor(status: RunSummaryDto["status"]): string {
+  if (status === "success") return "#16a34a";
+  if (status === "failed" || status === "missed") return "#ef4444";
+  if (status === "running") return "#4ade80";
+  if (status === "queued") return "#60a5fa";
+  return "var(--text-dim)";
+}
+
+function formatRunTime(run: RunSummaryDto): string {
+  const value = run.finishedAt ?? run.startedAt ?? run.queuedAt;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
 
 function formatNextRun(value: string | null): string {
   if (!value) return "—";
@@ -80,23 +105,85 @@ function TaskRow({ task, onOpen }: { task: TaskDto; onOpen: () => void }) {
   );
 }
 
+function RecentRunRow({ run, onOpen }: { run: RunSummaryDto; onOpen: () => void }) {
+  const { t } = useI18n();
+  const statusLabel = run.status === "success"
+    ? t("task.runs.success")
+    : run.status === "failed"
+      ? t("task.runs.failed")
+      : run.status === "running"
+        ? t("task.runs.running")
+        : run.status === "queued"
+          ? t("task.runs.queued")
+          : run.status === "cancelled"
+            ? t("task.runs.cancelled")
+            : run.status === "interrupted"
+              ? t("task.runs.interrupted")
+              : run.status === "skipped"
+                ? t("task.runs.skipped")
+                : run.status === "missed"
+                  ? t("task.runs.missed")
+                  : t("task.runs.timeout");
+
+  return (
+    <button
+      onClick={onOpen}
+      title={`${run.taskNameSnapshot} · ${statusLabel}`}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px 6px 14px",
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+      onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
+      onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: runStatusColor(run.status), flexShrink: 0 }} />
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "var(--text)" }}>
+          {run.taskNameSnapshot}
+        </span>
+        <span style={{ display: "flex", gap: 6, marginTop: 1, fontSize: 10, color: "var(--text-dim)" }}>
+          <span>{statusLabel}</span>
+          <span>{formatRunTime(run)}</span>
+        </span>
+      </span>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <polyline points="3 2 7 5 3 8" />
+      </svg>
+    </button>
+  );
+}
+
 export function SidebarTasks({
   refreshKey,
   onOpenTasks,
+  onOpenSession,
 }: {
   refreshKey?: number;
   onOpenTasks: (taskId?: string) => void;
+  onOpenSession: (sessionId: string) => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(true);
   const [tasks, setTasks] = useState<TaskDto[]>([]);
+  const [runs, setRuns] = useState<RunSummaryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const result = await listTasks();
-      setTasks(result.items);
+      const [taskResult, runResult] = await Promise.all([
+        listTasks(),
+        listRecentRuns(5).catch(() => null),
+      ]);
+      setTasks(taskResult.items);
+      if (runResult) setRuns(runResult.items.filter((run) => Boolean(run.sessionId)));
       setError(false);
     } catch {
       setError(true);
@@ -168,13 +255,31 @@ export function SidebarTasks({
             <button onClick={() => void refresh()} style={{ margin: "6px 10px", padding: "6px 8px", background: "none", border: "1px solid var(--border)", borderRadius: 5, color: "#ef4444", cursor: "pointer", fontSize: 11 }}>
               {t("task.load.retry")}
             </button>
-          ) : tasks.length === 0 ? (
-            <button onClick={() => onOpenTasks()} style={{ margin: "6px 10px", padding: "8px", width: "calc(100% - 20px)", background: "var(--bg-hover)", border: "1px dashed var(--border)", borderRadius: 6, color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}>
-              {t("task.empty.create")}
-            </button>
-          ) : tasks.map((task) => (
-            <TaskRow key={task.id} task={task} onOpen={() => onOpenTasks(task.id)} />
-          ))}
+          ) : (
+            <>
+              {tasks.length === 0 ? (
+                <button onClick={() => onOpenTasks()} style={{ margin: "6px 10px", padding: "8px", width: "calc(100% - 20px)", background: "var(--bg-hover)", border: "1px dashed var(--border)", borderRadius: 6, color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}>
+                  {t("task.empty.create")}
+                </button>
+              ) : tasks.map((task) => (
+                <TaskRow key={task.id} task={task} onOpen={() => onOpenTasks(task.id)} />
+              ))}
+              {runs.length > 0 && (
+                <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ padding: "3px 14px 4px", color: "var(--text-dim)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                    {t("task.runs.recent")}
+                  </div>
+                  {runs.map((run) => (
+                    <RecentRunRow
+                      key={run.id}
+                      run={run}
+                      onOpen={() => run.sessionId && onOpenSession(run.sessionId)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

@@ -216,6 +216,12 @@ export function listRuns(
   );
 }
 
+export function listRecentRuns(
+  limit = 5,
+): Promise<{ items: RunSummaryDto[]; total: number }> {
+  return request(`/api/task-runs?limit=${encodeURIComponent(String(limit))}`);
+}
+
 export function getRun(id: string): Promise<RunDetailDto> {
   return request(`/api/task-runs/${encodeURIComponent(id)}`);
 }

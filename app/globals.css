@@ -1226,7 +1226,8 @@ span.linenumber {
    =========================================================================== */
 
 :root {
-  --rail-w: 92px;
+  /* Wide enough for a full model id at --fs-meta before the ellipsis bites. */
+  --rail-w: 108px;
 }
 
 .ui-btn,

@@ -580,24 +580,41 @@ function AssistantMessageView({
 
   return (
     <div
+      className="ui-rail"
       style={{ marginBottom: "var(--sp-7)" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Model label */}
-      <div
-        style={{
-          fontSize: "var(--fs-micro)",
-          color: "var(--text-dim)",
-          marginBottom: 4,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {message.provider && (
-          <span>{modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model}</span>
+      {/* Gutter: per-turn provenance — model, live state, token usage. Holding
+          it out of the reading column is the whole point; .ui-rail collapses
+          this to one inline row above the content on mobile. */}
+      <div className="ui-rail__meta">
+        {message.provider && (() => {
+          const label = modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model;
+          return (
+            // title carries the full id, since the gutter ellipsises long ones.
+            <span title={label} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+              {label}
+            </span>
+          );
+        })()}
+        {isStreaming && (
+          // Amber pulse = this turn is live, the one meaning amber carries. No
+          // text label: no i18n key exists for it and inventing one would need a
+          // zh-CN translation too. The existing agent-running string labels it
+          // for assistive tech instead.
+          <span
+            role="status"
+            aria-label={t("sidebar.agentRunning")}
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)" }}
+          >
+            <span className="ui-rail__dot is-live" />
+          </span>
         )}
+        {message.usage && !isStreaming && (
+          <span>{formatUsage(message.usage)}</span>
+        )}
+        {time && !isStreaming && <span>{time}</span>}
         {isStreaming && (() => {
           let chars = 0;
           for (const b of blocks) {
@@ -632,6 +649,7 @@ function AssistantMessageView({
         })()}
       </div>
 
+      <div className="ui-rail__body">
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {blockItems.map(({ block, originalIndex }) => (
           <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
@@ -659,14 +677,10 @@ function AssistantMessageView({
         </div>
       )}
 
+      {/* Actions only. Usage and timestamp moved to the gutter above. */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginTop: 4,
+        display: "flex", alignItems: "center", gap: 8, marginTop: "var(--sp-3)",
       }}>
-        {message.usage && !isStreaming && (
-          <div style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)" }}>
-            {formatUsage(message.usage)}
-          </div>
-        )}
         {textContent && !isStreaming && (
           <button
             onClick={copyContent}
@@ -710,9 +724,7 @@ function AssistantMessageView({
             }}
           />
         )}
-        {time && !isStreaming && (
-          <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", marginLeft: "auto" }}>{time}</span>
-        )}
+      </div>
       </div>
     </div>
   );

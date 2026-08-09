@@ -835,15 +835,7 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
   const isError = result?.isError ?? false;
 
   return (
-    <div
-      style={{
-        borderRadius: 7,
-        overflow: "hidden",
-        fontSize: "var(--fs-meta)",
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
-        background: isError ? "rgba(248,113,113,0.05)" : "rgba(34,197,94,0.04)",
-      }}
-    >
+    <div className={`tool-block${isError ? " tool-block--error" : ""}`}>
       {/* ── Tool call header ── */}
       <button
         onClick={() => setExpanded((v) => !v)}
@@ -852,7 +844,7 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
           alignItems: "center",
           gap: 7,
           width: "100%",
-          padding: "6px 10px",
+          padding: "var(--sp-3) var(--sp-5)",
           background: "none",
           border: "none",
           color: "var(--text-muted)",
@@ -862,7 +854,9 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
           minWidth: 0,
         }}
       >
-        <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: "var(--fs-micro)", flexShrink: 0 }}>
+        {/* The tool name is the identifier, so it reads as text. Only a failure
+            takes colour — the block itself no longer signals success. */}
+        <span style={{ color: isError ? "var(--danger)" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: "var(--fs-meta)", flexShrink: 0 }}>
           {block.toolName}
         </span>
         <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-micro)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>

@@ -1693,6 +1693,25 @@ span.linenumber {
   }
 }
 
+/* ---- tool call block ---------------------------------------------------- */
+/* Every successful tool call used to be tinted green with a green border, so a
+   normal transcript was a wall of green boxes competing with the prose. Success
+   is the overwhelmingly common case and therefore the quiet one: a neutral
+   inset surface, no visible border. Colour is reserved for failure, which is
+   the thing you actually need to spot. */
+.tool-block {
+  border-radius: var(--r-md);
+  overflow: hidden;
+  font-size: var(--fs-meta);
+  background: var(--tool-bg);
+  border: 1px solid transparent;
+}
+
+.tool-block--error {
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
 /* ---- transcript gutter rail -------------------------------------------- */
 /* The signature element: one mono rail carrying per-turn time, model, token
    and cost deltas, with an amber dot while the turn is live. Amber means

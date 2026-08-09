@@ -57,6 +57,12 @@ function TaskRow({ task, onOpen }: { task: TaskDto; onOpen: () => void }) {
     | "task.status.paused"
     | "task.status.completed");
   const lastRun = task.lastRun?.status;
+  // A run in flight is the most important thing this row can say, and it was not
+  // being said: the meta line showed task.status ("Active") plus the next-run
+  // countdown ("in 15h") even while the task was executing, and "running" existed
+  // only as a 4px sub-dot. While running, the label becomes "Running" and the
+  // countdown is suppressed — the next scheduled run is noise mid-execution.
+  const isRunning = lastRun === "running";
   const lastRunColor = lastRun === "success"
     ? "#16a34a"
     : lastRun === "failed" || lastRun === "missed"
@@ -84,8 +90,13 @@ function TaskRow({ task, onOpen }: { task: TaskDto; onOpen: () => void }) {
       onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
     >
       <span style={{ position: "relative", width: 9, height: 9, flexShrink: 0 }}>
-        <span style={{ display: "block", width: 8, height: 8, borderRadius: "50%", background: STATUS_COLORS[task.status] }} />
-        {lastRun && (
+        <span
+          className={`task-dot${isRunning ? " task-dot--running" : ""}`}
+          style={isRunning ? undefined : { background: STATUS_COLORS[task.status] }}
+        />
+        {/* The last-run sub-dot is redundant while running — the main dot is
+            already buzzing green for exactly that reason. */}
+        {lastRun && !isRunning && (
           <span style={{ position: "absolute", right: -2, bottom: -2, width: 4, height: 4, borderRadius: "50%", background: lastRunColor, border: "1px solid var(--bg-panel)" }} />
         )}
       </span>
@@ -93,9 +104,9 @@ function TaskRow({ task, onOpen }: { task: TaskDto; onOpen: () => void }) {
         <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, color: "var(--text)" }}>
           {task.name}
         </span>
-        <span style={{ display: "flex", gap: 6, marginTop: 2, minWidth: 0, fontSize: "var(--fs-micro)", color: "var(--text-dim)" }}>
-          <span>{statusLabel}</span>
-          {task.status === "active" && <span>{formatNextRun(task.nextRunAt)}</span>}
+        <span style={{ display: "flex", gap: 6, minWidth: 0, marginTop: 2, fontSize: "var(--fs-micro)", color: isRunning ? "var(--success)" : "var(--text-dim)" }}>
+          <span>{isRunning ? t("task.runs.running") : statusLabel}</span>
+          {!isRunning && task.status === "active" && <span>{formatNextRun(task.nextRunAt)}</span>}
         </span>
       </span>
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>

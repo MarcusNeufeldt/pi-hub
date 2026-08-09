@@ -1688,12 +1688,32 @@ span.linenumber {
   display: inline-block;
   width: 7px;
   height: 7px;
-  margin-left: auto;
-  margin-right: var(--sp-2);
   border-radius: var(--r-full);
   background: var(--success);
   flex-shrink: 0;
   animation: task-live-buzz 1.1s ease-in-out infinite;
+}
+
+/* Status dot on a task row. When a run is in flight it takes the same green buzz
+   as the header light, because the row previously expressed "running" only as a
+   4px sub-dot in the corner of the status dot — invisible in practice. */
+.task-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+}
+
+.task-dot--running {
+  background: var(--success);
+  animation: task-live-buzz 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-dot--running {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 30%, transparent);
+  }
 }
 
 @keyframes task-live-buzz {

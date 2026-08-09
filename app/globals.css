@@ -1300,11 +1300,6 @@ span.linenumber {
      free. Do not reintroduce literal px here.
    =========================================================================== */
 
-:root {
-  /* Wide enough for a full model id at --fs-meta before the ellipsis bites. */
-  --rail-w: 108px;
-}
-
 .ui-btn,
 .ui-row,
 .ui-tab,
@@ -2181,35 +2176,48 @@ span.linenumber {
    and cost deltas, with an amber dot while the turn is live. Amber means
    "live" everywhere in this UI and nothing else. On mobile the rail flattens
    into a single meta line above the content instead of a column. */
-.ui-rail {
-  display: grid;
-  grid-template-columns: var(--rail-w) minmax(0, 1fr);
-  column-gap: var(--sp-5);
-  align-items: start;
-}
-
-.ui-rail__meta {
+/* Per-turn provenance as a caption, replacing the two-column gutter rail.
+   The rail stacked model, tokens, cost and time as four lines in a 108px column:
+   a ragged list that competed with the content and spent permanent horizontal
+   space on reference data. One dim line of dot-separated values reads as a
+   caption and gives the content its width back. Values are separated by a
+   generated middot so no separator elements are needed. */
+.turn-meta {
   display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
   min-width: 0;
-  padding-top: var(--sp-1);
+  margin-bottom: var(--sp-3);
+  padding-inline: var(--sp-2);
   font-family: var(--font-mono);
-  font-size: var(--fs-meta);
-  line-height: 1.5;
+  font-size: var(--fs-micro);
+  line-height: 1.4;
   color: var(--text-dim);
-  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.ui-rail__body {
-  min-width: 0;
+.turn-meta--end {
+  justify-content: flex-end;
+}
+
+.turn-meta > * + *::before {
+  content: "·";
+  margin-right: var(--sp-2);
+  color: color-mix(in srgb, var(--text-dim) 55%, transparent);
+}
+
+/* The model id is the one value long enough to need truncating. */
+.turn-meta__model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
 }
 
 /* An assistant turn's content as a discrete surface. It used to sit straight on
    the pane background, so a long session read as one undifferentiated column of
-   text; each exchange is now a distinct block. The gutter deliberately stays
-   *outside* the card, on the canvas, so provenance reads as a margin note. */
+   text; each exchange is now a distinct block. */
 .turn-surface {
   background: var(--bg-turn);
   border-radius: var(--r-lg);
@@ -2283,16 +2291,10 @@ span.linenumber {
   }
 }
 
-/* Token count and cost stack in the narrow desktop gutter and sit side by side
-   in the mobile meta row. A class rather than an inline style so both
-   breakpoints are expressible — inline flex-direction cannot be overridden by a
-   media query without !important. */
-.ui-rail__usage {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-}
-
+/* Live indicator in the turn caption. Kept from the removed rail — it is the
+   only part that earned its place — but no longer named after a gutter that no
+   longer exists. The rest of the .ui-rail* rules are deleted rather than left
+   orphaned. */
 .ui-rail__dot {
   display: inline-block;
   width: 6px;
@@ -2305,25 +2307,6 @@ span.linenumber {
 .ui-rail__dot.is-live {
   background: var(--accent);
   animation: pulse 1.4s ease-in-out infinite;
-}
-
-@media (max-width: 640px) {
-  .ui-rail {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: var(--sp-2);
-  }
-  .ui-rail__meta {
-    flex-direction: row;
-    align-items: center;
-    gap: var(--sp-4);
-    padding-top: 0;
-    text-align: left;
-    flex-wrap: wrap;
-  }
-  .ui-rail__usage {
-    flex-direction: row;
-    gap: var(--sp-4);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

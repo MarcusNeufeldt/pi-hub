@@ -240,19 +240,15 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   };
 
   return (
-    // Your turns share the assistant's grid so both columns hang off one left
-    // edge; without this the rail would indent assistant content by ~120px
-    // while user bubbles spanned the full width, and nothing would line up.
     <div
-      className="ui-rail"
       style={{ marginBottom: "var(--sp-7)" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="ui-rail__meta">
-        {time && <span>{time}</span>}
-      </div>
-      <div className="ui-rail__body" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+      {/* Timestamp as a right-aligned caption over the bubble, matching the
+          assistant turn's meta line. The shared two-column grid is gone. */}
+      {time && <div className="turn-meta turn-meta--end">{time}</div>}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "85%" }}>
         <div
           style={{
@@ -553,23 +549,20 @@ function AssistantMessageView({
 
   return (
     <div
-      className="ui-rail"
       style={{ marginBottom: "var(--sp-7)" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Gutter: per-turn provenance — model, live state, token usage. Holding
-          it out of the reading column is the whole point; .ui-rail collapses
-          this to one inline row above the content on mobile. */}
-      <div className="ui-rail__meta">
+      {/* Provenance as one quiet dot-separated line, not a gutter.
+          The two-column rail this replaced stacked model, tokens, cost and time
+          as four separate lines in a 108px column — a ragged list that competed
+          with the content and cost every turn permanent horizontal space for
+          reference data you want occasionally. One line, dim and small, reads as
+          a caption; the content gets the full width back. */}
+      <div className="turn-meta">
         {message.provider && (() => {
           const label = modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model;
-          return (
-            // title carries the full id, since the gutter ellipsises long ones.
-            <span title={label} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
-              {label}
-            </span>
-          );
+          return <span className="turn-meta__model" title={label}>{label}</span>;
         })()}
         {isStreaming && (
           // Amber pulse = this turn is live, the one meaning amber carries. No
@@ -579,21 +572,16 @@ function AssistantMessageView({
           <span
             role="status"
             aria-label={t("sidebar.agentRunning")}
-            style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)" }}
+            style={{ display: "inline-flex", alignItems: "center" }}
           >
             <span className="ui-rail__dot is-live" />
           </span>
         )}
-        {message.usage && !isStreaming && (
-          // Compact scalars only; the full breakdown is on title so the gutter
-          // stays one short line per value instead of a wrapped block.
-          <span className="ui-rail__usage" title={formatUsage(message.usage)}>
-            {formatUsageCompact(message.usage).map((part) => (
-              <span key={part} style={{ whiteSpace: "nowrap" }}>{part}</span>
-            ))}
-          </span>
-        )}
-        {time && !isStreaming && <span style={{ whiteSpace: "nowrap" }}>{time}</span>}
+        {message.usage && !isStreaming && formatUsageCompact(message.usage).map((part) => (
+          // Full breakdown stays on title; the line shows the two scalars.
+          <span key={part} title={formatUsage(message.usage!)}>{part}</span>
+        ))}
+        {time && !isStreaming && <span>{time}</span>}
         {isStreaming && (() => {
           let chars = 0;
           for (const b of blocks) {
@@ -628,7 +616,7 @@ function AssistantMessageView({
         })()}
       </div>
 
-      <div className={`ui-rail__body turn-surface${isStreaming ? " turn-surface--live" : ""}`}>
+      <div className={`turn-surface${isStreaming ? " turn-surface--live" : ""}`}>
       <div className="turn-blocks">
         {blockItems.map(({ block, originalIndex }) => (
           <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />

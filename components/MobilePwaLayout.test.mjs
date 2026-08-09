@@ -22,7 +22,9 @@ test("tracks the visual viewport while the software keyboard is open", () => {
   assert.match(appShellSource, /paddingLeft: "env\(safe-area-inset-left\)"/);
   assert.match(appShellSource, /paddingRight: "env\(safe-area-inset-right\)"/);
   assert.match(appShellSource, /height: "calc\(36px \+ env\(safe-area-inset-top\)\)"/);
-  assert.match(appShellSource, /\/\* Right panel tab bar \*\/[\s\S]*?height: "calc\(36px \+ env\(safe-area-inset-top\)\)"/);
+  // Comment text drifted when the right panel gained its Review/Subagents
+  // tabs; the safe-area invariant it guards is still present.
+  assert.match(appShellSource, /\/\* Right panel view tabs[\s\S]*?height: "calc\(36px \+ env\(safe-area-inset-top\)\)"/);
   assert.match(appShellSource, /height: "var\(--app-viewport-height, 100dvh\)"/);
   assert.match(appShellSource, /right: "env\(safe-area-inset-right\)"/);
   assert.match(viewportHookSource, /window\.visualViewport/);
@@ -41,5 +43,10 @@ test("contains chat content and inputs within the mobile viewport", () => {
 });
 
 test("prevents iOS focus zoom from widening the layout", () => {
-  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?textarea,[\s\S]*?input,[\s\S]*?select \{\s*font-size: 16px !important;/);
+  // The guard is now expressed through the type scale rather than a literal:
+  // --fs-body is 16px inside the mobile block and the field rule reads it.
+  // Both halves are asserted so neither the rule nor the token value can
+  // regress on its own and silently reintroduce focus zoom.
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?textarea,[\s\S]*?input,[\s\S]*?select \{\s*font-size: var\(--fs-body\) !important;/);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?--fs-body: 16px;/);
 });

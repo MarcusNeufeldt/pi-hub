@@ -1289,8 +1289,13 @@ span.linenumber {
   border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
+/* Dense secondary control. min-height must be restated: the --tap floor on
+   .ui-btn would otherwise win and make this identical to a normal button.
+   --h-ctl-sm is 36px on mobile — below the 44px ideal, deliberately, because
+   these sit in toolbars where a 44px row would push content off a phone. */
 .ui-btn--sm {
   height: var(--h-ctl-sm);
+  min-height: var(--h-ctl-sm);
   padding-inline: var(--sp-4);
   font-size: var(--fs-meta);
 }

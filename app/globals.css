@@ -1510,6 +1510,41 @@ span.linenumber {
   font-weight: 600;
 }
 
+/* ---- composer ----------------------------------------------------------- */
+/* The one element you actually touch, so it reads as a card rather than a bar.
+   :focus-within is the point of doing this in CSS: an inline style cannot
+   express it, so the composer previously gave no focus feedback at all. */
+.composer {
+  min-width: 0;
+  display: flex;
+  gap: var(--sp-4);
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: var(--sp-5) var(--sp-5) var(--sp-5) var(--sp-6);
+  box-shadow: var(--sh-2);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: var(--sh-2), 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* The card carries the focus ring, so the textarea inside must not draw its own. */
+.composer textarea:focus,
+.composer textarea:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 640px) {
+  .composer {
+    border-radius: 16px;
+    padding: var(--sp-4);
+  }
+}
+
 /* ---- transcript gutter rail -------------------------------------------- */
 /* The signature element: one mono rail carrying per-turn time, model, token
    and cost deltas, with an amber dot while the turn is live. Amber means

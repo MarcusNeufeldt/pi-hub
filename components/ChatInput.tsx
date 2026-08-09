@@ -1741,20 +1741,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             );
           })()}
           <div
-            style={{
-              minWidth: 0,
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              background: "var(--bg)",
-              border: `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
-                ? "rgba(234,179,8,0.4)"
-                : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
-              borderRadius: 14,
-              padding: "10px 10px 10px 14px",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
-              transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
-            } as React.CSSProperties}
+            className="composer"
+            // Only the state-dependent border stays inline. A steerable stream
+            // borrows the accent, which is what amber means everywhere here:
+            // this turn is live. It used to be a one-off rgba(234,179,8,.4).
+            style={bashMode
+              ? { borderColor: "var(--border-strong)" }
+              : isStreaming && (onSteer || onFollowUp)
+                ? { borderColor: "color-mix(in srgb, var(--accent) 55%, transparent)" }
+                : undefined}
           >
           <textarea
             ref={textareaRef}
@@ -1898,15 +1893,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   alignSelf: "flex-end",
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "7px 14px",
-                  background: (value.trim() || attachedImages.length) ? "var(--accent)" : "var(--bg-panel)",
+                  // --accent-fill + --accent-on: dark ink on amber (5.9:1),
+                  // not white (3.1:1). Shadow was a stale blue rgba(37,99,235).
+                  background: (value.trim() || attachedImages.length) ? "var(--accent-fill)" : "var(--bg-panel)",
                   border: "none",
-                  borderRadius: 8,
-                  color: (value.trim() || attachedImages.length) ? "#fff" : "var(--text-dim)",
+                  borderRadius: "var(--r-md)",
+                  color: (value.trim() || attachedImages.length) ? "var(--accent-on)" : "var(--text-dim)",
                   cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
                   fontSize: "var(--fs-ui)",
                   fontWeight: 600,
                   letterSpacing: "-0.01em",
-                  boxShadow: (value.trim() || attachedImages.length) ? "0 1px 3px rgba(37,99,235,0.25)" : "none",
+                  boxShadow: (value.trim() || attachedImages.length) ? "var(--sh-1)" : "none",
                   transition: "background 0.15s, box-shadow 0.15s",
                 }}
               >

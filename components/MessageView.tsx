@@ -251,10 +251,13 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             flex: 1,
             minWidth: 0,
             background: "var(--user-bg)",
-            border: "1px solid rgba(59,130,246,0.2)",
-            borderRadius: 12,
-            padding: "8px 12px",
-            fontSize: 14,
+            // Was a stale rgba(59,130,246,.2) blue that would have survived the
+            // retune. Your own messages are not an accent state, so they take a
+            // neutral edge and let the surface tint carry the distinction.
+            border: "1px solid color-mix(in srgb, var(--border) 85%, transparent)",
+            borderRadius: 16,
+            padding: "10px 14px",
+            fontSize: "var(--fs-body)",
             lineHeight: 1.6,
             color: "var(--text)",
             wordBreak: "break-word",

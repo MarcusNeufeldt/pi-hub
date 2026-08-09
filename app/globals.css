@@ -910,6 +910,12 @@ span.linenumber {
   50%       { opacity: 1;   transform: scale(1.06); }
 }
 
+/* Drop-zone ripple edge. Set here rather than as a Tailwind arbitrary value so
+   it tracks the accent token instead of freezing a literal colour. */
+[data-drop-ripple] {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
 @keyframes drop-ripple {
   0%   { transform: scale(0); opacity: 0.6; }
   100% { transform: scale(1); opacity: 0; }
@@ -1511,6 +1517,12 @@ span.linenumber {
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
   white-space: nowrap;
+}
+
+/* Read-only chip. .ui-chip sits in the interactive group and therefore inherits
+   cursor: pointer, which lies when the chip is just a label. */
+.ui-chip--static {
+  cursor: default;
 }
 
 /* ---- panel header ------------------------------------------------------- */

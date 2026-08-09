@@ -787,7 +787,7 @@ export function AppShell() {
           transform: translateY(0);
           filter: blur(0);
           background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
-          box-shadow: 0 18px 44px rgba(37,99,235,0.16);
+          box-shadow: var(--sh-3);
         }
         100% {
           opacity: 1;

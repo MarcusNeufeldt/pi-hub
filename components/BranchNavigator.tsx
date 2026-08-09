@@ -167,8 +167,11 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
             fontSize: 9,
             fontFamily: "var(--font-mono)",
             color: role === "user" ? "var(--accent)" : "var(--text-dim)",
-            background: role === "user" ? "rgba(37,99,235,0.08)" : "var(--bg-hover)",
-            border: `1px solid ${role === "user" ? "rgba(37,99,235,0.2)" : "var(--border)"}`,
+            // Was the pre-reskin blue. User branches take the same neutral
+            // surface tint their messages do, not an accent — amber is reserved
+            // for live state.
+            background: role === "user" ? "var(--user-bg)" : "var(--bg-hover)",
+            border: "1px solid var(--border)",
             borderRadius: 3,
             padding: "0 4px",
             marginRight: 5,

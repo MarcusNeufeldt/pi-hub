@@ -50,7 +50,9 @@ type AutoNameStatus =
   | { kind: "success" }
   | { kind: "error"; message: string };
 
-const TOP_BAR_ICON_BUTTON_SIZE = 36;
+// Top-bar icon buttons are sized by --h-topbar via .ui-btn--bar in globals.css,
+// so they follow the mobile ramp (36px desktop / 48px mobile) instead of being
+// pinned to a desktop-only 36px here.
 const LANGUAGE_MENU_WIDTH = 176;
 
 export function AppShell() {
@@ -899,19 +901,12 @@ export function AppShell() {
       {/* Center: chat */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}>
+        <div ref={topBarRef} style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: "calc(var(--h-topbar) + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}>
           <button
+            className="ui-btn ui-btn--bar"
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
              aria-label={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-              background: "none", border: "none", borderRight: "1px solid var(--border)",
-              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {sidebarOpen ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -924,6 +919,7 @@ export function AppShell() {
             )}
           </button>
           <button
+            className="ui-btn ui-btn--bar ui-btn--quiet"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               toggleTheme({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
@@ -931,14 +927,6 @@ export function AppShell() {
              title={isDark ? translate("theme.light") : translate("theme.dark")}
              aria-label={isDark ? translate("theme.light") : translate("theme.dark")}
             aria-pressed={isDark}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-              background: "none", border: "none", borderRight: "1px solid var(--border)",
-              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {isDark ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -955,6 +943,7 @@ export function AppShell() {
             )}
            </button>
            <button
+             className="ui-btn ui-btn--bar"
              ref={languageBtnRef}
              type="button"
              onClick={() => toggleTopPanel("language")}
@@ -963,18 +952,6 @@ export function AppShell() {
              aria-haspopup="menu"
              aria-expanded={activeTopPanel === "language"}
              aria-pressed={activeTopPanel === "language"}
-             style={{
-               display: "flex", alignItems: "center", justifyContent: "center",
-               width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-               background: activeTopPanel === "language" ? "var(--bg-selected)" : "none",
-               border: "none", borderRight: "1px solid var(--border)",
-               color: activeTopPanel === "language" ? "var(--text)" : "var(--text-muted)",
-               cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-             }}
-             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-             onMouseLeave={(e) => {
-               e.currentTarget.style.color = activeTopPanel === "language" ? "var(--text)" : "var(--text-muted)";
-             }}
            >
              <svg
                width="16"
@@ -1004,19 +981,15 @@ export function AppShell() {
               }}
               title={translate("trust.resourcesNotLoaded")}
               aria-label={translate("trust.resourcesNotLoaded")}
+              className="ui-btn"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
                 height: "100%",
-                padding: isMobile ? "0 10px" : "0 12px",
-                background: "none",
-                border: "none",
+                borderRadius: 0,
                 borderRight: "1px solid var(--border)",
-                color: "#d97706",
-                cursor: "pointer",
-                flexShrink: 0,
-                fontSize: 11,
+                // Untrusted project is an attention state, which is what the
+                // amber accent means throughout this UI.
+                color: "var(--accent)",
+                fontSize: "var(--fs-micro)",
                 whiteSpace: "nowrap",
               }}
             >
@@ -1646,34 +1619,25 @@ export function AppShell() {
         <div style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
+          gap: "var(--sp-2)",
           flexShrink: 0,
-          height: "calc(36px + env(safe-area-inset-top))",
+          height: "calc(var(--h-topbar) + env(safe-area-inset-top))",
           paddingTop: "env(safe-area-inset-top)",
-          paddingLeft: 8,
-          paddingRight: 8,
+          paddingLeft: "var(--sp-4)",
+          paddingRight: "var(--sp-4)",
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
         }}>
           {(["review", "subagents"] as const).map((view) => (
             <button
               key={view}
+              className={`ui-tab${rightView === view ? " is-active" : ""}`}
+              aria-pressed={rightView === view}
               onClick={() => {
                 setRightView(view);
                 setActiveFileTabId(null);
               }}
-              style={{
-                flex: 1,
-                height: 26,
-                borderRadius: 6,
-                border: "none",
-                background: rightView === view ? "var(--bg-selected)" : "none",
-                color: rightView === view ? "var(--text)" : "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: "0.02em",
-              }}
+              style={{ flex: 1 }}
             >
               {view === "review" ? translate("panel.review") : translate("panel.subagents")}
             </button>

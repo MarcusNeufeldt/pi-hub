@@ -21,10 +21,14 @@ test("tracks the visual viewport while the software keyboard is open", () => {
   assert.match(appShellSource, /paddingBottom: "env\(safe-area-inset-bottom\)"/);
   assert.match(appShellSource, /paddingLeft: "env\(safe-area-inset-left\)"/);
   assert.match(appShellSource, /paddingRight: "env\(safe-area-inset-right\)"/);
-  assert.match(appShellSource, /height: "calc\(36px \+ env\(safe-area-inset-top\)\)"/);
+  // Bar height is now --h-topbar so it follows the mobile ramp; the safe-area
+  // inset is still added on top of it. Assert the token is used here AND that
+  // the mobile block raises it, so the touch target cannot silently shrink.
+  assert.match(appShellSource, /height: "calc\(var\(--h-topbar\) \+ env\(safe-area-inset-top\)\)"/);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?--h-topbar: 48px;/);
   // Comment text drifted when the right panel gained its Review/Subagents
   // tabs; the safe-area invariant it guards is still present.
-  assert.match(appShellSource, /\/\* Right panel view tabs[\s\S]*?height: "calc\(36px \+ env\(safe-area-inset-top\)\)"/);
+  assert.match(appShellSource, /\/\* Right panel view tabs[\s\S]*?height: "calc\(var\(--h-topbar\) \+ env\(safe-area-inset-top\)\)"/);
   assert.match(appShellSource, /height: "var\(--app-viewport-height, 100dvh\)"/);
   assert.match(appShellSource, /right: "env\(safe-area-inset-right\)"/);
   assert.match(viewportHookSource, /window\.visualViewport/);

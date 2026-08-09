@@ -1273,6 +1273,20 @@ span.linenumber {
   flex-shrink: 0;
 }
 
+/* Top-bar / panel-header icon button: square, fills the bar height, hairline
+   divider on the trailing edge. Sized from --h-topbar so it grows with the bar
+   to 48px on mobile instead of staying a 36px desktop target. */
+.ui-btn--bar {
+  width: var(--h-topbar);
+  min-width: var(--h-topbar);
+  height: var(--h-topbar);
+  min-height: var(--h-topbar);
+  padding-inline: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
 .ui-btn--outline {
   border-color: var(--border);
 }
@@ -1306,6 +1320,15 @@ span.linenumber {
 .ui-btn[aria-expanded="true"] {
   background: var(--bg-selected);
   color: var(--text);
+}
+
+/* Opt out of the pressed *styling* while keeping the pressed *semantics*.
+   For the theme toggle, aria-pressed must stay for screen readers, but the
+   button would otherwise look permanently selected the whole time dark mode
+   is on — the icon already carries that state visually. */
+.ui-btn--quiet.ui-btn[aria-pressed="true"] {
+  background: transparent;
+  color: var(--text-muted);
 }
 
 .ui-btn:active:not([disabled]) {

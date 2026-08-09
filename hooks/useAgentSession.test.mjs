@@ -64,6 +64,8 @@ test("builds a durable subagent activity timeline and separate final result", ()
   assert.match(source, /events\?: SubagentTimelineEvent\[\]/);
   assert.match(source, /finalOutput\?: string/);
   assert.match(source, /function mergeSubagentEvents/);
+  assert.match(source, /function mergeRehydratedSubagents/);
+  assert.match(source, /setSubagents\(\(previous\) => mergeRehydratedSubagents/);
   assert.match(pollingSource, /cursors: JSON\.stringify\(cursors\)/);
   assert.match(pollingSource, /needsArtifactTimeline/);
   assert.match(pollingSource, /query\.set\("artifacts"/);

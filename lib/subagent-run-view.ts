@@ -208,12 +208,14 @@ function normalizeArtifactRecord(
 
   if (sourceEventType !== "message_end" && raw.recordType !== "message") return [];
   const role = string(raw.role);
-  const text = truncate(string(raw.text));
-  if (!text) return [];
+  const fullText = string(raw.text);
+  if (!fullText) return [];
 
   if (role === "assistant") {
-    return [{ id: `message:${agent}:${offset}`, agent, timestamp, kind: "assistant", title: "Agent", detail: text }];
+    return [{ id: `message:${agent}:${offset}`, agent, timestamp, kind: "assistant", title: "Agent", detail: fullText }];
   }
+  const text = truncate(fullText);
+  if (!text) return [];
   if (role === "toolResult") {
     return [{
       id: toolId,
@@ -252,7 +254,7 @@ function normalizeSessionEntry(
         timestamp,
         kind: "assistant",
         title: "Agent",
-        detail: truncate(prose),
+        detail: prose,
       });
     }
     for (const block of message.content) {

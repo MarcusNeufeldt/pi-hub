@@ -8,7 +8,7 @@ import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantB
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
-import { SubagentsView, type SubagentDelegation } from "./SubagentPanel";
+import type { SubagentDelegation } from "./SubagentPanel";
 import { SpeakButton } from "./SpeakButton";
 import { extractTurnChanges, type TurnChanges } from "@/lib/session-changes";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
@@ -258,7 +258,18 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
   const subagentsSigRef = useRef("");
   useEffect(() => {
     const sig = subagents
-      .map((d) => `${d.toolCallId}:${d.running}:${d.children.map((c) => `${c.agent}:${c.status}`).join(",")}`)
+      .map((d) => `${d.toolCallId}:${d.running}:${d.transcriptSessionId ?? ""}:${d.children.map((c) => [
+        c.agent,
+        c.status,
+        c.timelineCursor ?? 0,
+        c.events?.length ?? 0,
+        c.finalOutput?.length ?? 0,
+        c.currentTool ?? "",
+        c.currentToolArgs ?? "",
+        c.recentOutput ?? "",
+        c.toolCount ?? 0,
+        c.durationMs ?? 0,
+      ].join(":")).join(",")}`)
       .join(";");
     if (sig !== subagentsSigRef.current) {
       subagentsSigRef.current = sig;

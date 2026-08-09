@@ -79,16 +79,22 @@ function ActivityEventRow({ event }: { event: SubagentTimelineEvent }) {
         )}
       </span>
       <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: event.kind === "tool" ? 600 : 500, fontFamily: event.kind === "tool" ? "var(--font-mono)" : undefined, color: running ? "var(--accent)" : "var(--text-muted)" }}>
-            {event.kind === "assistant" ? event.detail : event.title}
-          </span>
-          {event.durationMs !== undefined && (
-            <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
-              {(event.durationMs / 1000).toFixed(event.durationMs < 10_000 ? 1 : 0)}s
+        {event.kind === "assistant" ? (
+          <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 10.5, fontWeight: 500, lineHeight: 1.5, color: "var(--text-muted)" }}>
+            {event.detail}
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: event.kind === "tool" ? 600 : 500, fontFamily: event.kind === "tool" ? "var(--font-mono)" : undefined, color: running ? "var(--accent)" : "var(--text-muted)" }}>
+              {event.title}
             </span>
-          )}
-        </div>
+            {event.durationMs !== undefined && (
+              <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+                {(event.durationMs / 1000).toFixed(event.durationMs < 10_000 ? 1 : 0)}s
+              </span>
+            )}
+          </div>
+        )}
         {event.kind !== "assistant" && event.detail && (
           <div title={event.detail} style={{ marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
             {event.detail}

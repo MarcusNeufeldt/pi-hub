@@ -697,6 +697,41 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
   return delegations;
 }
 
+/** Session/context refreshes can race artifact polling. Preserve the enriched
+ * timeline/cursor state while applying newly persisted result metadata. */
+function mergeRehydratedSubagents(
+  previous: SubagentDelegation[],
+  restored: SubagentDelegation[],
+): SubagentDelegation[] {
+  return restored.map((next) => {
+    const current = previous.find((item) => item.toolCallId === next.toolCallId);
+    if (!current) return next;
+    const children = next.children.map((child, index) => {
+      const existing = current.children.find((item) => item.agent === child.agent)
+        ?? current.children[index];
+      if (!existing) return child;
+      return {
+        ...child,
+        ...existing,
+        task: child.task ?? existing.task,
+        status: child.status,
+        finalOutput: child.finalOutput ?? existing.finalOutput,
+        outputPath: child.outputPath ?? existing.outputPath,
+        transcriptPath: child.transcriptPath ?? existing.transcriptPath,
+        sessionFile: child.sessionFile ?? existing.sessionFile,
+      };
+    });
+    return {
+      ...current,
+      ...next,
+      children,
+      asyncDir: next.asyncDir ?? current.asyncDir,
+      runId: next.runId ?? current.runId,
+      transcriptSessionId: current.transcriptSessionId ?? next.transcriptSessionId,
+    };
+  });
+}
+
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
@@ -1028,7 +1063,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setData(d);
       setActiveLeafId(d.leafId);
       setMessages(d.context.messages);
-      setSubagents(subagentsFromMessages(d.context.messages));
+      setSubagents((previous) => mergeRehydratedSubagents(
+        previous,
+        subagentsFromMessages(d.context.messages),
+      ));
       setEntryIds(d.context.entryIds ?? []);
       setCurrentModelOverride(null);
       setError(null);
@@ -1079,7 +1117,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
       setMessages(d.context.messages);
-      setSubagents(subagentsFromMessages(d.context.messages));
+      setSubagents((previous) => mergeRehydratedSubagents(
+        previous,
+        subagentsFromMessages(d.context.messages),
+      ));
       setEntryIds(d.context.entryIds ?? []);
     } catch (e) {
       console.error("Failed to load context:", e);

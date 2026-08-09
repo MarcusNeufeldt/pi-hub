@@ -916,16 +916,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                   timelineCursor: view.timelineCursor,
                   timelineCompletePolls: view.timelineComplete
                     ? (
-                        existing?.timelineSource === view.timelineSource
+                        existing
+                        && existing.timelineSource === view.timelineSource
                         && view.events.length === 0
                           ? (existing.timelineCompletePolls ?? 0) + 1
                           : 1
                       )
                     : 0,
-                  timelineComplete: view.timelineComplete
-                    && existing?.timelineSource === view.timelineSource
+                  timelineComplete: Boolean(
+                    view.timelineComplete
+                    && existing
+                    && existing.timelineSource === view.timelineSource
                     && view.events.length === 0
-                    && (existing.timelineCompletePolls ?? 0) >= 1,
+                    && (existing.timelineCompletePolls ?? 0) >= 1
+                  ),
                   toolCount: view.toolCount ?? existing?.toolCount,
                   turnCount: view.turnCount ?? existing?.turnCount,
                   tokens: view.tokens ?? existing?.tokens,

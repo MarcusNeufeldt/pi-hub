@@ -76,6 +76,8 @@ test("builds a durable subagent activity timeline and separate final result", ()
   assert.match(pollingSource, /const mergedEvents = mergeSubagentEvents\(/);
   assert.match(pollingSource, /timelineCompletePolls:/);
   assert.match(pollingSource, /view\.events\.length === 0/);
+  assert.match(pollingSource, /existing\s*&&\s*existing\.timelineSource === view\.timelineSource/);
+  assert.doesNotMatch(pollingSource, /existing\?\.timelineSource === view\.timelineSource/);
   assert.match(pollingSource, /const finalOutput = view\.finalOutput \?\? existing\?\.finalOutput/);
   assert.match(source, /const finalOutput = typeof r\.finalOutput === "string"/);
   assert.match(source, /transcriptPath: transcriptPath \?\? existing\?\.transcriptPath/);

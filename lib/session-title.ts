@@ -7,14 +7,23 @@ import {
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 const TITLE_TIMEOUT_MS = 90_000;
-const MAX_TITLE_LENGTH = 80;
+const MAX_TITLE_LENGTH = 90;
 
-const TITLE_PROMPT = `Create a concise title for this session based on the conversation above.
+const TITLE_PROMPT = `Create a concise sidebar title for this session based on the conversation above.
 
-Requirements:
-- Match the primary language used by the user.
-- Describe the user's concrete goal or the outcome, not the act of chatting.
-- Use 4-12 words for space-separated languages, or 8-24 characters for CJK text when practical.
+Naming rules:
+- The first five words must identify what the whole session was about.
+- Name the dominant end-to-end arc. Do not over-weight either the opening request or the final exchange.
+- Put the concrete topic, project, customer, product, board, or durable deliverable first—not the setup instruction or act of chatting.
+- Prefer the durable object or outcome over incidental implementation details, debugging, CI, handoff, merge-order, status, or wording work unless that work dominated the session.
+- Ignore setup boilerplate such as AGENTS.md, CLAUDE.md, read-and-confirm requests, $transcribe, $track, and similar startup language.
+- If a Linear issue is central, start with \`BOL - 1234\` followed by topic words. If multiple Linear issues are central, preserve every centered number.
+- If a GitHub PR is central and no BOL issue is central, start with \`PR - 1234\` followed by topic words. BOL takes priority when both are central.
+- Do not invent BOL or PR prefixes from incidental references, injected history, broad status lists, or examples.
+- Never use legacy forms such as \`BOL 1234 - topic\` or \`PR 1234 - topic\`.
+- The title should answer: what conversation would the user be reopening from the sidebar?
+- Use 3-9 words, no more than 90 characters, and ASCII characters only.
+- Do not include raw URLs.
 - Do not call any tools.
 - Return only the title as plain text, with no quotes, label, markdown, or explanation.`;
 

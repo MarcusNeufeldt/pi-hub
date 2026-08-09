@@ -9,7 +9,6 @@ import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import type { SubagentDelegation } from "./SubagentPanel";
-import { SpeakButton } from "./SpeakButton";
 import { extractTurnChanges, type TurnChanges } from "@/lib/session-changes";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
@@ -326,34 +325,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     const id = setTimeout(() => setCompletionToast(null), 12000);
     return () => clearTimeout(id);
   }, [completionToast]);
-
-  const [showSpeakPill, setShowSpeakPill] = useState(false);
-  const lastSpeakTextRef = useRef("");
-  const prevRunningRef = useRef(agentRunning);
-  useEffect(() => {
-    if (agentRunning) {
-      setShowSpeakPill(false);
-    } else if (prevRunningRef.current) {
-      // Agent just finished — find the last assistant text.
-      let text = "";
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages[i];
-        if (m.role === "assistant") {
-          text = (m as AssistantMessage).content
-            ?.filter((b): b is { type: "text"; text: string } => b.type === "text")
-            .map((b) => b.text)
-            .join("\n")
-            .trim();
-          if (text) break;
-        }
-      }
-      if (text) {
-        lastSpeakTextRef.current = text;
-        setShowSpeakPill(true);
-      }
-    }
-    prevRunningRef.current = agentRunning;
-  }, [agentRunning, messages]);
 
   useEffect(() => {
     if (!extensionDialog || soundedExtensionDialogIdRef.current === extensionDialog.id) return;
@@ -761,23 +732,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       ) : (
       <>
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
-        {showSpeakPill && lastSpeakTextRef.current && (
-          <div style={{ position: "absolute", right: 14, bottom: 140, zIndex: 55 }}>
-            <SpeakButton
-              text={lastSpeakTextRef.current}
-              style={{
-                background: "var(--bg-panel)",
-                border: "1px solid var(--border)",
-                borderRadius: 999,
-                height: 30,
-                padding: "0 12px",
-                fontSize: 12,
-                fontWeight: 600,
-                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-              }}
-            />
-          </div>
-        )}
         {completionToast && (
           <div
             style={{

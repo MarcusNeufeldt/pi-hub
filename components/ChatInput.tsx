@@ -1243,7 +1243,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       style={{
         flexShrink: 0,
         background: "transparent",
-        padding: "0 16px 8px",
+        // Bottom padding lifts the composer card clear of the pane edge instead
+        // of welding it there; the dock's scrim fades the transcript into it.
+        padding: "0 16px var(--sp-6)",
         paddingRight: isMobile ? 16 : 52, // desktop: 16px base + 36px for ChatMinimap alignment
       }}
     >

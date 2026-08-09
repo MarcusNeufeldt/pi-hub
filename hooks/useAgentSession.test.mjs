@@ -4,6 +4,7 @@ import test from "node:test";
 
 const source = (await readFile(new URL("./useAgentSession.ts", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 const chatWindowSource = (await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+const cssSource = (await readFile(new URL("../app/globals.css", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 
 test("keeps the session event stream open through the idle grace window", () => {
   const finishSource = source.slice(
@@ -158,6 +159,12 @@ test("sizes the message tail from the rendered bottom composer", () => {
   assert.match(chatWindowSource, /bottomComposerScrollFrameRef = useRef<number \| null>\(null\)/);
   assert.match(chatWindowSource, /distanceFromBottom <= Math\.abs\(nextHeight - previousHeight\) \+ 1/);
   assert.match(chatWindowSource, /scrollToBottom\("auto"\)/);
-  assert.match(chatWindowSource, /<div ref=\{bottomComposerRef\} className="relative">/);
+  // The wrapper carries the measured ref and must establish a positioning
+  // context, since the dock's scrim is absolutely positioned against it. That
+  // moved from Tailwind's "relative" to .composer-dock, so assert the class is
+  // applied AND that it actually sets position: relative — otherwise the scrim
+  // would escape and the wrapper's role would be silently weakened.
+  assert.match(chatWindowSource, /<div ref=\{bottomComposerRef\} className="composer-dock">/);
+  assert.match(cssSource, /\.composer-dock \{[\s\S]*?position: relative;/);
   assert.match(chatWindowSource, /height: bottomComposerHeight/);
 });

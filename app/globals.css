@@ -1846,6 +1846,30 @@ span.linenumber {
   }
 }
 
+/* Dock the composer sits in. The scrim is a gradient placed immediately *above*
+   the composer, over the last pixels of the transcript, so the conversation
+   appears to fade underneath the card instead of stopping dead against it.
+
+   Done this way on purpose: the composer's height is already measured into a
+   spacer inside the scroll container, and there is separate prompt-anchor scroll
+   math around it. Absolutely positioning the composer to get a true overlay
+   would put a visual change inside that logic, so the fade buys the same read
+   without touching how scrolling works. */
+.composer-dock {
+  position: relative;
+}
+
+.composer-dock::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--sp-7);
+  pointer-events: none;
+  background: linear-gradient(to top, var(--bg), transparent);
+}
+
 /* ---- composer ----------------------------------------------------------- */
 /* The one element you actually touch, so it reads as a card rather than a bar.
    :focus-within is the point of doing this in CSS: an inline style cannot
@@ -1893,6 +1917,29 @@ span.linenumber {
   font-size: var(--fs-meta);
   background: var(--tool-bg);
   border: 1px solid transparent;
+}
+
+/* A turn's blocks. Consecutive tool calls collapse into a single grouped list —
+   shared rounding, hairline separators, no gaps between them — so a run of eight
+   tool calls reads as one sequence instead of eight free-floating cards. Prose
+   blocks keep their spacing. */
+.turn-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.turn-blocks > .tool-block + .tool-block {
+  margin-top: calc(-1 * var(--sp-4));
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.turn-blocks > .tool-block:has(+ .tool-block) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .tool-block--error {

@@ -1105,7 +1105,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
         )}
       </div>
 
-      <div ref={bottomComposerRef} className="relative">
+      <div ref={bottomComposerRef} className="composer-dock">
         <div
           style={{
             padding: `0 ${CHAT_COLUMN_PADDING}px`,

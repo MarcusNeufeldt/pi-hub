@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { SubagentDelegation } from "@/hooks/useAgentSession";
+import type { SubagentTimelineEvent } from "@/lib/subagent-run-view";
+import { MarkdownBody } from "./MarkdownBody";
 
 function formatDuration(ms: number | undefined): string {
   if (!ms || ms < 0) return "–";
@@ -50,35 +52,101 @@ function StatusIndicator({ status }: { status: string }) {
   );
 }
 
+function formatEventTime(value: string): string {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "";
+}
+
+function ActivityEventRow({ event }: { event: SubagentTimelineEvent }) {
+  const { t } = useI18n();
+  const [showResult, setShowResult] = useState(false);
+  const running = event.phase === "running";
+  const failed = event.phase === "failed";
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "46px 14px minmax(0, 1fr)", gap: 6, padding: "5px 0", borderBottom: "1px solid color-mix(in srgb, var(--border) 55%, transparent)" }}>
+      <span style={{ paddingTop: 1, fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+        {formatEventTime(event.timestamp)}
+      </span>
+      <span style={{ paddingTop: 1, color: failed ? "#ef4444" : running ? "var(--accent)" : event.kind === "assistant" ? "var(--text-muted)" : "#4ade80" }}>
+        {running ? (
+          <StatusIndicator status="running" />
+        ) : event.kind === "assistant" ? (
+          <span style={{ display: "block", width: 7, height: 7, margin: "3px 0 0 2px", borderRadius: "50%", background: "currentColor" }} />
+        ) : (
+          <StatusIndicator status={failed ? "failed" : "completed"} />
+        )}
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: event.kind === "tool" ? 600 : 500, fontFamily: event.kind === "tool" ? "var(--font-mono)" : undefined, color: running ? "var(--accent)" : "var(--text-muted)" }}>
+            {event.kind === "assistant" ? event.detail : event.title}
+          </span>
+          {event.durationMs !== undefined && (
+            <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+              {(event.durationMs / 1000).toFixed(event.durationMs < 10_000 ? 1 : 0)}s
+            </span>
+          )}
+        </div>
+        {event.kind !== "assistant" && event.detail && (
+          <div title={event.detail} style={{ marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+            {event.detail}
+          </div>
+        )}
+        {event.result && (
+          <button
+            onClick={() => setShowResult((value) => !value)}
+            style={{ marginTop: 3, padding: 0, background: "none", border: 0, color: "var(--text-dim)", cursor: "pointer", fontSize: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}
+          >
+            {showResult ? t("subagents.hideResult") : t("subagents.showResult")}
+          </button>
+        )}
+        {showResult && event.result && (
+          <div style={{ marginTop: 4, maxHeight: 150, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 9, lineHeight: 1.4, fontFamily: "var(--font-mono)", color: "var(--text-dim)", background: "var(--bg-hover)", borderRadius: 5, padding: 6 }}>
+            {event.result}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ChildCard({ child }: { child: SubagentDelegation["children"][number] }) {
+  const { t } = useI18n();
   const running = child.status === "running";
   const [expanded, setExpanded] = useState(false);
-  const tools = child.recentTools ?? [];
-  const outputLines = child.recentOutputLines ?? [];
-  const hasAny = Boolean(
-    child.task ||
-      child.currentTool ||
-      tools.length > 0 ||
-      outputLines.length > 0 ||
-      child.thinking ||
-      child.toolCount !== undefined ||
-      child.tokens !== undefined ||
-      child.model ||
-      child.exitCode !== undefined,
+  const [tab, setTab] = useState<"activity" | "result">(
+    running || !child.finalOutput ? "activity" : "result",
   );
+  const wasRunningRef = useRef(running);
+  const manualTabRef = useRef(false);
+  const activityRef = useRef<HTMLDivElement | null>(null);
+  const autoFollowRef = useRef(true);
+  const events = child.events ?? [];
+
+  useEffect(() => {
+    if (wasRunningRef.current && !running && child.finalOutput && !manualTabRef.current) {
+      setTab("result");
+    }
+    wasRunningRef.current = running;
+  }, [running, child.finalOutput]);
+
+  useEffect(() => {
+    const element = activityRef.current;
+    if (expanded && tab === "activity" && autoFollowRef.current && element) {
+      element.scrollTop = element.scrollHeight;
+    }
+  }, [events.length, expanded, tab]);
+
+  const latestEvent = events[events.length - 1];
+  const hasDetails = events.length > 0 || Boolean(child.finalOutput || child.task || child.currentTool);
+
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        padding: "8px 10px",
-        background: "var(--bg)",
-        marginBottom: 8,
-      }}
-    >
+    <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", background: "var(--bg)", marginBottom: 8 }}>
       <div
         style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3, cursor: "pointer" }}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpanded((value) => !value)}
         title={expanded ? "Collapse" : "Expand"}
       >
         <StatusIndicator status={child.status} />
@@ -91,122 +159,100 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
         <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
           {formatDuration(child.durationMs)}
         </span>
-        <svg
-          width="10" height="10" viewBox="0 0 10 10" fill="none"
-          stroke="var(--text-dim)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-          style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}
-        >
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>
           <polyline points="3 2 7 5 3 8" />
         </svg>
       </div>
+
       {!expanded && child.task && (
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.task}>
           {child.task}
         </div>
       )}
-      {!expanded && running && child.currentTool && (
-        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3, fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-          </svg>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {child.currentTool}
-            {child.currentToolArgs ? ` ${child.currentToolArgs.slice(0, 60)}` : ""}
+      {!expanded && latestEvent && (
+        <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontSize: 10, color: latestEvent.phase === "running" ? "var(--accent)" : "var(--text-dim)" }}>
+          {latestEvent.phase === "running" && <StatusIndicator status="running" />}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: latestEvent.kind === "tool" ? "var(--font-mono)" : undefined }}>
+            {latestEvent.kind === "assistant" ? latestEvent.detail : latestEvent.title}
           </span>
         </div>
       )}
-      {!expanded && tools.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 3 }}>
-          {tools.slice(-3).map((t, i) => (
-            <span
-              key={i}
-              style={{
-                fontSize: 9, fontFamily: "var(--font-mono)",
-                padding: "1px 5px", borderRadius: 4,
-                background: "var(--bg-hover)", color: "var(--text-muted)",
-                maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}
-              title={t.args ?? t.tool}
-            >
-              {t.tool}
-            </span>
-          ))}
-        </div>
-      )}
-      {!expanded && child.recentOutput && (
-        <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.recentOutput}>
+      {!expanded && !latestEvent && child.recentOutput && (
+        <div style={{ fontSize: 10, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.recentOutput}>
           {child.recentOutput}
         </div>
       )}
+
       {expanded && (
-        <div style={{ borderTop: "1px solid var(--border)", marginTop: 5, paddingTop: 6 }}>
+        <div style={{ borderTop: "1px solid var(--border)", marginTop: 6, paddingTop: 7 }}>
           {child.task && (
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 3 }}>
-                Task
-              </div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.45 }}>
-                {child.task}
-              </div>
+            <div style={{ marginBottom: 8, fontSize: 10, color: "var(--text-muted)", lineHeight: 1.45 }}>
+              {child.task}
             </div>
           )}
-          {running && child.currentTool && (
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 3 }}>
-                Now
-              </div>
-              <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.currentToolArgs ?? child.currentTool}>
-                {child.currentTool}
-                {child.currentToolArgs ? ` ${child.currentToolArgs.slice(0, 120)}` : ""}
-              </div>
-            </div>
-          )}
-          {tools.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 3 }}>
-                Tools
-              </div>
-              {tools.map((t, i) => (
-                <div key={i} style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={t.args ?? t.tool}>
-                  <span style={{ color: "var(--accent)" }}>{t.tool}</span>
-                  {t.args ? <span style={{ color: "var(--text-dim)" }}> {t.args.slice(0, 100)}</span> : null}
+
+          <div style={{ display: "flex", gap: 3, padding: 2, marginBottom: 7, borderRadius: 6, background: "var(--bg-hover)" }}>
+            {(["activity", "result"] as const).map((value) => {
+              const disabled = value === "result" && !child.finalOutput;
+              return (
+                <button
+                  key={value}
+                  disabled={disabled}
+                  onClick={() => {
+                    manualTabRef.current = true;
+                    setTab(value);
+                  }}
+                  style={{ flex: 1, padding: "4px 6px", border: 0, borderRadius: 4, background: tab === value ? "var(--bg-panel)" : "transparent", color: disabled ? "var(--text-dim)" : tab === value ? "var(--text)" : "var(--text-muted)", cursor: disabled ? "default" : "pointer", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", boxShadow: tab === value ? "0 1px 3px rgba(0,0,0,.12)" : "none" }}
+                >
+                  {t(value === "activity" ? "subagents.activity" : "subagents.result")}
+                  {value === "activity" && events.length > 0 ? ` ${events.length}` : ""}
+                </button>
+              );
+            })}
+          </div>
+
+          {tab === "activity" && (
+            <div
+              ref={activityRef}
+              onScroll={(event) => {
+                const element = event.currentTarget;
+                autoFollowRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 32;
+              }}
+              style={{ maxHeight: 360, overflowY: "auto", paddingRight: 3 }}
+            >
+              {events.map((event) => <ActivityEventRow key={event.id} event={event} />)}
+              {events.length === 0 && child.currentTool && (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "7px 2px", fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent)" }}>
+                  <StatusIndicator status="running" />
+                  {child.currentTool}{child.currentToolArgs ? ` ${child.currentToolArgs}` : ""}
                 </div>
-              ))}
-            </div>
-          )}
-          {outputLines.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 3 }}>
-                Output
-              </div>
-              {outputLines.slice(-8).map((line, i) => (
-                <div key={i} style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)", marginBottom: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={line}>
-                  {line}
+              )}
+              {events.length === 0 && !child.currentTool && (
+                <div style={{ padding: "8px 2px", fontSize: 10, color: "var(--text-dim)" }}>
+                  {hasDetails ? t("subagents.waitingActivity") : t("subagents.noActivity")}
                 </div>
-              ))}
+              )}
             </div>
           )}
-          {child.thinking && (
-            <div>
-              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 3 }}>
-                Thinking
-              </div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={child.thinking}>
-                {child.thinking}
-              </div>
-            </div>
-          )}
-          {!hasAny && (
-            <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
-              No details captured for this agent.
+
+          {tab === "result" && child.finalOutput && (
+            <div style={{ fontSize: 11, lineHeight: 1.5, overflowWrap: "anywhere" }}>
+              <MarkdownBody className="markdown-custom-message">{child.finalOutput}</MarkdownBody>
+              {child.outputPath && (
+                <div title={child.outputPath} style={{ marginTop: 9, paddingTop: 7, borderTop: "1px solid var(--border)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 8, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+                  {t("subagents.saved")}: {child.outputPath.split(/[\\/]/).pop()}
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
-      {(child.toolCount !== undefined || child.tokens !== undefined || child.model) && (
-        <div style={{ display: "flex", gap: 8, fontSize: 10, color: "var(--text-dim)", marginTop: expanded ? 6 : 0 }}>
+
+      {(child.toolCount !== undefined || child.turnCount !== undefined || child.tokens !== undefined || child.model) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 8px", fontSize: 9, color: "var(--text-dim)", marginTop: expanded ? 8 : 4 }}>
           {child.tokens !== undefined && <span>{child.tokens.toLocaleString()} tok</span>}
           {child.toolCount !== undefined && <span>{child.toolCount} tools</span>}
+          {child.turnCount !== undefined && <span>{child.turnCount} turns</span>}
           {child.model && <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{child.model}</span>}
         </div>
       )}

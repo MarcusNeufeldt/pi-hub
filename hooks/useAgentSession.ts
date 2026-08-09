@@ -16,6 +16,7 @@ import { normalizeToolCalls } from "@/lib/normalize";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getToolNamesForPreset, type ToolEntry } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
+import type { SubagentRunView, SubagentTimelineEvent } from "@/lib/subagent-run-view";
 
 export interface SessionData {
   sessionId: string;
@@ -364,11 +365,19 @@ export interface SubagentChild {
   recentTools?: Array<{ tool: string; args?: string }>;
   thinking?: string;
   toolCount?: number;
+  turnCount?: number;
   tokens?: number;
   model?: string;
   durationMs?: number;
   exitCode?: number;
   activityState?: string;
+  events?: SubagentTimelineEvent[];
+  finalOutput?: string;
+  outputPath?: string;
+  timelineSource?: string;
+  timelineCursor?: number;
+  timelineComplete?: boolean;
+  timelineCompletePolls?: number;
 }
 
 /** One `subagent` tool call = one delegation, possibly with several children. */
@@ -382,6 +391,49 @@ export interface SubagentDelegation {
   runId?: string;
   /** Worker session id (from status.json artifactPaths) — opens transcript. */
   transcriptSessionId?: string;
+}
+
+function mergeSubagentEvents(
+  existing: SubagentTimelineEvent[] | undefined,
+  incoming: SubagentTimelineEvent[] | undefined,
+): SubagentTimelineEvent[] | undefined {
+  if (!incoming?.length) return existing;
+  const events = new Map((existing ?? []).map((event) => [event.id, event]));
+  for (const next of incoming) {
+    const previous = events.get(next.id);
+    let durationMs = next.durationMs ?? previous?.durationMs;
+    if (
+      durationMs === undefined
+      && previous?.phase === "running"
+      && next.phase !== "running"
+    ) {
+      const started = Date.parse(previous.timestamp);
+      const ended = Date.parse(next.timestamp);
+      if (Number.isFinite(started) && Number.isFinite(ended) && ended >= started) {
+        durationMs = ended - started;
+      }
+    }
+    events.set(next.id, {
+      ...previous,
+      ...next,
+      // Completed tool patches keep the start timestamp so the activity row
+      // remains in chronological launch order.
+      timestamp: previous?.kind === "tool" ? previous.timestamp : next.timestamp,
+      durationMs,
+    });
+  }
+  return [...events.values()]
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
+    .slice(-300);
+}
+
+function sessionIdFromArtifactPath(filePath: string | undefined): string | undefined {
+  if (!filePath) return undefined;
+  const name = filePath.split(/[\\/]/).pop() ?? "";
+  const direct = name.match(/^session\.jsonl$/)
+    ? filePath.match(/[\\/]([0-9a-f-]{8,})[\\/]run-\d+[\\/]session\.jsonl$/i)?.[1]
+    : name.match(/^.*?_([0-9a-f-]+)\.jsonl$/i)?.[1];
+  return direct;
 }
 
 /**
@@ -649,96 +701,150 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
   const [subagents, setSubagents] = useState<SubagentDelegation[]>([]);
+  const subagentsPollRef = useRef<SubagentDelegation[]>([]);
   const clearSubagents = useCallback(() => setSubagents([]), []);
 
-  // --- Async-run polling: detached runs publish status.json; poll it so the
-  // cards show real state, output, and the worker's transcript session. -----
   useEffect(() => {
-    // Poll every asyncDir delegation until its status.json has been consumed
-    // (running ones for live state, completed-but-unconsumed ones to attach
-    // the real output + transcript after a rebuild).
-    const targets = subagents.filter((d) => d.asyncDir && (d.running || !d.transcriptSessionId));
-    if (targets.length === 0) return;
-    const id = setInterval(() => {
-      for (const d of targets) {
-        void (async () => {
+    subagentsPollRef.current = subagents;
+  }, [subagents]);
+
+  // Detached runs publish bounded live snapshots plus append-only child
+  // transcripts. Poll the normalized server view and merge transcript deltas
+  // into a durable per-child activity timeline.
+  useEffect(() => {
+    let cancelled = false;
+    let polling = false;
+
+    const poll = async () => {
+      if (polling || cancelled) return;
+      const targets = subagentsPollRef.current.filter((delegation) =>
+        delegation.asyncDir
+        && (
+          delegation.running
+          || !delegation.transcriptSessionId
+          || delegation.children.some((child) => child.timelineComplete === false)
+        ),
+      );
+      if (targets.length === 0) return;
+      polling = true;
+      try {
+        await Promise.all(targets.map(async (delegation) => {
+          const cursors = Object.fromEntries(
+            delegation.children.map((child, index) => [String(index), {
+              cursor: child.timelineCursor ?? 0,
+              source: child.timelineSource,
+            }]),
+          );
+          const query = new URLSearchParams({
+            dir: delegation.asyncDir!,
+            cursors: JSON.stringify(cursors),
+          });
           try {
-            const res = await fetch(`/api/subagent-run?dir=${encodeURIComponent(d.asyncDir!)}`);
-            if (!res.ok) return;
-            const status = (await res.json()) as {
+            const response = await fetch(`/api/subagent-run?${query.toString()}`);
+            if (!response.ok || cancelled) return;
+            const status = await response.json() as {
               state?: string;
-              workflow?: {
-                value?: {
-                  output?: string;
-                  artifactPaths?: string[];
-                  results?: Array<Record<string, unknown>>;
-                };
-              };
+              startedAt?: number;
+              lastUpdate?: number;
+              piHub?: SubagentRunView;
             };
-            const value = status.workflow?.value;
-            const output = value?.output ?? "";
-            const artifact = value?.artifactPaths?.[0];
-            const transcriptSessionId =
-              typeof artifact === "string"
-                ? (artifact.split(/[\\/]/).pop() ?? "").replace(/^.*?_([0-9a-f-]+)\.jsonl$/, "$1")
-                : undefined;
+            const views = status.piHub?.children ?? [];
             const done = status.state === "complete";
-            const durationMs =
+            const fallbackDuration =
               typeof status.lastUpdate === "number" && typeof status.startedAt === "number"
                 ? status.lastUpdate - status.startedAt
                 : undefined;
-            setSubagents((prev) =>
-              prev.map((del) => {
-                if (del.toolCallId !== d.toolCallId) return del;
-                const rows = value?.results ?? [];
-                const children: SubagentChild[] =
-                  rows.length > 0
-                    ? rows
-                        .map((r) => {
-                          const agent = typeof r.agent === "string" ? r.agent : undefined;
-                          if (!agent) return null;
-                          const existing = del.children.find((c) => c.agent === agent);
-                          return {
-                            ...existing,
-                            agent,
-                            task: typeof r.task === "string" ? r.task : existing?.task ?? del.task,
-                            status: done ? "completed" : "running",
-                            recentOutput: output || existing?.recentOutput,
-                            recentOutputLines: output
-                              ? output.split("\n").slice(-10)
-                              : existing?.recentOutputLines,
-                            durationMs:
-                              typeof r.durationMs === "number"
-                                ? r.durationMs
-                                : existing?.durationMs ?? durationMs,
-                          } as SubagentChild;
-                        })
-                        .filter((c): c is SubagentChild => c !== null)
-                    : del.children.map((c) => ({
-                        ...c,
-                        status: done ? "completed" : "running",
-                        recentOutput: output || c.recentOutput,
-                        recentOutputLines: output
-                          ? output.split("\n").slice(-10)
-                          : c.recentOutputLines,
-                        durationMs: c.durationMs ?? durationMs,
-                      }));
+
+            setSubagents((previous) => previous.map((current) => {
+              if (current.toolCallId !== delegation.toolCallId) return current;
+              if (views.length === 0) {
                 return {
-                  ...del,
-                  children,
+                  ...current,
                   running: !done,
-                  transcriptSessionId: transcriptSessionId ?? del.transcriptSessionId,
+                  children: current.children.map((child) => ({
+                    ...child,
+                    status: done ? "completed" : child.status,
+                    durationMs: child.durationMs ?? fallbackDuration,
+                  })),
                 };
-              }),
-            );
+              }
+
+              const children = views.map((view, index) => {
+                const existing =
+                  current.children.find((child) => child.agent === view.agent)
+                  ?? current.children[view.index]
+                  ?? current.children[index];
+                const firstOutputLine = view.finalOutput
+                  ?.split("\n")
+                  .find((line) => line.trim())
+                  ?.trim();
+                return {
+                  ...existing,
+                  agent: view.agent,
+                  task: cleanTaskLabel(view.task ?? existing?.task ?? current.task),
+                  status: view.status,
+                  currentTool: view.currentTool,
+                  currentToolArgs: view.currentToolArgs,
+                  recentOutput: firstOutputLine?.slice(0, 500) ?? existing?.recentOutput,
+                  recentOutputLines: existing?.recentOutputLines,
+                  events: mergeSubagentEvents(
+                    view.timelineSource
+                      ? existing?.events?.filter((event) => !event.id.startsWith("snapshot-"))
+                      : existing?.events,
+                    view.events,
+                  ),
+                  finalOutput: view.finalOutput ?? existing?.finalOutput,
+                  outputPath: view.outputPath ?? existing?.outputPath,
+                  timelineSource: view.timelineSource ?? existing?.timelineSource,
+                  timelineCursor: view.timelineCursor,
+                  timelineCompletePolls: view.timelineComplete
+                    ? (
+                        existing?.timelineSource === view.timelineSource
+                        && view.events.length === 0
+                          ? (existing.timelineCompletePolls ?? 0) + 1
+                          : 1
+                      )
+                    : 0,
+                  timelineComplete: view.timelineComplete
+                    && existing?.timelineSource === view.timelineSource
+                    && view.events.length === 0
+                    && (existing.timelineCompletePolls ?? 0) >= 1,
+                  toolCount: view.toolCount ?? existing?.toolCount,
+                  turnCount: view.turnCount ?? existing?.turnCount,
+                  tokens: view.tokens ?? existing?.tokens,
+                  model: view.model ?? existing?.model,
+                  thinking: view.thinking ?? existing?.thinking,
+                  durationMs: view.durationMs ?? existing?.durationMs ?? fallbackDuration,
+                } satisfies SubagentChild;
+              });
+              const transcriptSessionId =
+                views.map((view) => view.sessionId).find(Boolean)
+                ?? views.map((view) => sessionIdFromArtifactPath(view.sessionFile)).find(Boolean)
+                ?? current.transcriptSessionId;
+              return {
+                ...current,
+                task: children[0]?.task ?? current.task,
+                children,
+                running: status.state === "queued" || status.state === "running",
+                transcriptSessionId,
+              };
+            }));
           } catch {
-            // transient — keep polling
+            // A partial status write or temporary disconnect is retried.
           }
-        })();
+        }));
+      } finally {
+        polling = false;
       }
-    }, 2500);
-    return () => clearInterval(id);
-  }, [subagents]);
+    };
+
+    void poll();
+    const id = setInterval(() => void poll(), 1_500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const eventSourceSessionIdRef = useRef<string | null>(null);

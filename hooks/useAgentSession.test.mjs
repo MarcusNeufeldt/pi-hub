@@ -55,6 +55,25 @@ test("keeps the session event stream open through the idle grace window", () => 
   assert.match(sendSource, /if \(promptRequestStarted && sentSessionId\) \{[\s\S]*?return;[\s\S]*?\}[\s\S]*?closeEvents\(\)/);
 });
 
+test("builds a durable subagent activity timeline and separate final result", () => {
+  const pollingSource = source.slice(
+    source.indexOf("// Detached runs publish bounded live snapshots"),
+    source.indexOf("const eventSourceRef"),
+  );
+
+  assert.match(source, /events\?: SubagentTimelineEvent\[\]/);
+  assert.match(source, /finalOutput\?: string/);
+  assert.match(source, /function mergeSubagentEvents/);
+  assert.match(pollingSource, /cursors: JSON\.stringify\(cursors\)/);
+  assert.match(pollingSource, /status\.piHub\?\.children/);
+  assert.match(pollingSource, /filter\(\(event\) => !event\.id\.startsWith\("snapshot-"\)\)/);
+  assert.match(pollingSource, /events: mergeSubagentEvents\(/);
+  assert.match(pollingSource, /timelineCompletePolls:/);
+  assert.match(pollingSource, /view\.events\.length === 0/);
+  assert.match(pollingSource, /finalOutput: view\.finalOutput/);
+  assert.match(pollingSource, /setInterval\(\(\) => void poll\(\), 1_500\)/);
+});
+
 test("reuses an open event stream and hides an empty agent phase", () => {
   const ensureSource = source.slice(
     source.indexOf("const ensureEventsConnected"),

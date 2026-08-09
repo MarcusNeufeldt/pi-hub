@@ -240,11 +240,19 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   };
 
   return (
+    // Your turns share the assistant's grid so both columns hang off one left
+    // edge; without this the rail would indent assistant content by ~120px
+    // while user bubbles spanned the full width, and nothing would line up.
     <div
-      style={{ marginBottom: "var(--sp-7)", display: "flex", flexDirection: "column", alignItems: "flex-end" }}
+      className="ui-rail"
+      style={{ marginBottom: "var(--sp-7)" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      <div className="ui-rail__meta">
+        {time && <span>{time}</span>}
+      </div>
+      <div className="ui-rail__body" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "85%" }}>
         <div
           style={{
@@ -436,9 +444,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
               )}
             </div>
           )}
-          {time && <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)" }}>{time}</span>}
+          {/* Timestamp lives in the gutter now, so it is not repeated here. */}
         </div>
       )}
+      </div>
     </div>
   );
 }

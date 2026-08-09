@@ -64,6 +64,8 @@ test("builds a durable subagent activity timeline and separate final result", ()
   assert.match(source, /events\?: SubagentTimelineEvent\[\]/);
   assert.match(source, /finalOutput\?: string/);
   assert.match(source, /function mergeSubagentEvents/);
+  assert.match(source, /function omitDuplicatedFinalNarration/);
+  assert.match(source, /events: omitDuplicatedFinalNarration\(mergedEvents, finalOutput\)/);
   assert.match(source, /function mergeRehydratedSubagents/);
   assert.match(source, /setSubagents\(\(previous\) => mergeRehydratedSubagents/);
   assert.match(pollingSource, /cursors: JSON\.stringify\(cursors\)/);
@@ -71,10 +73,10 @@ test("builds a durable subagent activity timeline and separate final result", ()
   assert.match(pollingSource, /query\.set\("artifacts"/);
   assert.match(pollingSource, /status\.piHub\?\.children/);
   assert.match(pollingSource, /filter\(\(event\) => !event\.id\.startsWith\("snapshot-"\)\)/);
-  assert.match(pollingSource, /events: mergeSubagentEvents\(/);
+  assert.match(pollingSource, /const mergedEvents = mergeSubagentEvents\(/);
   assert.match(pollingSource, /timelineCompletePolls:/);
   assert.match(pollingSource, /view\.events\.length === 0/);
-  assert.match(pollingSource, /finalOutput: view\.finalOutput/);
+  assert.match(pollingSource, /const finalOutput = view\.finalOutput \?\? existing\?\.finalOutput/);
   assert.match(source, /const finalOutput = typeof r\.finalOutput === "string"/);
   assert.match(source, /transcriptPath: transcriptPath \?\? existing\?\.transcriptPath/);
   assert.match(source, /sessionFile: sessionFile \?\? existing\?\.sessionFile/);

@@ -430,6 +430,27 @@ function mergeSubagentEvents(
     .slice(-300);
 }
 
+function omitDuplicatedFinalNarration(
+  events: SubagentTimelineEvent[] | undefined,
+  finalOutput: string | undefined,
+): SubagentTimelineEvent[] | undefined {
+  if (!events?.length || !finalOutput) return events;
+  const result = finalOutput.replace(/\r\n/g, "\n").trim();
+  if (!result) return events;
+  let index = -1;
+  for (let eventIndex = events.length - 1; eventIndex >= 0; eventIndex -= 1) {
+    if (events[eventIndex].kind === "assistant") {
+      index = eventIndex;
+      break;
+    }
+  }
+  if (index < 0) return events;
+  const narration = events[index].detail?.replace(/\r\n/g, "\n").trim();
+  if (!narration) return events;
+  const duplicatesResult = narration === result || narration.startsWith(`${result}\n`);
+  return duplicatesResult ? events.filter((_, eventIndex) => eventIndex !== index) : events;
+}
+
 function sessionIdFromArtifactPath(filePath: string | undefined): string | undefined {
   if (!filePath) return undefined;
   const name = filePath.split(/[\\/]/).pop() ?? "";
@@ -866,10 +887,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                   current.children.find((child) => child.agent === view.agent)
                   ?? current.children[view.index]
                   ?? current.children[index];
-                const firstOutputLine = view.finalOutput
+                const finalOutput = view.finalOutput ?? existing?.finalOutput;
+                const firstOutputLine = finalOutput
                   ?.split("\n")
                   .find((line) => line.trim())
                   ?.trim();
+                const mergedEvents = mergeSubagentEvents(
+                  view.timelineSource
+                    ? existing?.events?.filter((event) => !event.id.startsWith("snapshot-"))
+                    : existing?.events,
+                  view.events,
+                );
                 return {
                   ...existing,
                   agent: view.agent,
@@ -879,13 +907,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                   currentToolArgs: view.currentToolArgs,
                   recentOutput: firstOutputLine?.slice(0, 500) ?? existing?.recentOutput,
                   recentOutputLines: existing?.recentOutputLines,
-                  events: mergeSubagentEvents(
-                    view.timelineSource
-                      ? existing?.events?.filter((event) => !event.id.startsWith("snapshot-"))
-                      : existing?.events,
-                    view.events,
-                  ),
-                  finalOutput: view.finalOutput ?? existing?.finalOutput,
+                  events: omitDuplicatedFinalNarration(mergedEvents, finalOutput),
+                  finalOutput,
                   outputPath: view.outputPath ?? existing?.outputPath,
                   transcriptPath: view.transcriptPath ?? existing?.transcriptPath,
                   sessionFile: view.sessionFile ?? existing?.sessionFile,

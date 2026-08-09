@@ -343,6 +343,27 @@ function snapshotEvents(step: UnknownRecord | undefined, agent: string): Subagen
   return events;
 }
 
+function omitDuplicatedFinalNarration(
+  events: SubagentTimelineEvent[],
+  finalOutput: string | undefined,
+): SubagentTimelineEvent[] {
+  if (!finalOutput) return events;
+  const result = finalOutput.replace(/\r\n/g, "\n").trim();
+  if (!result) return events;
+  let index = -1;
+  for (let eventIndex = events.length - 1; eventIndex >= 0; eventIndex -= 1) {
+    if (events[eventIndex].kind === "assistant") {
+      index = eventIndex;
+      break;
+    }
+  }
+  if (index < 0) return events;
+  const narration = events[index].detail?.replace(/\r\n/g, "\n").trim();
+  if (!narration) return events;
+  const duplicatesResult = narration === result || narration.startsWith(`${result}\n`);
+  return duplicatesResult ? events.filter((_, eventIndex) => eventIndex !== index) : events;
+}
+
 function usageTokens(value: UnknownRecord | undefined): number | undefined {
   if (!value) return undefined;
   const direct = number(value.tokens);
@@ -450,6 +471,8 @@ export async function buildSubagentRunView(
       ?? (exitCode !== undefined ? (exitCode === 0 ? "completed" : "failed") : undefined)
       ?? (status.state === "complete" ? "completed" : string(status.state) ?? "running");
 
+    const activityEvents = omitDuplicatedFinalNarration(events, finalOutput);
+
     children.push({
       index,
       agent,
@@ -471,7 +494,7 @@ export async function buildSubagentRunView(
       timelineSource: timelinePath,
       timelineCursor,
       timelineComplete,
-      events,
+      events: activityEvents,
     });
   }
 

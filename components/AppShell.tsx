@@ -754,15 +754,13 @@ export function AppShell() {
             onClick={onClick}
             disabled={disabled}
             title={label}
+            className="ui-btn"
             style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              height: 32, padding: 0, background: "none", border: "none",
-              borderRadius: 9, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
-              fontSize: 12, opacity: disabled ? 0.35 : 1,
-              transition: "background 0.12s, color 0.12s",
+              flex: 1,
+              gap: 6,
+              borderRadius: "var(--r-md)",
+              fontSize: "var(--fs-meta)",
             }}
-            onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {icon}
             {label}
@@ -1016,32 +1014,16 @@ export function AppShell() {
                 disabled={!selectedSession}
                  title={selectedSession ? translate("history.full") : translate("history.unsaved")}
                  aria-label={translate("history.full")}
+                // disabled drives the dim state; the hairline divider is dropped
+                // for the same reason as the toolbar's — spacing separates these.
+                className="ui-btn"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
                   gap: 6,
                   height: "100%",
-                  padding: "0 12px",
-                  background: "none",
-                  border: "none",
+                  borderRadius: 0,
                   borderTop: "2px solid transparent",
-                  borderRight: "1px solid var(--border)",
-                  color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
-                  cursor: selectedSession ? "pointer" : "not-allowed",
-                  opacity: selectedSession ? 1 : 0.45,
-                  flexShrink: 0,
-                  fontSize: 11,
+                  fontSize: "var(--fs-micro)",
                   whiteSpace: "nowrap",
-                  transition: "color 0.1s, background 0.1s, opacity 0.1s",
-                }}
-                onMouseEnter={(e) => {
-                  if (!selectedSession) return;
-                  e.currentTarget.style.color = "var(--text)";
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = selectedSession ? "var(--text-muted)" : "var(--text-dim)";
-                  e.currentTarget.style.background = "none";
                 }}
               >
                 <svg
@@ -1094,26 +1076,17 @@ export function AppShell() {
                     disabled={disabled}
                     title={title}
                     aria-label={label}
+                    // Error/success are resting colours, so they are classes:
+                    // #dc2626 becomes var(--danger), success takes the accent.
+                    className={`ui-btn${isError ? " ui-btn--danger" : isSuccess ? " ui-btn--accent" : ""}`}
                     style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      height: "100%", padding: "0 12px",
-                      background: "none", border: "none",
+                      gap: 6,
+                      height: "100%",
+                      borderRadius: 0,
                       borderTop: "2px solid transparent",
-                      borderRight: "1px solid var(--border)",
-                      color: isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)",
-                      cursor: disabled ? "not-allowed" : "pointer",
-                      opacity: disabled && autoNameStatus.kind !== "naming" ? 0.45 : 1,
-                      flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
-                      transition: "color 0.1s, background 0.1s, opacity 0.1s",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (disabled) return;
-                      e.currentTarget.style.color = isError ? "#dc2626" : "var(--text)";
-                      e.currentTarget.style.background = "var(--bg-hover)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)";
-                      e.currentTarget.style.background = "none";
+                      borderColor: "transparent",
+                      fontSize: "var(--fs-micro)",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {autoNameStatus.kind === "naming" ? (
@@ -1153,19 +1126,17 @@ export function AppShell() {
                  title={translate("system.prompt")}
                  aria-label={translate("system.prompt")}
                 aria-pressed={activeTopPanel === "system"}
+                // aria-pressed already drives the selected surface via .ui-btn;
+                // only the accent top-edge indicator stays inline.
+                className="ui-btn"
                 style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  height: "100%", padding: "0 12px",
-                  background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
-                  border: "none",
+                  gap: 6,
+                  height: "100%",
+                  borderRadius: 0,
                   borderTop: activeTopPanel === "system" ? "2px solid var(--accent)" : "2px solid transparent",
-                  borderRight: "1px solid var(--border)",
-                  cursor: "pointer",
-                  color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-                  fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+                  fontSize: "var(--fs-micro)",
+                  whiteSpace: "nowrap",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)"; }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}>
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -1214,22 +1185,19 @@ export function AppShell() {
                title={tooltip || translate("session.title")}
                  aria-label={translate("session.title")}
                 aria-pressed={activeTopPanel === "session"}
+                className="ui-btn"
                 style={{
                   marginLeft: "auto",
-                  display: "flex", alignItems: "center", gap: 10,
+                  gap: 10,
                   paddingLeft: 12,
                   paddingRight: rightPanelOpen ? 12 : 48,
                   height: "100%",
-                  background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
-                  border: "none",
+                  borderRadius: 0,
                   borderTop: activeTopPanel === "session" ? "2px solid var(--accent)" : "2px solid transparent",
-                  fontSize: 11, color: "var(--text-muted)",
-                  whiteSpace: "nowrap", cursor: "pointer",
+                  fontSize: "var(--fs-micro)",
+                  whiteSpace: "nowrap",
                   fontVariantNumeric: "tabular-nums",
-                  transition: "color 0.1s, background 0.1s",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)"; }}
               >
                 {isMobile && (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1310,20 +1278,8 @@ export function AppShell() {
                       }}
                       role="menuitemradio"
                       aria-checked={locale === plugin.id}
-                      style={{
-                        display: "flex", alignItems: "center",
-                        width: "100%", height: 34, padding: "0 10px",
-                        border: "none", borderRadius: 4,
-                        background: locale === plugin.id ? "var(--bg-selected)" : "transparent",
-                        color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 12,
-                        transition: "background 0.1s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (locale !== plugin.id) e.currentTarget.style.background = "var(--bg-hover)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (locale !== plugin.id) e.currentTarget.style.background = "transparent";
-                      }}
+                      className={`ui-row${locale === plugin.id ? " is-active" : ""}`}
+                      style={{ fontSize: "var(--fs-meta)" }}
                     >
                       <span>{plugin.label}</span>
                     </button>
@@ -1429,31 +1385,11 @@ export function AppShell() {
                           type="button"
                            title={copied ? translate("session.copied") : translate(field === "file" ? "session.copyFile" : "session.copyId")}
                           onClick={() => handleCopySessionField(field, value)}
+                          className={`ui-btn ui-btn--icon ui-btn--outline ${copied ? "ui-btn--accent" : "ui-btn--dim"}`}
                           style={{
                             alignSelf: "start",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 22,
-                            height: 22,
                             marginTop: -2,
-                            color: copied ? "var(--accent)" : "var(--text-dim)",
-                            background: "transparent",
-                            border: "1px solid var(--border)",
-                            borderRadius: 4,
-                            cursor: "pointer",
                             flex: "0 0 auto",
-                            transition: "color 0.12s, border-color 0.12s, background 0.12s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.color = "var(--accent)";
-                            e.currentTarget.style.borderColor = "var(--accent)";
-                            e.currentTarget.style.background = "var(--bg-hover)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.color = copied ? "var(--accent)" : "var(--text-dim)";
-                            e.currentTarget.style.borderColor = "var(--border)";
-                            e.currentTarget.style.background = "transparent";
                           }}
                         >
                           {copied ? (
@@ -1556,7 +1492,7 @@ export function AppShell() {
               role="alert"
               style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
             >
-               <div style={{ fontSize: 14, color: "#dc2626" }}>{translate("workspace.unable")}</div>
+               <div style={{ fontSize: "var(--fs-body)", color: "var(--danger)" }}>{translate("workspace.unable")}</div>
               <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontFamily: "var(--font-mono)", fontSize: 12 }}>
                 {initialNavigation.requestedCwd}
               </div>
@@ -1700,16 +1636,19 @@ export function AppShell() {
        aria-expanded={rightPanelOpen}
        title={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
        aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
+      // aria-expanded above already drives the open/selected surface.
+      className="ui-btn ui-btn--bar"
       style={{
-        position: "fixed", top: "env(safe-area-inset-top)", right: "env(safe-area-inset-right)", zIndex: 300,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: 36, height: 36, padding: 0,
-        background: "var(--bg-panel)", border: "none", borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
-        color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
-        cursor: "pointer", transition: "color 0.12s",
+        position: "fixed",
+        top: "env(safe-area-inset-top)",
+        right: "env(safe-area-inset-right)",
+        zIndex: "var(--z-overlay)",
+        background: "var(--bg-panel)",
+        borderRight: "none",
+        borderLeft: "1px solid var(--border)",
+        borderBottom: "1px solid var(--border)",
+        borderRadius: "0 0 0 var(--r-md)",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />

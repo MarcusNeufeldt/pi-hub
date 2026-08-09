@@ -1412,6 +1412,33 @@ span.linenumber {
   color: var(--danger);
 }
 
+/* Small inline action attached to a message — copy, edit-from-here, fork. Dim at
+   rest, accent when reached for, and no surface fill so it stays a text action
+   rather than a button. :active is included because on touch there is no hover
+   at all, so it would otherwise give no feedback whatsoever. */
+.ui-btn--hint {
+  height: auto;
+  min-height: var(--tap);
+  padding-inline: var(--sp-4);
+  color: var(--text-dim);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  gap: var(--sp-2);
+  white-space: nowrap;
+}
+
+.ui-btn--hint:active:not([disabled]) {
+  background: transparent;
+  color: var(--accent);
+}
+
+@media (hover: hover) {
+  .ui-btn--hint:hover:not([disabled]) {
+    background: transparent;
+    color: var(--accent);
+  }
+}
+
 /* Filled cap of a segmented control: rests on --bg-hover, so its hover has to
    step up to --bg-selected rather than down. */
 .ui-btn--cap {

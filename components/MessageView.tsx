@@ -628,7 +628,7 @@ function AssistantMessageView({
         })()}
       </div>
 
-      <div className="ui-rail__body">
+      <div className="ui-rail__body turn-surface">
       <div className="turn-blocks">
         {blockItems.map(({ block, originalIndex }) => (
           <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />

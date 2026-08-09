@@ -1547,7 +1547,6 @@ export function AppShell() {
         <div style={{
           display: "flex",
           alignItems: "center",
-          gap: "var(--sp-2)",
           flexShrink: 0,
           height: "calc(var(--h-topbar) + env(safe-area-inset-top))",
           paddingTop: "env(safe-area-inset-top)",
@@ -1556,20 +1555,23 @@ export function AppShell() {
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
         }}>
+          {/* One segmented control rather than two loose buttons in a bar. */}
+          <div className="ui-segmented" style={{ flex: 1 }} role="tablist">
           {(["review", "subagents"] as const).map((view) => (
             <button
               key={view}
+              role="tab"
               className={`ui-tab${rightView === view ? " is-active" : ""}`}
-              aria-pressed={rightView === view}
+              aria-selected={rightView === view}
               onClick={() => {
                 setRightView(view);
                 setActiveFileTabId(null);
               }}
-              style={{ flex: 1 }}
             >
               {view === "review" ? translate("panel.review") : translate("panel.subagents")}
             </button>
           ))}
+          </div>
         </div>
 
         {/* File tabs — shown when files are open */}

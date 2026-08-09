@@ -1112,25 +1112,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               {hiddenProjects.length > 0 && (
                 <>
                   <button
+                    className="sidebar-section__header"
                     onClick={() => setHiddenSectionOpen((v) => !v)}
                     title={t("sidebar.showHiddenProjects")}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      width: "100%",
-                      padding: "7px 10px",
-                      background: "var(--bg)",
-                      border: "none",
-                      borderTop: "1px solid var(--border)",
-                      color: "var(--text-dim)",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      fontSize: "var(--fs-micro)",
-                      fontWeight: 600,
-                      letterSpacing: "0.05em",
-                      textTransform: "uppercase",
-                    }}
+                    aria-expanded={hiddenSectionOpen}
+                    style={{ borderTop: "1px solid color-mix(in srgb, var(--border) 45%, transparent)" }}
                   >
                     <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ transform: hiddenSectionOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>
                       <polyline points="3 2 7 5 3 8" />
@@ -1598,17 +1584,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
         )}
         {recentSessions.length > 0 && (
-          <div style={{ borderBottom: "1px solid var(--border)", marginBottom: 4, paddingBottom: 2 }}>
+          <div className="sidebar-section">
             <button
+              className="sidebar-section__header"
               onClick={() => setRecentCollapsed((v) => !v)}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                width: "100%", padding: "6px 10px",
-                background: "none", border: "none",
-                color: "var(--text-muted)", cursor: "pointer",
-                fontSize: "var(--fs-micro)", fontWeight: 600, letterSpacing: "0.05em",
-                textTransform: "uppercase", textAlign: "left",
-              }}
+              aria-expanded={!recentCollapsed}
             >
               <svg
                 width="9" height="9" viewBox="0 0 10 10" fill="none"
@@ -1618,7 +1598,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 <polyline points="3 2 7 5 3 8" />
               </svg>
               <span>{t("sidebar.recent")}</span>
-              <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>({recentSessions.length})</span>
+              <span className="sidebar-section__count">({recentSessions.length})</span>
             </button>
             {!recentCollapsed && recentSessions.map((s) => (
               <SessionItem

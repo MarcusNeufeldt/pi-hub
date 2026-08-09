@@ -60,6 +60,10 @@
   --danger: #b32f1a;
   --user-bg: #dae7eb;
   --assistant-bg: #f4f8f9;
+  /* Surface a turn's content sits on: one subtle step off --bg, with --tool-bg a
+     further step, so tool blocks still read as inset *within* a turn card. In
+     light mode inset means darker. */
+  --bg-turn: #eff5f6;
   --tool-bg: #eaf1f3;
   --bg-subtle: rgba(13,20,24,0.05);
 }
@@ -83,7 +87,10 @@ html.dark {
   --danger: #f87171;
   --user-bg: #16232a;
   --assistant-bg: #0a1113;
-  --tool-bg: #0f191d;
+  /* Dark mode inverts the convention: inset surfaces go lighter, not darker, so
+     the turn card sits above --bg and --tool-bg sits above the card. */
+  --bg-turn: #0d1418;
+  --tool-bg: #111b1f;
   --bg-subtle: rgba(190,215,222,0.055);
 }
 
@@ -1611,6 +1618,93 @@ span.linenumber {
   }
 }
 
+/* ---- sidebar groups ----------------------------------------------------- */
+/* The tree was one flat run of rows divided by hairlines with 4px of margin, so
+   projects, recent sessions and hidden items all sat at the same visual level
+   with nothing to scan by. Groups are separated by space now; the hairline is a
+   faint secondary cue rather than the structure itself. */
+.sidebar-section {
+  padding-block: var(--sp-3);
+}
+
+.sidebar-section + .sidebar-section {
+  margin-top: var(--sp-4);
+  border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+.sidebar-section__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-2) var(--sp-5);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--fs-micro);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.sidebar-section__header:active {
+  color: var(--text);
+}
+
+@media (hover: hover) {
+  .sidebar-section__header:hover {
+    color: var(--text);
+  }
+}
+
+/* Counts sit beside the label without inheriting its tracking or weight. */
+.sidebar-section__count {
+  color: var(--text-dim);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* ---- segmented control -------------------------------------------------- */
+/* Two flat buttons sharing a bar don't read as a choice between states. A track
+   with an inset selected thumb does: the group is one control, and the active
+   segment is lifted out of it. */
+.ui-segmented {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+  padding: var(--sp-1);
+  border-radius: var(--r-md);
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.ui-segmented > .ui-tab {
+  flex: 1;
+  min-height: var(--h-ctl);
+  height: var(--h-ctl);
+  border-radius: calc(var(--r-md) - 2px);
+  font-size: var(--fs-meta);
+}
+
+/* The selected segment is the raised one, so it needs the top surface and an
+   elevation — not the --bg-selected fill a standalone tab would take. */
+.ui-segmented > .ui-tab.is-active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--sh-1);
+}
+
+@media (hover: hover) {
+  .ui-segmented > .ui-tab:hover:not(.is-active) {
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+}
+
 /* ---- field -------------------------------------------------------------- */
 .ui-field {
   width: 100%;
@@ -1975,6 +2069,24 @@ span.linenumber {
 
 .ui-rail__body {
   min-width: 0;
+}
+
+/* An assistant turn's content as a discrete surface. It used to sit straight on
+   the pane background, so a long session read as one undifferentiated column of
+   text; each exchange is now a distinct block. The gutter deliberately stays
+   *outside* the card, on the canvas, so provenance reads as a margin note. */
+.turn-surface {
+  background: var(--bg-turn);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5) var(--sp-6);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+@media (max-width: 640px) {
+  .turn-surface {
+    padding: var(--sp-5);
+    border-radius: var(--r-md);
+  }
 }
 
 /* Token count and cost stack in the narrow desktop gutter and sit side by side

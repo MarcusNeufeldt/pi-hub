@@ -5,10 +5,11 @@ import { getRpcSession, startRpcSession } from "@/lib/rpc-manager";
 import { invalidateSessionListCache, resolveSessionPath } from "@/lib/session-reader";
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const onlyUnnamed = new URL(req.url).searchParams.get("onlyUnnamed") === "1";
 
   try {
     const filePath = await resolveSessionPath(id);
@@ -24,7 +25,12 @@ export async function POST(
     // globalThis keeps wrappers alive across dev hot reloads; older instances
     // may predate waitUntilReady(), but those have already completed startup.
     await session.waitUntilReady?.();
-    const result = await generateSessionTitle(session.inner as unknown as AgentSession);
+    const inner = session.inner as unknown as AgentSession;
+    const existingName = inner.sessionManager.getSessionName();
+    if (onlyUnnamed && existingName) {
+      return NextResponse.json({ title: existingName, skipped: "already_named" });
+    }
+    const result = await generateSessionTitle(inner);
 
     if (!session.isAlive()) {
       return NextResponse.json(

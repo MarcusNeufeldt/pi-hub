@@ -12,9 +12,11 @@
 // ---------------------------------------------------------------------------
 
 export interface ScheduleDto {
-  type: "daily" | "once";
+  type: "daily" | "once" | "hourly";
   time?: string;
   localDateTime?: string;
+  intervalHours?: number;
+  minute?: number;
   timezone: string;
   cronExpression?: string | null;
 }

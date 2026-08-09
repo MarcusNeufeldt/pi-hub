@@ -13,7 +13,7 @@
  * Extension rules: AGENTS.local.md (extend, don't modify upstream).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { displayCwd, getRecentProjects } from "@/lib/projects";
@@ -193,9 +193,13 @@ function formatDuration(ms: number | null): string | null {
 export function TasksConfig({
   onClose,
   activeCwd,
+  initialTaskId,
+  onTasksChanged,
 }: {
   onClose: () => void;
   activeCwd?: string | null;
+  initialTaskId?: string | null;
+  onTasksChanged?: () => void;
 }) {
   const isMobile = useIsMobile();
   const { t } = useI18n();
@@ -213,6 +217,7 @@ export function TasksConfig({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const initialTargetOpenedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -264,6 +269,14 @@ export function TasksConfig({
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!initialTaskId || initialTargetOpenedRef.current) return;
+    const target = tasks.find((task) => task.id === initialTaskId);
+    if (!target) return;
+    initialTargetOpenedRef.current = true;
+    setView({ name: "detail", task: target });
+  }, [initialTaskId, tasks]);
+
   // Poll every 5s while a run is active so the UI reflects progress.
   useEffect(() => {
     const hasActiveRun = scheduler ? scheduler.runningRuns > 0 : false;
@@ -283,6 +296,7 @@ export function TasksConfig({
     try {
       await fn();
       await refresh();
+      onTasksChanged?.();
       after?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -316,6 +330,7 @@ export function TasksConfig({
         execution: { ...task.execution, notifyOnSuccess: false },
       });
       await refresh();
+      onTasksChanged?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -331,6 +346,7 @@ export function TasksConfig({
     try {
       const created = await createTask(payload);
       await refresh();
+      onTasksChanged?.();
       setView({ name: "detail", task: created });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -341,6 +357,7 @@ export function TasksConfig({
     try {
       const updated = await updateTask(task.id, payload);
       await refresh();
+      onTasksChanged?.();
       setView({ name: "detail", task: updated });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

@@ -25,7 +25,7 @@ import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
-import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
+import { buildFileLineMentionText } from "@/lib/file-fuzzy";
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import {
   getDefaultRightPanelWidth,
@@ -71,11 +71,13 @@ export function AppShell() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
+  const [tasksRefreshKey, setTasksRefreshKey] = useState(0);
   const [modelsConfigOpen, setModelsConfigOpen] = useState(false);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
   const [tasksConfigOpen, setTasksConfigOpen] = useState(false);
+  const [tasksConfigTargetId, setTasksConfigTargetId] = useState<string | null>(null);
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
@@ -83,6 +85,11 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+
+  const openTasksConfig = useCallback((taskId?: string) => {
+    setTasksConfigTargetId(taskId ?? null);
+    setTasksConfigOpen(true);
+  }, []);
 
   // Right panel view tabs: "review" (per-turn diffs) | "subagents" (fleet).
   const [rightView, setRightView] = useState<"review" | "subagents">("review");
@@ -287,17 +294,6 @@ export function AppShell() {
   // Right panel — file tabs only
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
-
-  // Same @mention format as the chat input's @ autocomplete, so the agent's
-  // read tool resolves it the same way (it strips the @ prefix).
-  const handleAtMention = useCallback((relativePath: string, isDir: boolean) => {
-    chatInputRef.current?.insertText(buildAtMentionText(relativePath, isDir));
-  }, []);
-
-  const handleAtMentions = useCallback((relativePaths: string[]) => {
-    const mentions = buildFileAtMentionsText(relativePaths);
-    if (mentions) chatInputRef.current?.insertText(mentions);
-  }, []);
 
   const handleFileLineMention = useCallback((relativePath: string, startLine: number, endLine: number) => {
     chatInputRef.current?.insertText(buildFileLineMentionText(relativePath, startLine, endLine));
@@ -506,10 +502,6 @@ export function AppShell() {
     setAutoNameStatus({ kind: "idle" });
   }, [selectedSession?.id]);
 
-  const handleExplorerRefresh = useCallback(() => {
-    setExplorerRefreshKey((k) => k + 1);
-  }, []);
-
   const handleSessionForked = useCallback((newSessionId: string) => {
     setRefreshKey((k) => k + 1);
     setSessionKey((k) => k + 1);
@@ -683,11 +675,8 @@ export function AppShell() {
         onSessionDeleted={handleSessionDeleted}
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
-        onOpenFile={handleOpenFile}
-        explorerRefreshKey={explorerRefreshKey}
-        onExplorerRefresh={handleExplorerRefresh}
-        onAtMention={handleAtMention}
-        onAtMentions={handleAtMentions}
+        tasksRefreshKey={tasksRefreshKey}
+        onOpenTasks={openTasksConfig}
       />
       <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
         {([
@@ -732,7 +721,7 @@ export function AppShell() {
           },
           {
              label: translate("common.tasks"),
-            onClick: () => setTasksConfigOpen(true),
+            onClick: () => openTasksConfig(),
             disabled: false,
             icon: (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1784,7 +1773,12 @@ export function AppShell() {
     {tasksConfigOpen && (
       <TasksConfig
         activeCwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null}
-        onClose={() => setTasksConfigOpen(false)}
+        initialTaskId={tasksConfigTargetId}
+        onClose={() => {
+          setTasksConfigOpen(false);
+          setTasksConfigTargetId(null);
+        }}
+        onTasksChanged={() => setTasksRefreshKey((key) => key + 1)}
       />
     )}
     {telegramOpen && (

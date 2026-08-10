@@ -101,6 +101,8 @@ interface PaneRuntime {
   systemPrompt: string | null;
   subagents: SubagentDelegation[];
   turnChanges: TurnChanges[];
+  branchTree: SessionTreeNode[];
+  branchActiveLeafId: string | null;
 }
 
 /** Shared so an unreported pane keeps a stable identity between renders. */
@@ -110,6 +112,8 @@ const EMPTY_PANE_RUNTIME: PaneRuntime = {
   systemPrompt: null,
   subagents: [],
   turnChanges: [],
+  branchTree: [],
+  branchActiveLeafId: null,
 };
 
 /**
@@ -157,11 +161,17 @@ export function AppShell() {
   focusedPaneIdRef.current = focusedPaneId;
   const focusedPane = panes.find((pane) => pane.id === focusedPaneId) ?? panes[0];
 
-  const updateFocusedPane = useCallback((patch: (pane: ChatPane) => ChatPane) => {
-    setPanes((prev) => prev.map((pane) => (
-      pane.id === focusedPaneIdRef.current ? patch(pane) : pane
-    )));
+  /**
+   * Targeted write. Callbacks a specific pane reports through must use this
+   * rather than the focused-pane variant: a session created in one pane while
+   * the user clicks into another would otherwise land in the wrong pane.
+   */
+  const updatePane = useCallback((paneId: string, patch: (pane: ChatPane) => ChatPane) => {
+    setPanes((prev) => prev.map((pane) => (pane.id === paneId ? patch(pane) : pane)));
   }, []);
+  const updateFocusedPane = useCallback((patch: (pane: ChatPane) => ChatPane) => {
+    updatePane(focusedPaneIdRef.current, patch);
+  }, [updatePane]);
   /** Focus follows interaction; with one pane this is a no-op. */
   const handleFocusPane = useCallback((paneId: string) => {
     setFocusedPaneId((current) => (current === paneId ? current : paneId));
@@ -248,6 +258,11 @@ export function AppShell() {
       delete rest[paneId];
       return rest;
     });
+    // Pane ids are never reused, so these are only leaks — but a closed pane's
+    // bookkeeping has no reason to outlive it.
+    delete prevRunningSubagentsRef.current[paneId];
+    delete turnChangesSigRef.current[paneId];
+    delete branchLeafChangeFnRef.current[paneId];
     if (nextFocus !== null) setFocusedPaneId(nextFocus);
   }, [layout]);
 
@@ -280,36 +295,43 @@ export function AppShell() {
   // Subagent fleet state, lifted from ChatWindow — recorded per pane.
   const subagents = focusedRuntime.subagents;
   const [subagentClearSignal, setSubagentClearSignal] = useState(0);
-  const prevRunningSubagentsRef = useRef(0);
+  // Per pane, not per app: a single counter shared by every pane would be
+  // clobbered on each focus switch, so returning to a pane that already had
+  // workers running would read as a fresh spawn and pop the panel open again.
+  const prevRunningSubagentsRef = useRef<Record<string, number>>({});
   const handleSubagentsChange = useCallback((paneId: string, delegations: SubagentDelegation[]) => {
     patchPaneRuntime(paneId, { subagents: delegations });
-    // Only the focused pane may take over the right panel. A background pane
-    // spawning workers must not swap the panel to data the user is not looking at.
-    if (paneId !== focusedPaneIdRef.current) return;
     const running = delegations.reduce(
       (n, d) => n + d.children.filter((c) => c.status === "running").length,
       0,
     );
+    // Recorded for every pane, focused or not, so the count a pane is compared
+    // against is always its own.
+    const previous = prevRunningSubagentsRef.current[paneId] ?? 0;
+    prevRunningSubagentsRef.current[paneId] = running;
+    // Only the focused pane may take over the right panel. A background pane
+    // spawning workers must not swap the panel to data the user is not looking at.
+    if (paneId !== focusedPaneIdRef.current) return;
     // Auto-switch to the Subagents tab when a new delegation spawns.
-    if (running > prevRunningSubagentsRef.current) {
+    if (running > previous) {
       setRightView("subagents");
       setRightPanelOpen(true);
     }
-    prevRunningSubagentsRef.current = running;
   }, [patchPaneRuntime]);
 
   // Per-turn diffs shown in the right panel; auto-opens when a new turn
   // changes files.
   const turnChanges = focusedRuntime.turnChanges;
-  const turnChangesSigRef = useRef("");
+  // Per pane for the same reason as the subagent counter above — two panes with
+  // different diffs would otherwise look like a change on every focus switch.
+  const turnChangesSigRef = useRef<Record<string, string>>({});
   const handleTurnChangesChange = useCallback((paneId: string, turns: TurnChanges[]) => {
     patchPaneRuntime(paneId, { turnChanges: turns });
-    if (paneId !== focusedPaneIdRef.current) return;
     const sig = turns.map((t) => `${t.turnId}:${t.files.length}`).join(",");
-    if (sig && sig !== turnChangesSigRef.current) {
-      turnChangesSigRef.current = sig;
-      setRightPanelOpen(true);
-    }
+    const previous = turnChangesSigRef.current[paneId] ?? "";
+    turnChangesSigRef.current[paneId] = sig;
+    if (paneId !== focusedPaneIdRef.current) return;
+    if (sig && sig !== previous) setRightPanelOpen(true);
   }, [patchPaneRuntime]);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
@@ -383,18 +405,25 @@ export function AppShell() {
   const languageBtnRef = useRef<HTMLButtonElement>(null);
 
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
-  const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
-  const [branchActiveLeafId, setBranchActiveLeafId] = useState<string | null>(null);
-  const branchLeafChangeFnRef = useRef<((leafId: string | null) => void) | null>(null);
+  // Branch state is per pane: the navigator in the top bar describes the focused
+  // pane, and an unfocused pane reporting its tree must not redirect it.
+  const branchTree = focusedRuntime.branchTree;
+  const branchActiveLeafId = focusedRuntime.branchActiveLeafId;
+  const branchLeafChangeFnRef = useRef<Record<string, (leafId: string | null) => void>>({});
 
-  const handleBranchDataChange = useCallback((tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => {
-    setBranchTree(tree);
-    setBranchActiveLeafId(activeLeafId);
-    branchLeafChangeFnRef.current = onLeafChange;
-  }, []);
+  const handleBranchDataChange = useCallback((
+    paneId: string,
+    tree: SessionTreeNode[],
+    activeLeafId: string | null,
+    onLeafChange: (leafId: string | null) => void,
+  ) => {
+    patchPaneRuntime(paneId, { branchTree: tree, branchActiveLeafId: activeLeafId });
+    branchLeafChangeFnRef.current[paneId] = onLeafChange;
+  }, [patchPaneRuntime]);
 
   const handleBranchLeafChange = useCallback((leafId: string | null) => {
-    branchLeafChangeFnRef.current?.(leafId);
+    // The navigator is chrome around the focused pane, so it drives that pane.
+    branchLeafChangeFnRef.current[focusedPaneIdRef.current]?.(leafId);
   }, []);
 
   const systemPrompt = focusedRuntime.systemPrompt;
@@ -437,45 +466,6 @@ export function AppShell() {
     patchPaneRuntime(paneId, { contextUsage: usage });
   }, [patchPaneRuntime]);
 
-  /**
-   * ChatWindow reports upward through single-argument callbacks, so each pane
-   * needs its own id bound in. These MUST be referentially stable: ChatWindow
-   * clears its stats on unmount via `useEffect(() => () => onSessionStatsChange(null),
-   * [onSessionStatsChange])`, so a callback whose identity changed every render
-   * would re-run that cleanup on every render, null the pane's stats, re-render,
-   * and loop.
-   *
-   * Keyed on the pane *ids* rather than the pane objects: a pane's session
-   * changes constantly, and rebuilding these then would blink the top bar to
-   * null and back on every message.
-   */
-  const paneIdsKey = panes.map((pane) => pane.id).join(",");
-  const paneCallbacks = useMemo(() => {
-    const map = new Map<string, {
-      onSessionStatsChange: (stats: SessionStatsInfo | null) => void;
-      onContextUsageChange: (usage: ContextUsageInfo | null) => void;
-      onSystemPromptChange: (prompt: string | null) => void;
-      onSubagentsChange: (delegations: SubagentDelegation[]) => void;
-      onTurnChangesChange: (turns: TurnChanges[]) => void;
-    }>();
-    for (const paneId of paneIdsKey.split(",")) {
-      map.set(paneId, {
-        onSessionStatsChange: (stats) => handleSessionStatsChange(paneId, stats),
-        onContextUsageChange: (usage) => handleContextUsageChange(paneId, usage),
-        onSystemPromptChange: (prompt) => handleSystemPromptChange(paneId, prompt),
-        onSubagentsChange: (delegations) => handleSubagentsChange(paneId, delegations),
-        onTurnChangesChange: (turns) => handleTurnChangesChange(paneId, turns),
-      });
-    }
-    return map;
-  }, [
-    paneIdsKey,
-    handleSessionStatsChange,
-    handleContextUsageChange,
-    handleSystemPromptChange,
-    handleSubagentsChange,
-    handleTurnChangesChange,
-  ]);
 
   // Codex plan quota — polled from the live upstream reading, displayed in top bar.
   // Stays null whenever the Codex desktop app is not signed in on this machine
@@ -636,8 +626,7 @@ export function AppShell() {
       return prev;
     });
     setSessionKey((k) => k + 1);
-    setBranchTree([]);
-    setBranchActiveLeafId(null);
+    patchFocusedRuntime({ branchTree: [], branchActiveLeafId: null });
     patchFocusedRuntime({ systemPrompt: null });
     setActiveTopPanel(null);
     // File tabs are keyed by absolute path, so tabs opened in the previous
@@ -693,8 +682,7 @@ export function AppShell() {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
     setSessionKey((k) => k + 1);
-    setBranchTree([]);
-    setBranchActiveLeafId(null);
+    patchFocusedRuntime({ branchTree: [], branchActiveLeafId: null });
     patchFocusedRuntime({ systemPrompt: null });
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
@@ -711,25 +699,36 @@ export function AppShell() {
   // server-computed projectRoot, which the same-project check in
   // handleCwdChange relies on. Hydrate it from the session list so switching
   // worktrees right after creating a session doesn't close the chat.
-  const hydrateSelectedSession = useCallback((sessionId: string) => {
+  /** Fills in the full session record for whichever pane is holding that id. */
+  const hydratePaneSession = useCallback((paneId: string, sessionId: string) => {
     void fetch("/api/sessions")
       .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
       .then((d) => {
         const full = d?.sessions.find((s) => s.id === sessionId);
         if (!full) return;
-        setSelectedSession((prev) => (prev && prev.id === sessionId && !prev.projectRoot ? full : prev));
+        // The pane may have been closed, or moved on, while this was in flight.
+        updatePane(paneId, (pane) => (
+          pane.session && pane.session.id === sessionId && !pane.session.projectRoot
+            ? { ...pane, session: full }
+            : pane
+        ));
       })
       .catch(() => {});
-  }, [setSelectedSession]);
+  }, [updatePane]);
 
-  // Called by ChatWindow when a new session gets its real id from pi
-  const handleSessionCreated = useCallback((session: SessionInfo) => {
-    setNewSessionCwd(null);
-    setSelectedSession(session);
+  // Called by ChatWindow when a new session gets its real id from pi. Targets the
+  // reporting pane, not the focused one: clicking into another pane during the
+  // round-trip would otherwise drop the new session into whichever pane the user
+  // happened to land on.
+  const handleSessionCreated = useCallback((paneId: string, session: SessionInfo) => {
+    updatePane(paneId, (pane) => ({ ...pane, newSessionCwd: null, session }));
     setRefreshKey((k) => k + 1);
-    hydrateSelectedSession(session.id);
-    router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [router, hydrateSelectedSession, setNewSessionCwd, setSelectedSession]);
+    hydratePaneSession(paneId, session.id);
+    // The URL names a single session, so only the focused pane may rewrite it.
+    if (paneId === focusedPaneIdRef.current) {
+      router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
+    }
+  }, [router, hydratePaneSession, updatePane]);
 
   const handleAgentEnd = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -776,17 +775,80 @@ export function AppShell() {
     setAutoNameStatus({ kind: "idle" });
   }, [selectedSession?.id]);
 
-  const handleSessionForked = useCallback((newSessionId: string) => {
+  const handleSessionForked = useCallback((paneId: string, newSessionId: string) => {
     setRefreshKey((k) => k + 1);
-    setSessionKey((k) => k + 1);
-    setNewSessionCwd(null);
-    setSelectedSession((prev) => ({
-      ...(prev ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
-      id: newSessionId,
+    updatePane(paneId, (pane) => ({
+      ...pane,
+      remountKey: pane.remountKey + 1,
+      newSessionCwd: null,
+      session: {
+        ...(pane.session ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
+        id: newSessionId,
+      },
     }));
-    hydrateSelectedSession(newSessionId);
-    router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [router, hydrateSelectedSession, setNewSessionCwd, setSelectedSession, setSessionKey]);
+    hydratePaneSession(paneId, newSessionId);
+    if (paneId === focusedPaneIdRef.current) {
+      router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
+    }
+  }, [router, hydratePaneSession, updatePane]);
+
+  /**
+   * ChatWindow reports upward through callbacks that carry no pane identity, so
+   * each pane needs its own id bound in. These MUST be referentially stable:
+   * ChatWindow clears its stats on unmount via
+   * `useEffect(() => () => onSessionStatsChange(null), [onSessionStatsChange])`,
+   * so a callback whose identity changed every render would re-run that cleanup
+   * on every render, null the pane's stats, re-render, and loop.
+   *
+   * Keyed on the pane *ids* rather than the pane objects: a pane's session
+   * changes constantly, and rebuilding these then would blink the top bar to
+   * null and back on every message.
+   *
+   * Declared here rather than beside the other pane state because it binds
+   * handlers defined further down — a `const` referenced before its initialiser
+   * throws at render.
+   */
+  const paneIdsKey = panes.map((pane) => pane.id).join(",");
+  const paneCallbacks = useMemo(() => {
+    const map = new Map<string, {
+      onSessionStatsChange: (stats: SessionStatsInfo | null) => void;
+      onContextUsageChange: (usage: ContextUsageInfo | null) => void;
+      onSystemPromptChange: (prompt: string | null) => void;
+      onSubagentsChange: (delegations: SubagentDelegation[]) => void;
+      onTurnChangesChange: (turns: TurnChanges[]) => void;
+      onSessionCreated: (session: SessionInfo) => void;
+      onSessionForked: (newSessionId: string) => void;
+      onBranchDataChange: (
+        tree: SessionTreeNode[],
+        activeLeafId: string | null,
+        onLeafChange: (leafId: string | null) => void,
+      ) => void;
+    }>();
+    for (const paneId of paneIdsKey.split(",")) {
+      map.set(paneId, {
+        onSessionStatsChange: (stats) => handleSessionStatsChange(paneId, stats),
+        onContextUsageChange: (usage) => handleContextUsageChange(paneId, usage),
+        onSystemPromptChange: (prompt) => handleSystemPromptChange(paneId, prompt),
+        onSubagentsChange: (delegations) => handleSubagentsChange(paneId, delegations),
+        onTurnChangesChange: (turns) => handleTurnChangesChange(paneId, turns),
+        onSessionCreated: (session) => handleSessionCreated(paneId, session),
+        onSessionForked: (newSessionId) => handleSessionForked(paneId, newSessionId),
+        onBranchDataChange: (tree, activeLeafId, onLeafChange) =>
+          handleBranchDataChange(paneId, tree, activeLeafId, onLeafChange),
+      });
+    }
+    return map;
+  }, [
+    paneIdsKey,
+    handleSessionStatsChange,
+    handleContextUsageChange,
+    handleSystemPromptChange,
+    handleSubagentsChange,
+    handleTurnChangesChange,
+    handleSessionCreated,
+    handleSessionForked,
+    handleBranchDataChange,
+  ]);
 
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
@@ -799,8 +861,7 @@ export function AppShell() {
       setSelectedSession(null);
       setNewSessionCwd(cwd ?? null);
       setSessionKey((k) => k + 1);
-      setBranchTree([]);
-      setBranchActiveLeafId(null);
+      patchFocusedRuntime({ branchTree: [], branchActiveLeafId: null });
       patchFocusedRuntime({ systemPrompt: null });
       setActiveTopPanel(null);
       router.replace("/", { scroll: false });
@@ -1869,13 +1930,13 @@ export function AppShell() {
                     session={pane.session}
                     newSessionCwd={paneNewSessionCwd(pane)}
                     onAgentEnd={handleAgentEnd}
-                    onSessionCreated={handleSessionCreated}
-                    onSessionForked={handleSessionForked}
+                    onSessionCreated={callbacks?.onSessionCreated}
+                    onSessionForked={callbacks?.onSessionForked}
                     modelsRefreshKey={modelsRefreshKey}
                     // Global shortcuts type into one input, so only the focused
                     // pane claims the shared ref.
                     chatInputRef={pane.id === focusedPaneId ? chatInputRef : undefined}
-                    onBranchDataChange={handleBranchDataChange}
+                    onBranchDataChange={callbacks?.onBranchDataChange}
                     onSystemPromptChange={callbacks?.onSystemPromptChange}
                     onSessionStatsChange={callbacks?.onSessionStatsChange}
                     onTurnChangesChange={callbacks?.onTurnChangesChange}

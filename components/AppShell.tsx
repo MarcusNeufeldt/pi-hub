@@ -24,6 +24,12 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { copyText } from "@/lib/clipboard";
+import {
+  type CodexUsage,
+  formatPlanLabel,
+  formatWindowLabel,
+  governingWindow,
+} from "@/lib/codex-usage";
 import { getFileName } from "@/lib/file-paths";
 import { buildFileLineMentionText } from "@/lib/file-fuzzy";
 import { getInitialNavigation } from "@/lib/initial-navigation";
@@ -54,6 +60,17 @@ type AutoNameStatus =
 // so they follow the mobile ramp (36px desktop / 48px mobile) instead of being
 // pinned to a desktop-only 36px here.
 const LANGUAGE_MENU_WIDTH = 176;
+
+/**
+ * One threshold scale for every "percent used" readout in the top bar, so the
+ * context meter and the Codex quota can never disagree about what 80% looks like.
+ */
+function usageThresholdColor(percent: number | null): string {
+  if (percent === null) return "var(--text-muted)";
+  if (percent > 90) return "#ef4444";
+  if (percent > 70) return "rgba(234,179,8,0.95)";
+  return "var(--text-muted)";
+}
 
 export function AppShell() {
   const router = useRouter();
@@ -249,6 +266,39 @@ export function AppShell() {
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const handleContextUsageChange = useCallback((usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => {
     setContextUsage(usage);
+  }, []);
+
+  // Codex plan quota — polled from the live upstream reading, displayed in top bar.
+  // Stays null whenever the Codex desktop app is not signed in on this machine
+  // (or is unreachable), which hides the badge instead of showing a placeholder.
+  const [codexUsage, setCodexUsage] = useState<CodexUsage | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const load = async () => {
+      if (document.hidden) return;
+      try {
+        const response = await fetch("/api/codex-usage", { signal: controller.signal, cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json() as { available?: boolean; usage?: CodexUsage };
+        if (cancelled) return;
+        setCodexUsage(data.available && data.usage ? data.usage : null);
+      } catch {
+        // Quota is decorative. A failed poll keeps the last reading on screen;
+        // the route itself decides when a reading has aged out.
+      }
+    };
+    void load();
+    // The server caches for 60s, so polling faster than this only adds requests.
+    const timer = setInterval(() => { void load(); }, 90_000);
+    const onVisibilityChange = () => { void load(); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
   // Single active panel — only one dropdown open at a time
@@ -1142,21 +1192,28 @@ export function AppShell() {
               </button>
             </div>
           )}
-          {/* Session stats — right-aligned in top bar */}
-          {showChat && (sessionStats || contextUsage) && (() => {
+          {/* Session stats + Codex quota — right-aligned in top bar */}
+          {showChat && (sessionStats || contextUsage || codexUsage) && (() => {
              const tokens = sessionStats?.tokens;
             const c = sessionStats?.cost ?? 0;
             const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
             const costStr = c > 0 ? (c >= 0.01 ? `$${c.toFixed(2)}` : `<$0.01`) : null;
 
-            let ctxColor = "var(--text-muted)";
             let ctxStr: string | null = null;
+            const ctxColor = usageThresholdColor(contextUsage?.contextWindow ? contextUsage.percent : null);
             if (contextUsage?.contextWindow) {
               const pct = contextUsage.percent;
-              if (pct !== null && pct > 90) ctxColor = "#ef4444";
-              else if (pct !== null && pct > 70) ctxColor = "rgba(234,179,8,0.95)";
               ctxStr = pct !== null ? `${pct.toFixed(0)}% / ${fmt(contextUsage.contextWindow)}` : `? / ${fmt(contextUsage.contextWindow)}`;
             }
+
+            // Badge shows the window closest to its limit, which is not always
+            // the one upstream labels "primary": a 5h window at 80% gates the
+            // account long before a weekly one at 20%.
+            const quotaWindow = codexUsage ? governingWindow(codexUsage) : null;
+            const quotaStr = codexUsage && quotaWindow
+              ? `${formatPlanLabel(codexUsage.plan)} ${quotaWindow.usedPercent.toFixed(0)}%`
+              : null;
+            const quotaColor = usageThresholdColor(quotaWindow?.usedPercent ?? null);
 
             const tooltipParts: string[] = [];
              if (tokens) {
@@ -1169,6 +1226,17 @@ export function AppShell() {
             if (contextUsage?.contextWindow) {
               const pct = contextUsage.percent;
               tooltipParts.push(`context: ${pct !== null ? pct.toFixed(1) + "%" : "unknown"} of ${contextUsage.contextWindow.toLocaleString()} tokens`);
+            }
+            if (codexUsage) {
+              const quotaLine = (name: string, window: { usedPercent: number; windowSeconds: number | null }) => {
+                const period = formatWindowLabel(window.windowSeconds);
+                return `${name}${period ? ` ${period}` : ""}: ${window.usedPercent.toFixed(0)}%`;
+              };
+              const planLabel = formatPlanLabel(codexUsage.plan);
+              for (const window of codexUsage.windows) tooltipParts.push(quotaLine(planLabel, window));
+              for (const bucket of codexUsage.extras) {
+                for (const window of bucket.windows) tooltipParts.push(quotaLine(bucket.label ?? bucket.key, window));
+              }
             }
             const tooltip = tooltipParts.join("  |  ");
 
@@ -1233,6 +1301,16 @@ export function AppShell() {
                       <path d="M1 9 L1 5 Q1 1 5 1 Q9 1 9 5 L9 9" /><line x1="1" y1="9" x2="9" y2="9" />
                     </svg>
                     {ctxStr}
+                  </span>
+                )}
+                {/* Quota is desktop-only in the bar — the phone top bar has no room
+                    for a second percentage, and the panel below carries every bucket. */}
+                {!isMobile && quotaStr && (
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: quotaColor }}>
+                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1.3 7.7 A4 4 0 1 1 8.7 7.7" /><line x1="5" y1="5.2" x2="7.1" y2="3.1" />
+                    </svg>
+                    {quotaStr}
                   </span>
                 )}
               </button>
@@ -1316,6 +1394,81 @@ export function AppShell() {
                   boxShadow: "0 10px 28px rgba(0,0,0,0.10)",
                   padding: "12px 16px",
                 }}>
+                  {/* Codex quota sits outside the sessionStats branch on purpose: the
+                      account quota is not session-scoped, so it stays readable before
+                      a session has loaded any stats. */}
+                  {codexUsage && (() => {
+                    const relativeFromMs = (targetMs: number) => {
+                      const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+                      const minutes = Math.round((targetMs - Date.now()) / 60_000);
+                      if (Math.abs(minutes) < 60) return rtf.format(minutes, "minute");
+                      const hours = Math.round(minutes / 60);
+                      if (Math.abs(hours) < 48) return rtf.format(hours, "hour");
+                      return rtf.format(Math.round(hours / 24), "day");
+                    };
+                    const rows: { key: string; name: string; period: string; percent: number; resets: string }[] = [];
+                    const planLabel = formatPlanLabel(codexUsage.plan);
+                    codexUsage.windows.forEach((window, index) => rows.push({
+                      key: `plan-${index}`,
+                      name: planLabel,
+                      period: formatWindowLabel(window.windowSeconds) ?? "—",
+                      percent: window.usedPercent,
+                      resets: window.resetAt === null ? "—" : relativeFromMs(window.resetAt * 1000),
+                    }));
+                    codexUsage.extras.forEach((bucket) => bucket.windows.forEach((window, index) => rows.push({
+                      key: `${bucket.key}-${index}`,
+                      name: bucket.label ?? bucket.key,
+                      period: formatWindowLabel(window.windowSeconds) ?? "—",
+                      percent: window.usedPercent,
+                      resets: window.resetAt === null ? "—" : relativeFromMs(window.resetAt * 1000),
+                    })));
+                    return (
+                      <div style={{
+                        marginBottom: 14,
+                        paddingBottom: 14,
+                        borderBottom: "1px solid var(--border)",
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        fontFamily: "var(--font-mono)",
+                      }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
+                          {translate("codex.quota")}
+                        </div>
+                        <div style={{
+                          display: "grid",
+                          gridTemplateColumns: "max-content max-content max-content max-content",
+                          columnGap: 14,
+                          rowGap: 4,
+                          justifyContent: "start",
+                        }}>
+                          <div style={{ color: "var(--text-dim)" }}>{translate("codex.plan")}</div>
+                          <div style={{ color: "var(--text-dim)" }}>{translate("codex.window")}</div>
+                          <div style={{ color: "var(--text-dim)", textAlign: "right" }}>{translate("codex.used")}</div>
+                          <div style={{ color: "var(--text-dim)" }}>{translate("codex.resets")}</div>
+                          {rows.map((row) => (
+                            <div key={row.key} style={{ display: "contents" }}>
+                              <div style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>{row.name}</div>
+                              <div style={{ color: "var(--text-muted)" }}>{row.period}</div>
+                              <div style={{
+                                color: usageThresholdColor(row.percent),
+                                textAlign: "right",
+                                fontVariantNumeric: "tabular-nums",
+                              }}>{row.percent.toFixed(0)}%</div>
+                              <div style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>{row.resets}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {codexUsage.resetCredits !== null && codexUsage.resetCredits > 0 && (
+                          <div style={{ marginTop: 6, color: "var(--text-dim)" }}>
+                            {translate("codex.resetCredits")}: {codexUsage.resetCredits.toLocaleString(locale)}
+                          </div>
+                        )}
+                        <div style={{ marginTop: 6, color: "var(--text-dim)" }}>
+                          {translate("codex.updated", { age: relativeFromMs(codexUsage.fetchedAt) })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {sessionStats ? (() => {
                     const sessionRows = [
                        ...(sessionStats.sessionName ? [{ label: translate("session.name"), value: sessionStats.sessionName, copyField: null }] : []),

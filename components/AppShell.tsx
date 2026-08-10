@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
-import { ChatPaneTree } from "./ChatPaneTree";
+import { type ChatPaneMeta, ChatPaneTree } from "./ChatPaneTree";
 import {
   canSplitPane,
   leaf,
@@ -286,6 +286,16 @@ export function AppShell() {
 
   const canSplitRow = canSplitPane(layout, focusedPaneId, "row");
   const canSplitColumn = canSplitPane(layout, focusedPaneId, "column");
+
+  // Reported up by the sidebar, which owns the running-sessions subscription.
+  const [runningSessionIds, setRunningSessionIds] = useState<readonly string[]>([]);
+  const [unreadSessionIds, setUnreadSessionIds] = useState<readonly string[]>([]);
+  const handleRunningSessionsChange = useCallback((sessionIds: readonly string[]) => {
+    setRunningSessionIds(sessionIds);
+  }, []);
+  const handleUnreadSessionsChange = useCallback((sessionIds: readonly string[]) => {
+    setUnreadSessionIds(sessionIds);
+  }, []);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [tasksRefreshKey, setTasksRefreshKey] = useState(0);
   const [modelsConfigOpen, setModelsConfigOpen] = useState(false);
@@ -952,6 +962,30 @@ export function AppShell() {
   const paneNewSessionCwd = (pane: ChatPane) =>
     pane.newSessionCwd ?? (pane.session === null && activeCwd ? activeCwd : null);
   const effectiveNewSessionCwd = paneNewSessionCwd(focusedPane);
+
+  // Chrome for each pane: what it holds, and whether it wants attention.
+  // Keyed on joined id lists so the map is rebuilt when the sets change rather
+  // than whenever the arrays are re-created.
+  const runningSessionIdsKey = runningSessionIds.join(",");
+  const unreadSessionIdsKey = unreadSessionIds.join(",");
+  const paneMeta = useMemo(() => {
+    const running = new Set(runningSessionIdsKey === "" ? [] : runningSessionIdsKey.split(","));
+    const unread = new Set(unreadSessionIdsKey === "" ? [] : unreadSessionIdsKey.split(","));
+    const meta: Record<string, ChatPaneMeta> = {};
+    for (const pane of panes) {
+      const sessionId = pane.session?.id ?? null;
+      const name = pane.session?.name?.trim();
+      const cwd = pane.session?.cwd ?? pane.newSessionCwd ?? activeCwd;
+      meta[pane.id] = {
+        title: name || (cwd ? getFileName(cwd) || cwd : translate("pane.untitled")),
+        running: sessionId !== null && running.has(sessionId),
+        // An unread marker on the focused pane is stale by definition — focusing
+        // a pane is what clears it — so never badge the pane being looked at.
+        unread: sessionId !== null && unread.has(sessionId) && pane.id !== focusedPaneId,
+      };
+    }
+    return meta;
+  }, [panes, runningSessionIdsKey, unreadSessionIdsKey, focusedPaneId, activeCwd, translate]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
   // While restoring initial session from URL, don't show the placeholder
@@ -1021,6 +1055,8 @@ export function AppShell() {
     <>
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
+        onRunningSessionsChange={handleRunningSessionsChange}
+        onUnreadSessionsChange={handleUnreadSessionsChange}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
@@ -1935,9 +1971,14 @@ export function AppShell() {
             <ChatPaneTree
               layout={layout}
               focusedPaneId={focusedPaneId}
+              paneMeta={paneMeta}
               onFocusPane={handleFocusPane}
               onClosePane={handleClosePane}
-              closeLabel={translate("pane.close")}
+              labels={{
+                close: translate("pane.close"),
+                running: translate("pane.running"),
+                unread: translate("pane.unread"),
+              }}
               renderPane={(paneId) => {
                 const pane = panes.find((candidate) => candidate.id === paneId);
                 if (!pane) return null;

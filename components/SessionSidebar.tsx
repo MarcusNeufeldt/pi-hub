@@ -18,6 +18,14 @@ declare global {
 
 interface Props {
   selectedSessionId: string | null;
+  /**
+   * Reports the live running-session set upward. This component already
+   * subscribes to the running-sessions stream, so pane chrome reuses that rather
+   * than the shell opening a second permanently-held connection.
+   */
+  onRunningSessionsChange?: (sessionIds: readonly string[]) => void;
+  /** Reports unread markers upward, for the same reason. */
+  onUnreadSessionsChange?: (sessionIds: readonly string[]) => void;
   onSelectSession: (session: SessionInfo, isRestore?: boolean) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
@@ -325,7 +333,7 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, tasksRefreshKey, onOpenTasks, onOpenTaskRunSession }: Props) {
+export function SessionSidebar({ selectedSessionId, onRunningSessionsChange, onUnreadSessionsChange, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, tasksRefreshKey, onOpenTasks, onOpenTaskRunSession }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const sidebarSessions = useMemo(
@@ -415,6 +423,21 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   useEffect(() => {
     saveUnreadSessionIds(unreadSessionIds);
   }, [unreadSessionIds]);
+
+  // Pane chrome needs both of these sets. Reporting them upward keeps this
+  // component the single subscriber to the running-sessions stream rather than
+  // having the shell open a second, permanently-held connection for the same data.
+  // Keyed on a sorted join so the effect fires on set changes, not on every
+  // re-render that happens to rebuild the Set.
+  const runningIdsKey = [...runningSessionIds].sort().join(",");
+  useEffect(() => {
+    onRunningSessionsChange?.(runningIdsKey === "" ? [] : runningIdsKey.split(","));
+  }, [runningIdsKey, onRunningSessionsChange]);
+
+  const unreadIdsKey = [...unreadSessionIds].sort().join(",");
+  useEffect(() => {
+    onUnreadSessionsChange?.(unreadIdsKey === "" ? [] : unreadIdsKey.split(","));
+  }, [unreadIdsKey, onUnreadSessionsChange]);
 
   useEffect(() => {
     let stopped = false;

@@ -105,6 +105,51 @@ describe("per-pane callbacks stay referentially stable", () => {
   });
 });
 
+describe("pane header", () => {
+  const tree = readFileSync(new URL("./ChatPaneTree.tsx", import.meta.url), "utf8");
+
+  it("shows the header only when the area is split", () => {
+    // With one pane the session is already named in the sidebar and top bar, and
+    // the single-pane view must stay visually identical to before panes existed.
+    assert.match(tree, /\{split && \(\s*\n\s*<div className="chat-pane__header">/);
+  });
+
+  it("carries running and unread state to assistive tech, not just as colour", () => {
+    assert.match(tree, /role="img"/);
+    assert.match(tree, /aria-label=\{meta\?\.running \? labels\.running : meta\?\.unread \? labels\.unread : ""\}/);
+  });
+
+  it("never badges the focused pane as unread", () => {
+    // Focusing a pane is what clears its unread marker, so a badge there is
+    // stale by definition.
+    assert.match(source, /unread: sessionId !== null && unread\.has\(sessionId\) && pane\.id !== focusedPaneId/);
+  });
+
+  it("falls back from session name to directory name", () => {
+    assert.match(source, /title: name \|\| \(cwd \? getFileName\(cwd\) \|\| cwd : translate\("pane\.untitled"\)\)/);
+  });
+});
+
+describe("running state has a single subscriber", () => {
+  const sidebar = readFileSync(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
+
+  it("reports the sets upward instead of the shell opening a second stream", () => {
+    // The sidebar stays mounted even when collapsed, so its subscription is the
+    // one source. A second EventSource in AppShell would be a permanently-held
+    // connection against a ~6-per-origin budget.
+    assert.match(sidebar, /onRunningSessionsChange\?\.\(/);
+    assert.match(sidebar, /onUnreadSessionsChange\?\.\(/);
+    assert.doesNotMatch(source, /new EventSource\(/);
+  });
+
+  it("keys the upward report on a sorted join, not the Set identity", () => {
+    // The Sets are rebuilt on unrelated renders; reporting on identity would fire
+    // the effect constantly.
+    assert.match(sidebar, /const runningIdsKey = \[\.\.\.runningSessionIds\]\.sort\(\)\.join\(","\)/);
+    assert.match(sidebar, /const unreadIdsKey = \[\.\.\.unreadSessionIds\]\.sort\(\)\.join\(","\)/);
+  });
+});
+
 describe("pane rendering", () => {
   it("memoises the pane ChatWindow", () => {
     // One pane streaming otherwise re-renders every other pane's transcript on

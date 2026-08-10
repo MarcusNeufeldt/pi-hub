@@ -18,6 +18,12 @@ declare global {
 
 interface Props {
   selectedSessionId: string | null;
+  /**
+   * Every session currently on screen, which with split panes is more than the
+   * selected one. Unread bookkeeping uses this: a session the user can already
+   * see must not be flagged when it finishes. Defaults to the selected session.
+   */
+  visibleSessionIds?: readonly string[];
   onSelectSession: (session: SessionInfo, isRestore?: boolean) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
@@ -325,7 +331,7 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, tasksRefreshKey, onOpenTasks, onOpenTaskRunSession }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, tasksRefreshKey, onOpenTasks, onOpenTaskRunSession }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const sidebarSessions = useMemo(
@@ -489,9 +495,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     };
   }, [loadSessions]);
 
+  // "On screen" is a set, not a single id: with split panes a session can be
+  // visible in another pane while a different one holds focus, and flagging that
+  // as unread when it finishes would be wrong.
+  const visibleSessionIdsKey = (visibleSessionIds ?? (selectedSessionId ? [selectedSessionId] : [])).join(",");
+  const visibleSessionIdSet = useMemo(
+    () => new Set(visibleSessionIdsKey.split(",").filter((id) => id !== "")),
+    [visibleSessionIdsKey],
+  );
+
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
-    const completedInBackground = [...previous].filter((id) => !runningSessionIds.has(id) && id !== selectedSessionId);
+    const completedInBackground = [...previous].filter((id) => !runningSessionIds.has(id) && !visibleSessionIdSet.has(id));
     const newlyRunning = [...runningSessionIds];
 
     if (completedInBackground.length > 0 || newlyRunning.length > 0) {
@@ -507,17 +522,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     }
 
     previousRunningSessionIdsRef.current = runningSessionIds;
-  }, [runningSessionIds, selectedSessionId, loadSessions]);
+  }, [runningSessionIds, visibleSessionIdSet, loadSessions]);
 
+  // Anything on screen counts as read, in whichever pane it is showing.
   useEffect(() => {
-    if (!selectedSessionId) return;
+    if (visibleSessionIdSet.size === 0) return;
     setUnreadSessionIds((prev) => {
-      if (!prev.has(selectedSessionId)) return prev;
+      let changed = false;
       const next = new Set(prev);
-      next.delete(selectedSessionId);
-      return next;
+      for (const id of visibleSessionIdSet) {
+        if (next.delete(id)) changed = true;
+      }
+      return changed ? next : prev;
     });
-  }, [selectedSessionId]);
+  }, [visibleSessionIdSet]);
 
   useEffect(() => {
     fetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {

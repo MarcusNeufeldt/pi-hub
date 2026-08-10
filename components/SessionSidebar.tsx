@@ -1930,18 +1930,20 @@ function SessionItem({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
+  /**
+   * Tooltip text. The row truncates hard whenever the sidebar is narrow, and the
+   * displayed title is itself pre-clipped, so this carries the untruncated name.
+   * An unnamed session falls back to its first message, capped so a long prompt
+   * does not turn into an unreadable wall of tooltip.
+   */
+  const fullTitle = session.name || session.firstMessage.slice(0, 300) || session.id;
 
-  // Split from the click handler so the context menu can start a rename too.
+  // Started from the context menu; the hover button it used to serve is gone.
   const beginRename = useCallback(() => {
     setRenameValue(session.name ?? "");
     setRenaming(true);
     setTimeout(() => inputRef.current?.select(), 0);
   }, [session.name]);
-
-  const startRename = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    beginRename();
-  }, [beginRename]);
 
   const commitRename = useCallback(async () => {
     const name = renameValue.trim();
@@ -1970,15 +1972,6 @@ function SessionItem({
     }
   }, [session.id, onDeleted]);
 
-  const handleDeleteClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (e.shiftKey) {
-      void performDelete();
-    } else {
-      setConfirmDelete(true);
-    }
-  }, [performDelete]);
-
   const handleDeleteConfirm = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     void performDelete();
@@ -1995,6 +1988,11 @@ function SessionItem({
   const row = (
     <div
       onClick={confirmDelete || renaming ? undefined : onClick}
+      // On the row rather than the title text, so hovering anywhere on the entry
+      // shows it — the metadata line and the indent were previously dead space.
+      // Suppressed while confirming or renaming, where it would float over
+      // controls the tooltip does not describe.
+      title={confirmDelete || renaming ? undefined : fullTitle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
       style={{
@@ -2107,7 +2105,6 @@ function SessionItem({
                 lineHeight: 1.4,
                 color: "var(--text)",
               }}
-              title={title}
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {title}
@@ -2169,33 +2166,6 @@ function SessionItem({
                 <polyline points="2 3.5 5 6.5 8 3.5" />
               </svg>
             </button>
-          )}
-
-          {/* Action buttons — shown on hover */}
-          {hovered && (
-            <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-              <button
-                className="ui-btn ui-btn--outline ui-btn--icon"
-                onClick={startRename}
-                title={t("sidebar.rename")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                </svg>
-              </button>
-              <button
-                className="ui-btn ui-btn--outline ui-btn--icon ui-btn--danger-hover"
-                onClick={handleDeleteClick}
-                title={t("sidebar.deleteWithShiftClick")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                  <path d="M10 11v6M14 11v6" />
-                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
-              </button>
-            </div>
           )}
         </>
       )}

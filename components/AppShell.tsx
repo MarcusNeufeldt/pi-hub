@@ -61,6 +61,29 @@ type AutoNameStatus =
 // pinned to a desktop-only 36px here.
 const LANGUAGE_MENU_WIDTH = 176;
 
+/** One pane of the main chat area. Each pane drives its own ChatWindow. */
+interface ChatPane {
+  id: string;
+  /** Null while the pane is an unstarted "new session" slot. */
+  session: SessionInfo | null;
+  /** Directory a not-yet-created session will open in. */
+  newSessionCwd: string | null;
+  /** Bumped to force this pane's ChatWindow to remount. */
+  remountKey: number;
+}
+
+const FIRST_PANE_ID = "pane-1";
+
+/**
+ * Mirrors React's setState contract so the pane-backed setters below are
+ * drop-in replacements for the useState setters they took over from — call
+ * sites pass either a value or an updater, exactly as before.
+ */
+type StateUpdate<T> = T | ((previous: T) => T);
+function applyStateUpdate<T>(next: StateUpdate<T>, previous: T): T {
+  return typeof next === "function" ? (next as (previous: T) => T)(previous) : next;
+}
+
 /**
  * One threshold scale for every "percent used" readout in the top bar, so the
  * context meter and the Codex quota can never disagree about what 80% looks like.
@@ -80,15 +103,52 @@ export function AppShell() {
   const { locale, setLocale, t: translate, supportedLocales } = useI18n();
   const isMobile = useIsMobile();
   useViewportHeight();
-  const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
+  // ---- Chat panes ------------------------------------------------------
+  // The main area holds one pane today and, on desktop, will hold a few side
+  // by side. Rather than rewrite the ~20 places that already read and write
+  // "the current session", the pane list is the source of truth and the old
+  // names are re-bound to the focused pane: reads derive from it, writes are
+  // redirected onto it. Single-pane behaviour is therefore unchanged.
+  const [panes, setPanes] = useState<ChatPane[]>(() => [
+    { id: FIRST_PANE_ID, session: null, newSessionCwd: null, remountKey: 0 },
+  ]);
+  const [focusedPaneId, setFocusedPaneId] = useState<string>(FIRST_PANE_ID);
+  // The setter shims run from stable callbacks, so they read focus through a
+  // ref rather than closing over a value that would go stale.
+  const focusedPaneIdRef = useRef(focusedPaneId);
+  focusedPaneIdRef.current = focusedPaneId;
+  const focusedPane = panes.find((pane) => pane.id === focusedPaneId) ?? panes[0];
+
+  const updateFocusedPane = useCallback((patch: (pane: ChatPane) => ChatPane) => {
+    setPanes((prev) => prev.map((pane) => (
+      pane.id === focusedPaneIdRef.current ? patch(pane) : pane
+    )));
+  }, []);
+  /** Focus follows interaction; with one pane this is a no-op. */
+  const handleFocusPane = useCallback((paneId: string) => {
+    setFocusedPaneId((current) => (current === paneId ? current : paneId));
+  }, []);
+
+  const selectedSession = focusedPane.session;
+  const setSelectedSession = useCallback((next: StateUpdate<SessionInfo | null>) => {
+    updateFocusedPane((pane) => ({ ...pane, session: applyStateUpdate(next, pane.session) }));
+  }, [updateFocusedPane]);
+
   // When user clicks +, we only store the cwd — no fake session id
-  const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
+  const newSessionCwd = focusedPane.newSessionCwd;
+  const setNewSessionCwd = useCallback((next: StateUpdate<string | null>) => {
+    updateFocusedPane((pane) => ({ ...pane, newSessionCwd: applyStateUpdate(next, pane.newSessionCwd) }));
+  }, [updateFocusedPane]);
+
   const [initialCwdStatus, setInitialCwdStatus] = useState<"idle" | "validating" | "ready" | "error">(
     () => initialNavigation.requestedCwd ? "validating" : "idle",
   );
   const [initialCwdError, setInitialCwdError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [sessionKey, setSessionKey] = useState(0);
+  const sessionKey = focusedPane.remountKey;
+  const setSessionKey = useCallback((next: StateUpdate<number>) => {
+    updateFocusedPane((pane) => ({ ...pane, remountKey: applyStateUpdate(next, pane.remountKey) }));
+  }, [updateFocusedPane]);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [tasksRefreshKey, setTasksRefreshKey] = useState(0);
   const [modelsConfigOpen, setModelsConfigOpen] = useState(false);
@@ -396,7 +456,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [initialNavigation]);
+  }, [initialNavigation, setNewSessionCwd]);
 
   const handleCwdChange = useCallback((cwd: string | null, projectRoot?: string | null) => {
     setActiveCwd(cwd);
@@ -440,7 +500,7 @@ export function AppShell() {
     setActiveFileTabId(null);
     setRightPanelOpen(false);
     router.replace("/", { scroll: false });
-  }, [router, selectedSession]);
+  }, [router, selectedSession, setNewSessionCwd, setSelectedSession, setSessionKey]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     setNewSessionCwd(null);
@@ -460,7 +520,7 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [router, isMobile]);
+  }, [router, isMobile, setNewSessionCwd, setSelectedSession, setSessionKey]);
 
   // Open a worker's session from the Subagents tab (transcript).
   const handleOpenTranscript = useCallback(async (sessionId: string) => {
@@ -490,7 +550,7 @@ export function AppShell() {
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
     router.replace("/", { scroll: false });
-  }, [router, isMobile]);
+  }, [router, isMobile, setNewSessionCwd, setSelectedSession, setSessionKey]);
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
   useGlobalKeyboardShortcuts({
@@ -511,7 +571,7 @@ export function AppShell() {
         setSelectedSession((prev) => (prev && prev.id === sessionId && !prev.projectRoot ? full : prev));
       })
       .catch(() => {});
-  }, []);
+  }, [setSelectedSession]);
 
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo) => {
@@ -520,7 +580,7 @@ export function AppShell() {
     setRefreshKey((k) => k + 1);
     hydrateSelectedSession(session.id);
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [router, hydrateSelectedSession]);
+  }, [router, hydrateSelectedSession, setNewSessionCwd, setSelectedSession]);
 
   const handleAgentEnd = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -556,7 +616,7 @@ export function AppShell() {
       setAutoNameStatus({ kind: "error", message });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 5000);
     }
-  }, [autoNameStatus.kind, selectedSession?.id]);
+  }, [autoNameStatus.kind, selectedSession?.id, setSelectedSession]);
 
   useEffect(() => {
     if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
@@ -573,7 +633,7 @@ export function AppShell() {
     }));
     hydrateSelectedSession(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [router, hydrateSelectedSession]);
+  }, [router, hydrateSelectedSession, setNewSessionCwd, setSelectedSession, setSessionKey]);
 
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
@@ -592,7 +652,7 @@ export function AppShell() {
       setActiveTopPanel(null);
       router.replace("/", { scroll: false });
     }
-  }, [selectedSession, router]);
+  }, [selectedSession, router, setNewSessionCwd, setSelectedSession, setSessionKey]);
 
   const handleOpenFile = useCallback((
     filePath: string,
@@ -706,7 +766,7 @@ export function AppShell() {
     } finally {
       setProjectTrustBusy(false);
     }
-  }, [projectTrustBusy, projectTrustCwd]);
+  }, [projectTrustBusy, projectTrustCwd, setSessionKey]);
 
   const activeFileTab = fileTabs.find((t) => t.id === activeFileTabId) ?? null;
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
@@ -1604,8 +1664,14 @@ export function AppShell() {
 
         </div>
 
-        {/* Chat content */}
-        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        {/* Chat content — one pane today; step 3 maps this over `panes`.
+            Interacting anywhere inside a pane focuses it, which is what the top
+            bar and right panel will follow once there is more than one. */}
+        <div
+          onMouseDownCapture={() => handleFocusPane(focusedPane.id)}
+          onFocusCapture={() => handleFocusPane(focusedPane.id)}
+          style={{ flex: 1, overflow: "hidden", position: "relative" }}
+        >
           {showChat ? (
             <ChatWindow
               key={sessionKey}

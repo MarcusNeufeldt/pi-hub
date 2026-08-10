@@ -1969,6 +1969,52 @@ span.linenumber {
   background: var(--border-strong);
 }
 
+/* ---- Context menu -------------------------------------------------------- */
+.ui-menu {
+  min-width: 184px;
+  padding: var(--sp-1);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-3);
+  font-size: var(--fs-ui);
+  z-index: var(--z-menu, 600);
+}
+
+.ui-menu__item {
+  display: flex;
+  align-items: center;
+  min-height: var(--h-ctl-sm);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  cursor: pointer;
+  /* Radix gives items an outline on keyboard focus; the highlight below is the
+     visible affordance for both pointer and keyboard, so drop the doubled ring. */
+  outline: none;
+  user-select: none;
+}
+
+/* Radix sets data-highlighted for hover AND keyboard navigation, so one rule
+   covers both and nothing sticks after a touch. */
+.ui-menu__item[data-highlighted] {
+  background: var(--bg-hover);
+}
+
+.ui-menu__item--danger {
+  color: var(--danger);
+}
+
+.ui-menu__item--danger[data-highlighted] {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.ui-menu__sep {
+  height: 1px;
+  margin: var(--sp-1) var(--sp-2);
+  background: var(--border);
+}
+
 @media (min-width: 641px) {
   /* Desktop insets are 0, so this shorthand correctly supersedes the above. */
   .app-canvas {

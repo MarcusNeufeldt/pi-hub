@@ -144,9 +144,75 @@ describe("running state has a single subscriber", () => {
 
   it("keys the upward report on a sorted join, not the Set identity", () => {
     // The Sets are rebuilt on unrelated renders; reporting on identity would fire
-    // the effect constantly.
-    assert.match(sidebar, /const runningIdsKey = \[\.\.\.runningSessionIds\]\.sort\(\)\.join\(","\)/);
-    assert.match(sidebar, /const unreadIdsKey = \[\.\.\.unreadSessionIds\]\.sort\(\)\.join\(","\)/);
+    // the effect constantly. Matched on the shape rather than the source variable
+    // so renaming what feeds it does not fail this guard.
+    assert.match(sidebar, /const runningIdsKey = \[\.\.\.\w+\]\.sort\(\)\.join\(","\)/);
+    assert.match(sidebar, /const unreadIdsKey = \[\.\.\.\w+\]\.sort\(\)\.join\(","\)/);
+  });
+
+  it("reports the effective unread set, including manual marks", () => {
+    // Reporting only the automatic set would leave pane chrome blind to a marker
+    // the user set by hand.
+    assert.match(sidebar, /const unreadIdsKey = \[\.\.\.effectiveUnreadSessionIds\]/);
+  });
+});
+
+describe("manual unread markers stick", () => {
+  const sidebar = readFileSync(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
+
+  it("keeps manual marks in their own persisted set", () => {
+    // Merged into the automatic set, a manual mark would be wiped the instant the
+    // session came on screen -- which is the only moment anyone sets one.
+    assert.match(sidebar, /STICKY_UNREAD_SESSIONS_STORAGE_KEY = "pi-web:sticky-unread-session-ids"/);
+    assert.match(sidebar, /const effectiveUnreadSessionIds = useMemo\(/);
+  });
+
+  it("never clears a manual mark when the session is opened", () => {
+    // The clear-on-select effect must touch only the automatic set.
+    const block = sidebar.slice(
+      sidebar.indexOf("if (!selectedSessionId) return;"),
+      sidebar.indexOf("}, [selectedSessionId]);"),
+    );
+    assert.ok(block.length > 0, "expected the clear-on-select effect");
+    assert.doesNotMatch(block, /setStickyUnreadSessionIds/);
+  });
+
+  it("clears a manual mark when that session starts running again", () => {
+    assert.match(sidebar, /if \(newlyRunning\.length > 0\) \{\s*\n\s*setStickyUnreadSessionIds/);
+  });
+
+  it("prunes manual marks for deleted sessions", () => {
+    // They are persisted, so they would otherwise accumulate forever.
+    assert.match(sidebar, /setStickyUnreadSessionIds\(pruneMissing\)/);
+  });
+
+  it("marking read also clears the automatic marker", () => {
+    const block = sidebar.slice(
+      sidebar.indexOf("const handleToggleUnread"),
+      sidebar.indexOf("}, []);", sidebar.indexOf("const handleToggleUnread")),
+    );
+    assert.match(block, /if \(!unread\) \{/);
+    assert.match(block, /setUnreadSessionIds/);
+  });
+});
+
+describe("session context menu", () => {
+  const sidebar = readFileSync(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
+
+  it("wraps the row without touching its markup", () => {
+    // SessionItem does not forward refs, so Radix needs a plain wrapper element.
+    assert.match(sidebar, /<ContextMenu\.Trigger asChild>\s*\n\s*<div>\{row\}<\/div>/);
+  });
+
+  it("routes delete through the existing inline confirmation", () => {
+    // One click in a menu must not destroy a session.
+    assert.match(sidebar, /ui-menu__item--danger[\s\S]{0,160}setConfirmDelete\(true\)/);
+  });
+
+  it("hides open-in-new-pane when panes are unavailable or full", () => {
+    assert.match(sidebar, /\{onOpenInNewPane && \(/);
+    const shell = readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
+    assert.match(shell, /onOpenSessionInNewPane=\{!isMobile && canSplitRow \? handleOpenSessionInNewPane : undefined\}/);
   });
 });
 

@@ -244,7 +244,12 @@ export function AppShell() {
   const [layout, setLayout] = useState<PaneNode>(() => leaf(FIRST_PANE_ID));
   const paneCounterRef = useRef(1);
 
-  const handleSplitPane = useCallback((axis: SplitAxis) => {
+  /**
+   * Splits the focused pane. With a session, the new pane opens it; without one,
+   * the new pane is a fresh session in the source pane's directory — splitting to
+   * compare two unrelated directories is the rarer intent.
+   */
+  const splitFocusedPane = useCallback((axis: SplitAxis, session: SessionInfo | null) => {
     const targetId = focusedPaneId;
     const newPaneId = `pane-${paneCounterRef.current + 1}`;
     // splitPane returns null at a cap, so a refused split is a no-op rather
@@ -253,16 +258,27 @@ export function AppShell() {
     if (nextLayout === null) return;
     paneCounterRef.current += 1;
     const source = panes.find((pane) => pane.id === targetId);
-    // A new pane opens where its source is working — splitting to compare two
-    // sessions in unrelated directories is the rarer intent.
     const inheritedCwd = source?.newSessionCwd ?? source?.session?.cwd ?? null;
     setPanes((prev) => [
       ...prev,
-      { id: newPaneId, session: null, newSessionCwd: inheritedCwd, remountKey: 0 },
+      {
+        id: newPaneId,
+        session,
+        newSessionCwd: session === null ? inheritedCwd : null,
+        remountKey: 0,
+      },
     ]);
     setLayout(nextLayout);
     setFocusedPaneId(newPaneId);
   }, [layout, panes, focusedPaneId]);
+
+  const handleSplitPane = useCallback((axis: SplitAxis) => {
+    splitFocusedPane(axis, null);
+  }, [splitFocusedPane]);
+
+  const handleOpenSessionInNewPane = useCallback((session: SessionInfo) => {
+    splitFocusedPane("row", session);
+  }, [splitFocusedPane]);
 
   const handleClosePane = useCallback((paneId: string) => {
     const nextLayout = removePane(layout, paneId);
@@ -1057,6 +1073,9 @@ export function AppShell() {
         selectedSessionId={selectedSession?.id ?? null}
         onRunningSessionsChange={handleRunningSessionsChange}
         onUnreadSessionsChange={handleUnreadSessionsChange}
+        // Withheld on mobile and at the pane cap, so the menu never offers an
+        // action that would quietly do nothing.
+        onOpenSessionInNewPane={!isMobile && canSplitRow ? handleOpenSessionInNewPane : undefined}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}

@@ -1852,6 +1852,75 @@ span.linenumber {
   padding-right: env(safe-area-inset-right);
 }
 
+/* ---- Split chat panes -----------------------------------------------------
+   Nested flex boxes mirroring the layout tree in lib/pane-layout.ts. Every
+   level needs min-width/min-height 0: flex items default to min-content, and a
+   transcript with a wide code block would otherwise refuse to shrink and push
+   its siblings off screen. */
+.chat-pane-split {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat-pane-split--row { flex-direction: row; }
+.chat-pane-split--column { flex-direction: column; }
+
+.chat-pane {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* An inset ring rather than a border, so gaining focus never reflows the
+   transcript inside the pane. */
+.chat-pane--focused {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.chat-pane__body {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-pane__close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  z-index: 5;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+/* Keyboard and touch users never get :hover, so the button also appears when the
+   pane holds focus — and on touch it is simply always visible. */
+.chat-pane:hover .chat-pane__close,
+.chat-pane:focus-within .chat-pane__close,
+.chat-pane__close:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .chat-pane__close { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-pane__close { transition: none; }
+}
+
+.chat-pane-divider {
+  flex: 0 0 1px;
+  background: var(--border-strong);
+}
+
 @media (min-width: 641px) {
   /* Desktop insets are 0, so this shorthand correctly supersedes the above. */
   .app-canvas {

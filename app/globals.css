@@ -1852,6 +1852,169 @@ span.linenumber {
   padding-right: env(safe-area-inset-right);
 }
 
+/* ---- Split chat panes -----------------------------------------------------
+   Nested flex boxes mirroring the layout tree in lib/pane-layout.ts. Every
+   level needs min-width/min-height 0: flex items default to min-content, and a
+   transcript with a wide code block would otherwise refuse to shrink and push
+   its siblings off screen. */
+.chat-pane-split {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat-pane-split--row { flex-direction: row; }
+.chat-pane-split--column { flex-direction: column; }
+
+.chat-pane {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* An inset ring rather than a border, so gaining focus never reflows the
+   transcript inside the pane. */
+.chat-pane--focused {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.chat-pane__body {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Identifies the pane. Without it, nine panes are nine anonymous transcripts. */
+.chat-pane__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0 var(--sp-2);
+  height: var(--h-ctl-sm);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+}
+
+.chat-pane--focused .chat-pane__header {
+  color: var(--text);
+}
+
+.chat-pane__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-pane__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-full);
+  background: var(--border-strong);
+}
+
+/* Same buzz as the Tasks header light, so "working" reads identically wherever
+   it appears in the app. */
+.chat-pane__dot--running {
+  background: var(--success);
+  animation: task-live-buzz 1.1s ease-in-out infinite;
+}
+
+/* Finished while the user was looking elsewhere. */
+.chat-pane__dot--unread {
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-pane__dot--running { animation: none; }
+}
+
+.chat-pane__close {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+/* Keyboard and touch users never get :hover, so the button also appears when the
+   pane holds focus — and on touch it is simply always visible. */
+.chat-pane:hover .chat-pane__close,
+.chat-pane:focus-within .chat-pane__close,
+.chat-pane__close:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .chat-pane__close { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-pane__close { transition: none; }
+}
+
+.chat-pane-divider {
+  flex: 0 0 1px;
+  background: var(--border-strong);
+}
+
+/* ---- Context menu -------------------------------------------------------- */
+.ui-menu {
+  min-width: 184px;
+  padding: var(--sp-1);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-3);
+  font-size: var(--fs-ui);
+  z-index: var(--z-menu, 600);
+}
+
+.ui-menu__item {
+  display: flex;
+  align-items: center;
+  min-height: var(--h-ctl-sm);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  cursor: pointer;
+  /* Radix gives items an outline on keyboard focus; the highlight below is the
+     visible affordance for both pointer and keyboard, so drop the doubled ring. */
+  outline: none;
+  user-select: none;
+}
+
+/* Radix sets data-highlighted for hover AND keyboard navigation, so one rule
+   covers both and nothing sticks after a touch. */
+.ui-menu__item[data-highlighted] {
+  background: var(--bg-hover);
+}
+
+.ui-menu__item--danger {
+  color: var(--danger);
+}
+
+.ui-menu__item--danger[data-highlighted] {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.ui-menu__sep {
+  height: 1px;
+  margin: var(--sp-1) var(--sp-2);
+  background: var(--border);
+}
+
 @media (min-width: 641px) {
   /* Desktop insets are 0, so this shorthand correctly supersedes the above. */
   .app-canvas {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { ContextMenu } from "radix-ui";
 import type { SessionInfo } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
 import { loadHiddenProjects, saveHiddenProjects } from "@/lib/project-visibility";
@@ -18,6 +19,20 @@ declare global {
 
 interface Props {
   selectedSessionId: string | null;
+  /**
+   * Reports the live running-session set upward. This component already
+   * subscribes to the running-sessions stream, so pane chrome reuses that rather
+   * than the shell opening a second permanently-held connection.
+   */
+  onRunningSessionsChange?: (sessionIds: readonly string[]) => void;
+  /** Reports unread markers upward, for the same reason. */
+  onUnreadSessionsChange?: (sessionIds: readonly string[]) => void;
+  /**
+   * Opens a session beside the current one. Absent when panes are unavailable
+   * or already at their limit, which hides the menu item rather than offering an
+   * action that would silently do nothing.
+   */
+  onOpenSessionInNewPane?: (session: SessionInfo) => void;
   onSelectSession: (session: SessionInfo, isRestore?: boolean) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
@@ -50,13 +65,23 @@ interface WorktreeState {
 }
 
 const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
+/**
+ * Unread markers the user set by hand, kept apart from the automatic ones.
+ *
+ * The automatic marker means "finished while you were elsewhere" and is cleared
+ * the moment you look at the session. A manual marker means "remind me about
+ * this" and must survive being on screen — otherwise marking something unread
+ * while reading it would be undone instantly, which is the only time anyone
+ * would do it.
+ */
+const STICKY_UNREAD_SESSIONS_STORAGE_KEY = "pi-web:sticky-unread-session-ids";
 const RUNNING_SESSIONS_POLL_MS = 2500;
 const SESSION_LIST_POLL_MS = 60000;
 
-function loadUnreadSessionIds(): Set<string> {
+function loadSessionIdSet(storageKey: string): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = window.localStorage.getItem(UNREAD_SESSIONS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) return new Set(parsed.filter((id): id is string => typeof id === "string"));
@@ -66,14 +91,22 @@ function loadUnreadSessionIds(): Set<string> {
   }
 }
 
-function saveUnreadSessionIds(ids: Set<string>): void {
+function saveSessionIdSet(storageKey: string, ids: Set<string>): void {
   if (typeof window === "undefined") return;
   try {
-    if (ids.size === 0) window.localStorage.removeItem(UNREAD_SESSIONS_STORAGE_KEY);
-    else window.localStorage.setItem(UNREAD_SESSIONS_STORAGE_KEY, JSON.stringify([...ids]));
+    if (ids.size === 0) window.localStorage.removeItem(storageKey);
+    else window.localStorage.setItem(storageKey, JSON.stringify([...ids]));
   } catch {
-    // ignore storage quota / privacy-mode errors
+    // Storage full or blocked — markers are a convenience, not state to fail on.
   }
+}
+
+function loadUnreadSessionIds(): Set<string> {
+  return loadSessionIdSet(UNREAD_SESSIONS_STORAGE_KEY);
+}
+
+function saveUnreadSessionIds(ids: Set<string>): void {
+  saveSessionIdSet(UNREAD_SESSIONS_STORAGE_KEY, ids);
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -325,7 +358,7 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, tasksRefreshKey, onOpenTasks, onOpenTaskRunSession }: Props) {
+export function SessionSidebar({ selectedSessionId, onRunningSessionsChange, onUnreadSessionsChange, onOpenSessionInNewPane, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, tasksRefreshKey, onOpenTasks, onOpenTaskRunSession }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const sidebarSessions = useMemo(
@@ -365,6 +398,33 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [sessionRefreshDone, setSessionRefreshDone] = useState(false);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
+  const [stickyUnreadSessionIds, setStickyUnreadSessionIds] = useState<Set<string>>(
+    () => loadSessionIdSet(STICKY_UNREAD_SESSIONS_STORAGE_KEY),
+  );
+  /** What the UI shows: automatic markers plus the ones the user set by hand. */
+  const effectiveUnreadSessionIds = useMemo(
+    () => new Set([...unreadSessionIds, ...stickyUnreadSessionIds]),
+    [unreadSessionIds, stickyUnreadSessionIds],
+  );
+  const handleToggleUnread = useCallback((sessionId: string, unread: boolean) => {
+    setStickyUnreadSessionIds((prev) => {
+      if (prev.has(sessionId) === unread) return prev;
+      const next = new Set(prev);
+      if (unread) next.add(sessionId);
+      else next.delete(sessionId);
+      return next;
+    });
+    // Marking read has to clear the automatic marker too, or the row stays lit
+    // and the menu item appears to do nothing.
+    if (!unread) {
+      setUnreadSessionIds((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+    }
+  }, []);
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   // Once polling has delivered a snapshot it is the source of truth for
   // running state; late /api/sessions responses must not overwrite it.
@@ -385,11 +445,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       }
       // Drop unread markers for sessions that no longer exist (e.g. deleted).
       const existingIds = new Set(data.sessions.map((s) => s.id));
-      setUnreadSessionIds((prev) => {
+      const pruneMissing = (prev: Set<string>) => {
         if (prev.size === 0) return prev;
         const next = new Set([...prev].filter((id) => existingIds.has(id)));
         return next.size === prev.size ? prev : next;
-      });
+      };
+      setUnreadSessionIds(pruneMissing);
+      // Manual markers are persisted too, so they would otherwise accumulate
+      // forever for sessions the user has since deleted.
+      setStickyUnreadSessionIds(pruneMissing);
       setError(null);
       if (!showLoading) {
         setSessionRefreshDone(true);
@@ -415,6 +479,25 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   useEffect(() => {
     saveUnreadSessionIds(unreadSessionIds);
   }, [unreadSessionIds]);
+
+  useEffect(() => {
+    saveSessionIdSet(STICKY_UNREAD_SESSIONS_STORAGE_KEY, stickyUnreadSessionIds);
+  }, [stickyUnreadSessionIds]);
+
+  // Pane chrome needs both of these sets. Reporting them upward keeps this
+  // component the single subscriber to the running-sessions stream rather than
+  // having the shell open a second, permanently-held connection for the same data.
+  // Keyed on a sorted join so the effect fires on set changes, not on every
+  // re-render that happens to rebuild the Set.
+  const runningIdsKey = [...runningSessionIds].sort().join(",");
+  useEffect(() => {
+    onRunningSessionsChange?.(runningIdsKey === "" ? [] : runningIdsKey.split(","));
+  }, [runningIdsKey, onRunningSessionsChange]);
+
+  const unreadIdsKey = [...effectiveUnreadSessionIds].sort().join(",");
+  useEffect(() => {
+    onUnreadSessionsChange?.(unreadIdsKey === "" ? [] : unreadIdsKey.split(","));
+  }, [unreadIdsKey, onUnreadSessionsChange]);
 
   useEffect(() => {
     let stopped = false;
@@ -499,6 +582,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         const next = new Set(prev);
         newlyRunning.forEach((id) => next.delete(id));
         completedInBackground.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+    // A session starting work supersedes a manual reminder about it: whatever the
+    // user wanted to come back to, the new run is the thing to look at now.
+    if (newlyRunning.length > 0) {
+      setStickyUnreadSessionIds((prev) => {
+        if (!newlyRunning.some((id) => prev.has(id))) return prev;
+        const next = new Set(prev);
+        newlyRunning.forEach((id) => next.delete(id));
         return next;
       });
     }
@@ -1608,13 +1701,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 session={s}
                 isSelected={s.id === selectedSessionId}
                 isRunning={runningSessionIds.has(s.id)}
-                isUnread={unreadSessionIds.has(s.id)}
+                isUnread={effectiveUnreadSessionIds.has(s.id)}
                 onClick={() => handleSelectSessionFromList(s)}
                 onRenamed={loadSessions}
                 onDeleted={(id) => {
                   onSessionDeleted?.(id);
                   loadSessions();
                 }}
+                onToggleUnread={handleToggleUnread}
+                onOpenInNewPane={onOpenSessionInNewPane}
                 depth={0}
                 projectLabel={displayCwd(s.projectRoot ?? s.cwd, homeDir)}
               />
@@ -1627,13 +1722,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             node={node}
             selectedSessionId={selectedSessionId}
             runningSessionIds={runningSessionIds}
-            unreadSessionIds={unreadSessionIds}
+            unreadSessionIds={effectiveUnreadSessionIds}
             onSelectSession={handleSelectSessionFromList}
             onRenamed={loadSessions}
             onSessionDeleted={(id) => {
               onSessionDeleted?.(id);
               loadSessions();
             }}
+            onToggleUnread={handleToggleUnread}
+            onOpenInNewPane={onOpenSessionInNewPane}
             depth={0}
           />
         ))}
@@ -1656,6 +1753,8 @@ function SessionTreeItem({
   onSelectSession,
   onRenamed,
   onSessionDeleted,
+  onToggleUnread,
+  onOpenInNewPane,
   depth,
 }: {
   node: SessionTreeNode;
@@ -1665,6 +1764,8 @@ function SessionTreeItem({
   onSelectSession: (s: SessionInfo) => void;
   onRenamed?: () => void;
   onSessionDeleted?: (id: string) => void;
+  onToggleUnread?: (sessionId: string, unread: boolean) => void;
+  onOpenInNewPane?: (session: SessionInfo) => void;
   depth: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -1692,6 +1793,8 @@ function SessionTreeItem({
           onClick={() => onSelectSession(node.session)}
           onRenamed={onRenamed}
           onDeleted={(id) => onSessionDeleted?.(id)}
+          onToggleUnread={onToggleUnread}
+          onOpenInNewPane={onOpenInNewPane}
           depth={depth}
           hasChildren={hasChildren}
           collapsed={collapsed}
@@ -1710,6 +1813,8 @@ function SessionTreeItem({
               onSelectSession={onSelectSession}
               onRenamed={onRenamed}
               onSessionDeleted={onSessionDeleted}
+              onToggleUnread={onToggleUnread}
+              onOpenInNewPane={onOpenInNewPane}
               depth={depth + 1}
             />
           ))}
@@ -1792,6 +1897,8 @@ function SessionItem({
   onClick,
   onRenamed,
   onDeleted,
+  onToggleUnread,
+  onOpenInNewPane,
   depth = 0,
   hasChildren = false,
   collapsed = false,
@@ -1805,6 +1912,9 @@ function SessionItem({
   onClick: () => void;
   onRenamed?: () => void;
   onDeleted?: (id: string) => void;
+  onToggleUnread?: (sessionId: string, unread: boolean) => void;
+  /** Absent when panes are unavailable (mobile) or already at their limit. */
+  onOpenInNewPane?: (session: SessionInfo) => void;
   depth?: number;
   hasChildren?: boolean;
   collapsed?: boolean;
@@ -1820,9 +1930,16 @@ function SessionItem({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
+  /**
+   * Tooltip text. The row truncates hard whenever the sidebar is narrow, and the
+   * displayed title is itself pre-clipped, so this carries the untruncated name.
+   * An unnamed session falls back to its first message, capped so a long prompt
+   * does not turn into an unreadable wall of tooltip.
+   */
+  const fullTitle = session.name || session.firstMessage.slice(0, 300) || session.id;
 
-  const startRename = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Started from the context menu; the hover button it used to serve is gone.
+  const beginRename = useCallback(() => {
     setRenameValue(session.name ?? "");
     setRenaming(true);
     setTimeout(() => inputRef.current?.select(), 0);
@@ -1855,15 +1972,6 @@ function SessionItem({
     }
   }, [session.id, onDeleted]);
 
-  const handleDeleteClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (e.shiftKey) {
-      void performDelete();
-    } else {
-      setConfirmDelete(true);
-    }
-  }, [performDelete]);
-
   const handleDeleteConfirm = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     void performDelete();
@@ -1877,9 +1985,14 @@ function SessionItem({
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
   const ITEM_HEIGHT = 54;
 
-  return (
+  const row = (
     <div
       onClick={confirmDelete || renaming ? undefined : onClick}
+      // On the row rather than the title text, so hovering anywhere on the entry
+      // shows it — the metadata line and the indent were previously dead space.
+      // Suppressed while confirming or renaming, where it would float over
+      // controls the tooltip does not describe.
+      title={confirmDelete || renaming ? undefined : fullTitle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
       style={{
@@ -1992,7 +2105,6 @@ function SessionItem({
                 lineHeight: 1.4,
                 color: "var(--text)",
               }}
-              title={title}
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {title}
@@ -2055,35 +2167,49 @@ function SessionItem({
               </svg>
             </button>
           )}
-
-          {/* Action buttons — shown on hover */}
-          {hovered && (
-            <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-              <button
-                className="ui-btn ui-btn--outline ui-btn--icon"
-                onClick={startRename}
-                title={t("sidebar.rename")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                </svg>
-              </button>
-              <button
-                className="ui-btn ui-btn--outline ui-btn--icon ui-btn--danger-hover"
-                onClick={handleDeleteClick}
-                title={t("sidebar.deleteWithShiftClick")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                  <path d="M10 11v6M14 11v6" />
-                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
-              </button>
-            </div>
-          )}
         </>
       )}
     </div>
+  );
+
+  // Right-click (and long-press on touch, which Radix handles) collects the
+  // actions that were previously hover-only buttons, plus the two that had no
+  // affordance at all. `asChild` on a plain wrapper div keeps SessionItem's own
+  // markup untouched — it does not forward refs, and Radix needs one.
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div>{row}</div>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className="ui-menu" collisionPadding={8}>
+          {onOpenInNewPane && (
+            <ContextMenu.Item className="ui-menu__item" onSelect={() => onOpenInNewPane(session)}>
+              {t("sidebar.openInNewPane")}
+            </ContextMenu.Item>
+          )}
+          <ContextMenu.Item className="ui-menu__item" onSelect={beginRename}>
+            {t("sidebar.rename")}
+          </ContextMenu.Item>
+          {onToggleUnread && (
+            <ContextMenu.Item
+              className="ui-menu__item"
+              onSelect={() => onToggleUnread(session.id, !isUnread)}
+            >
+              {isUnread ? t("sidebar.markRead") : t("sidebar.markUnread")}
+            </ContextMenu.Item>
+          )}
+          <ContextMenu.Separator className="ui-menu__sep" />
+          {/* Routes into the existing inline confirmation rather than deleting
+              straight from the menu — a single click should not destroy a session. */}
+          <ContextMenu.Item
+            className="ui-menu__item ui-menu__item--danger"
+            onSelect={() => setConfirmDelete(true)}
+          >
+            {t("sidebar.delete")}
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }

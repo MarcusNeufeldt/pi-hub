@@ -1,10 +1,20 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, memo, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
+import { type ChatPaneMeta, ChatPaneTree } from "./ChatPaneTree";
+import {
+  canSplitPane,
+  leaf,
+  type PaneNode,
+  paneAfterRemoval,
+  removePane,
+  splitPane,
+  type SplitAxis,
+} from "@/lib/pane-layout";
 import { FileViewer } from "./FileViewer";
 import { PerTurnDiffView } from "./PerTurnDiffView";
 import { SubagentsView } from "./SubagentPanel";
@@ -61,6 +71,79 @@ type AutoNameStatus =
 // pinned to a desktop-only 36px here.
 const LANGUAGE_MENU_WIDTH = 176;
 
+/** One pane of the main chat area. Each pane drives its own ChatWindow. */
+interface ChatPane {
+  id: string;
+  /** Null while the pane is an unstarted "new session" slot. */
+  session: SessionInfo | null;
+  /** Directory a not-yet-created session will open in. */
+  newSessionCwd: string | null;
+  /** Bumped to force this pane's ChatWindow to remount. */
+  remountKey: number;
+}
+
+const FIRST_PANE_ID = "pane-1";
+
+/**
+ * Panes render through a memoised ChatWindow.
+ *
+ * AppShell re-renders on every `paneRuntimes` change, which means on every token
+ * of a streaming reply. Without this, one pane streaming re-rendered every other
+ * pane's full transcript on each token — an amplification that scales with the
+ * pane count, up to nine.
+ *
+ * This only pays off while every prop a quiet pane receives is referentially
+ * stable, which holds because streaming writes to `paneRuntimes` and never to
+ * `panes`, and because the per-pane callbacks are memoised. If a future prop is
+ * rebuilt each render the comparison silently stops matching and the saving is
+ * lost without anything failing, so keep new props stable — or measure.
+ *
+ * memo does not block context, so useI18n and useTheme still propagate.
+ */
+const PaneChatWindow = memo(ChatWindow);
+
+interface ContextUsageInfo {
+  percent: number | null;
+  contextWindow: number;
+  tokens: number | null;
+}
+
+/**
+ * What a pane reports about itself. The top bar and right panel describe the
+ * focused pane, so these are keyed per pane rather than held once per app —
+ * otherwise two panes overwrite each other's token counts and diffs.
+ */
+interface PaneRuntime {
+  sessionStats: SessionStatsInfo | null;
+  contextUsage: ContextUsageInfo | null;
+  systemPrompt: string | null;
+  subagents: SubagentDelegation[];
+  turnChanges: TurnChanges[];
+  branchTree: SessionTreeNode[];
+  branchActiveLeafId: string | null;
+}
+
+/** Shared so an unreported pane keeps a stable identity between renders. */
+const EMPTY_PANE_RUNTIME: PaneRuntime = {
+  sessionStats: null,
+  contextUsage: null,
+  systemPrompt: null,
+  subagents: [],
+  turnChanges: [],
+  branchTree: [],
+  branchActiveLeafId: null,
+};
+
+/**
+ * Mirrors React's setState contract so the pane-backed setters below are
+ * drop-in replacements for the useState setters they took over from — call
+ * sites pass either a value or an updater, exactly as before.
+ */
+type StateUpdate<T> = T | ((previous: T) => T);
+function applyStateUpdate<T>(next: StateUpdate<T>, previous: T): T {
+  return typeof next === "function" ? (next as (previous: T) => T)(previous) : next;
+}
+
 /**
  * One threshold scale for every "percent used" readout in the top bar, so the
  * context meter and the Codex quota can never disagree about what 80% looks like.
@@ -80,15 +163,155 @@ export function AppShell() {
   const { locale, setLocale, t: translate, supportedLocales } = useI18n();
   const isMobile = useIsMobile();
   useViewportHeight();
-  const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
+  // ---- Chat panes ------------------------------------------------------
+  // The main area holds one pane today and, on desktop, will hold a few side
+  // by side. Rather than rewrite the ~20 places that already read and write
+  // "the current session", the pane list is the source of truth and the old
+  // names are re-bound to the focused pane: reads derive from it, writes are
+  // redirected onto it. Single-pane behaviour is therefore unchanged.
+  const [panes, setPanes] = useState<ChatPane[]>(() => [
+    { id: FIRST_PANE_ID, session: null, newSessionCwd: null, remountKey: 0 },
+  ]);
+  const [focusedPaneId, setFocusedPaneId] = useState<string>(FIRST_PANE_ID);
+  // The setter shims run from stable callbacks, so they read focus through a
+  // ref rather than closing over a value that would go stale.
+  const focusedPaneIdRef = useRef(focusedPaneId);
+  focusedPaneIdRef.current = focusedPaneId;
+  const focusedPane = panes.find((pane) => pane.id === focusedPaneId) ?? panes[0];
+
+  /**
+   * Targeted write. Callbacks a specific pane reports through must use this
+   * rather than the focused-pane variant: a session created in one pane while
+   * the user clicks into another would otherwise land in the wrong pane.
+   */
+  const updatePane = useCallback((paneId: string, patch: (pane: ChatPane) => ChatPane) => {
+    setPanes((prev) => prev.map((pane) => (pane.id === paneId ? patch(pane) : pane)));
+  }, []);
+  const updateFocusedPane = useCallback((patch: (pane: ChatPane) => ChatPane) => {
+    updatePane(focusedPaneIdRef.current, patch);
+  }, [updatePane]);
+  /** Focus follows interaction; with one pane this is a no-op. */
+  const handleFocusPane = useCallback((paneId: string) => {
+    setFocusedPaneId((current) => (current === paneId ? current : paneId));
+  }, []);
+
+  const selectedSession = focusedPane.session;
+  const setSelectedSession = useCallback((next: StateUpdate<SessionInfo | null>) => {
+    updateFocusedPane((pane) => ({ ...pane, session: applyStateUpdate(next, pane.session) }));
+  }, [updateFocusedPane]);
+
   // When user clicks +, we only store the cwd — no fake session id
-  const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
+  const newSessionCwd = focusedPane.newSessionCwd;
+  const setNewSessionCwd = useCallback((next: StateUpdate<string | null>) => {
+    updateFocusedPane((pane) => ({ ...pane, newSessionCwd: applyStateUpdate(next, pane.newSessionCwd) }));
+  }, [updateFocusedPane]);
+
   const [initialCwdStatus, setInitialCwdStatus] = useState<"idle" | "validating" | "ready" | "error">(
     () => initialNavigation.requestedCwd ? "validating" : "idle",
   );
   const [initialCwdError, setInitialCwdError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [sessionKey, setSessionKey] = useState(0);
+  // Each pane carries its own remount key, read at its render site; only the
+  // setter is needed here, for the session-switch paths that force a remount.
+  const setSessionKey = useCallback((next: StateUpdate<number>) => {
+    updateFocusedPane((pane) => ({ ...pane, remountKey: applyStateUpdate(next, pane.remountKey) }));
+  }, [updateFocusedPane]);
+
+  // Each pane reports its own stats, context usage, subagents and diffs; the
+  // chrome around the panes reads whichever pane has focus.
+  const [paneRuntimes, setPaneRuntimes] = useState<Record<string, PaneRuntime>>({});
+  const patchPaneRuntime = useCallback((paneId: string, patch: Partial<PaneRuntime>) => {
+    setPaneRuntimes((prev) => ({
+      ...prev,
+      [paneId]: { ...(prev[paneId] ?? EMPTY_PANE_RUNTIME), ...patch },
+    }));
+  }, []);
+  const focusedRuntime = paneRuntimes[focusedPaneId] ?? EMPTY_PANE_RUNTIME;
+  /** For the session-switch paths that reset chrome without a pane in hand. */
+  const patchFocusedRuntime = useCallback((patch: Partial<PaneRuntime>) => {
+    patchPaneRuntime(focusedPaneIdRef.current, patch);
+  }, [patchPaneRuntime]);
+  /** Updater form, when the patch is derived from the pane's current runtime. */
+  const updateFocusedRuntime = useCallback((update: (runtime: PaneRuntime) => Partial<PaneRuntime>) => {
+    setPaneRuntimes((prev) => {
+      const paneId = focusedPaneIdRef.current;
+      const current = prev[paneId] ?? EMPTY_PANE_RUNTIME;
+      return { ...prev, [paneId]: { ...current, ...update(current) } };
+    });
+  }, []);
+
+  // ---- Layout tree -----------------------------------------------------
+  const [layout, setLayout] = useState<PaneNode>(() => leaf(FIRST_PANE_ID));
+  const paneCounterRef = useRef(1);
+
+  /**
+   * Splits the focused pane. With a session, the new pane opens it; without one,
+   * the new pane is a fresh session in the source pane's directory — splitting to
+   * compare two unrelated directories is the rarer intent.
+   */
+  const splitFocusedPane = useCallback((axis: SplitAxis, session: SessionInfo | null) => {
+    const targetId = focusedPaneId;
+    const newPaneId = `pane-${paneCounterRef.current + 1}`;
+    // splitPane returns null at a cap, so a refused split is a no-op rather
+    // than a pane registered against a tree that never grew.
+    const nextLayout = splitPane(layout, targetId, axis, newPaneId);
+    if (nextLayout === null) return;
+    paneCounterRef.current += 1;
+    const source = panes.find((pane) => pane.id === targetId);
+    const inheritedCwd = source?.newSessionCwd ?? source?.session?.cwd ?? null;
+    setPanes((prev) => [
+      ...prev,
+      {
+        id: newPaneId,
+        session,
+        newSessionCwd: session === null ? inheritedCwd : null,
+        remountKey: 0,
+      },
+    ]);
+    setLayout(nextLayout);
+    setFocusedPaneId(newPaneId);
+  }, [layout, panes, focusedPaneId]);
+
+  const handleSplitPane = useCallback((axis: SplitAxis) => {
+    splitFocusedPane(axis, null);
+  }, [splitFocusedPane]);
+
+  const handleOpenSessionInNewPane = useCallback((session: SessionInfo) => {
+    splitFocusedPane("row", session);
+  }, [splitFocusedPane]);
+
+  const handleClosePane = useCallback((paneId: string) => {
+    const nextLayout = removePane(layout, paneId);
+    if (nextLayout === null) return;
+    const nextFocus = paneAfterRemoval(layout, paneId);
+    setLayout(nextLayout);
+    setPanes((prev) => prev.filter((pane) => pane.id !== paneId));
+    setPaneRuntimes((prev) => {
+      if (!(paneId in prev)) return prev;
+      const rest = { ...prev };
+      delete rest[paneId];
+      return rest;
+    });
+    // Pane ids are never reused, so these are only leaks — but a closed pane's
+    // bookkeeping has no reason to outlive it.
+    delete prevRunningSubagentsRef.current[paneId];
+    delete turnChangesSigRef.current[paneId];
+    delete branchLeafChangeFnRef.current[paneId];
+    if (nextFocus !== null) setFocusedPaneId(nextFocus);
+  }, [layout]);
+
+  const canSplitRow = canSplitPane(layout, focusedPaneId, "row");
+  const canSplitColumn = canSplitPane(layout, focusedPaneId, "column");
+
+  // Reported up by the sidebar, which owns the running-sessions subscription.
+  const [runningSessionIds, setRunningSessionIds] = useState<readonly string[]>([]);
+  const [unreadSessionIds, setUnreadSessionIds] = useState<readonly string[]>([]);
+  const handleRunningSessionsChange = useCallback((sessionIds: readonly string[]) => {
+    setRunningSessionIds(sessionIds);
+  }, []);
+  const handleUnreadSessionsChange = useCallback((sessionIds: readonly string[]) => {
+    setUnreadSessionIds(sessionIds);
+  }, []);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [tasksRefreshKey, setTasksRefreshKey] = useState(0);
   const [modelsConfigOpen, setModelsConfigOpen] = useState(false);
@@ -113,36 +336,47 @@ export function AppShell() {
   // Right panel view tabs: "review" (per-turn diffs) | "subagents" (fleet).
   const [rightView, setRightView] = useState<"review" | "subagents">("review");
 
-  // Subagent fleet state, lifted from ChatWindow.
-  const [subagents, setSubagents] = useState<SubagentDelegation[]>([]);
+  // Subagent fleet state, lifted from ChatWindow — recorded per pane.
+  const subagents = focusedRuntime.subagents;
   const [subagentClearSignal, setSubagentClearSignal] = useState(0);
-  const prevRunningSubagentsRef = useRef(0);
-  const handleSubagentsChange = useCallback((delegations: SubagentDelegation[]) => {
-    setSubagents(delegations);
+  // Per pane, not per app: a single counter shared by every pane would be
+  // clobbered on each focus switch, so returning to a pane that already had
+  // workers running would read as a fresh spawn and pop the panel open again.
+  const prevRunningSubagentsRef = useRef<Record<string, number>>({});
+  const handleSubagentsChange = useCallback((paneId: string, delegations: SubagentDelegation[]) => {
+    patchPaneRuntime(paneId, { subagents: delegations });
     const running = delegations.reduce(
       (n, d) => n + d.children.filter((c) => c.status === "running").length,
       0,
     );
+    // Recorded for every pane, focused or not, so the count a pane is compared
+    // against is always its own.
+    const previous = prevRunningSubagentsRef.current[paneId] ?? 0;
+    prevRunningSubagentsRef.current[paneId] = running;
+    // Only the focused pane may take over the right panel. A background pane
+    // spawning workers must not swap the panel to data the user is not looking at.
+    if (paneId !== focusedPaneIdRef.current) return;
     // Auto-switch to the Subagents tab when a new delegation spawns.
-    if (running > prevRunningSubagentsRef.current) {
+    if (running > previous) {
       setRightView("subagents");
       setRightPanelOpen(true);
     }
-    prevRunningSubagentsRef.current = running;
-  }, []);
+  }, [patchPaneRuntime]);
 
   // Per-turn diffs shown in the right panel; auto-opens when a new turn
   // changes files.
-  const [turnChanges, setTurnChanges] = useState<TurnChanges[]>([]);
-  const turnChangesSigRef = useRef("");
-  const handleTurnChangesChange = useCallback((turns: TurnChanges[]) => {
-    setTurnChanges(turns);
+  const turnChanges = focusedRuntime.turnChanges;
+  // Per pane for the same reason as the subagent counter above — two panes with
+  // different diffs would otherwise look like a change on every focus switch.
+  const turnChangesSigRef = useRef<Record<string, string>>({});
+  const handleTurnChangesChange = useCallback((paneId: string, turns: TurnChanges[]) => {
+    patchPaneRuntime(paneId, { turnChanges: turns });
     const sig = turns.map((t) => `${t.turnId}:${t.files.length}`).join(",");
-    if (sig && sig !== turnChangesSigRef.current) {
-      turnChangesSigRef.current = sig;
-      setRightPanelOpen(true);
-    }
-  }, []);
+    const previous = turnChangesSigRef.current[paneId] ?? "";
+    turnChangesSigRef.current[paneId] = sig;
+    if (paneId !== focusedPaneIdRef.current) return;
+    if (sig && sig !== previous) setRightPanelOpen(true);
+  }, [patchPaneRuntime]);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
   const rightPanelWidthRef = useRef(RIGHT_PANEL_FALLBACK_WIDTH);
@@ -215,36 +449,44 @@ export function AppShell() {
   const languageBtnRef = useRef<HTMLButtonElement>(null);
 
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
-  const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
-  const [branchActiveLeafId, setBranchActiveLeafId] = useState<string | null>(null);
-  const branchLeafChangeFnRef = useRef<((leafId: string | null) => void) | null>(null);
+  // Branch state is per pane: the navigator in the top bar describes the focused
+  // pane, and an unfocused pane reporting its tree must not redirect it.
+  const branchTree = focusedRuntime.branchTree;
+  const branchActiveLeafId = focusedRuntime.branchActiveLeafId;
+  const branchLeafChangeFnRef = useRef<Record<string, (leafId: string | null) => void>>({});
 
-  const handleBranchDataChange = useCallback((tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => {
-    setBranchTree(tree);
-    setBranchActiveLeafId(activeLeafId);
-    branchLeafChangeFnRef.current = onLeafChange;
-  }, []);
+  const handleBranchDataChange = useCallback((
+    paneId: string,
+    tree: SessionTreeNode[],
+    activeLeafId: string | null,
+    onLeafChange: (leafId: string | null) => void,
+  ) => {
+    patchPaneRuntime(paneId, { branchTree: tree, branchActiveLeafId: activeLeafId });
+    branchLeafChangeFnRef.current[paneId] = onLeafChange;
+  }, [patchPaneRuntime]);
 
   const handleBranchLeafChange = useCallback((leafId: string | null) => {
-    branchLeafChangeFnRef.current?.(leafId);
+    // The navigator is chrome around the focused pane, so it drives that pane.
+    branchLeafChangeFnRef.current[focusedPaneIdRef.current]?.(leafId);
   }, []);
 
-  const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
+  const systemPrompt = focusedRuntime.systemPrompt;
   const systemBtnRef = useRef<HTMLButtonElement>(null);
 
-  const handleSystemPromptChange = useCallback((prompt: string | null) => {
-    setSystemPrompt(prompt);
-  }, []);
+  const handleSystemPromptChange = useCallback((paneId: string, prompt: string | null) => {
+    patchPaneRuntime(paneId, { systemPrompt: prompt });
+  }, [patchPaneRuntime]);
 
-  // Session stats (tokens + cost) — populated by ChatWindow, displayed in top bar
-  const [sessionStats, setSessionStats] = useState<SessionStatsInfo | null>(null);
+  // Session stats (tokens + cost) — populated by each ChatWindow, and the top
+  // bar shows the focused pane's.
+  const sessionStats = focusedRuntime.sessionStats;
   const [autoNameStatus, setAutoNameStatus] = useState<AutoNameStatus>({ kind: "idle" });
   const autoNameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionIdRef = useRef<string | null>(selectedSession?.id ?? null);
   activeSessionIdRef.current = selectedSession?.id ?? null;
-  const handleSessionStatsChange = useCallback((stats: SessionStatsInfo | null) => {
-    setSessionStats(stats);
-  }, []);
+  const handleSessionStatsChange = useCallback((paneId: string, stats: SessionStatsInfo | null) => {
+    patchPaneRuntime(paneId, { sessionStats: stats });
+  }, [patchPaneRuntime]);
   const [copiedSessionField, setCopiedSessionField] = useState<SessionCopyField | null>(null);
   const sessionCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleCopySessionField = useCallback((field: SessionCopyField, value: string) => {
@@ -262,11 +504,12 @@ export function AppShell() {
     };
   }, []);
 
-  // Context usage — populated by ChatWindow, displayed in top bar
-  const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
-  const handleContextUsageChange = useCallback((usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => {
-    setContextUsage(usage);
-  }, []);
+  // Context usage — populated per pane, displayed for the focused one in the top bar
+  const contextUsage = focusedRuntime.contextUsage;
+  const handleContextUsageChange = useCallback((paneId: string, usage: ContextUsageInfo | null) => {
+    patchPaneRuntime(paneId, { contextUsage: usage });
+  }, [patchPaneRuntime]);
+
 
   // Codex plan quota — polled from the live upstream reading, displayed in top bar.
   // Stays null whenever the Codex desktop app is not signed in on this machine
@@ -396,7 +639,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [initialNavigation]);
+  }, [initialNavigation, setNewSessionCwd]);
 
   const handleCwdChange = useCallback((cwd: string | null, projectRoot?: string | null) => {
     setActiveCwd(cwd);
@@ -427,9 +670,8 @@ export function AppShell() {
       return prev;
     });
     setSessionKey((k) => k + 1);
-    setBranchTree([]);
-    setBranchActiveLeafId(null);
-    setSystemPrompt(null);
+    patchFocusedRuntime({ branchTree: [], branchActiveLeafId: null });
+    patchFocusedRuntime({ systemPrompt: null });
     setActiveTopPanel(null);
     // File tabs are keyed by absolute path, so tabs opened in the previous
     // project would otherwise linger after switching to a different project.
@@ -440,13 +682,13 @@ export function AppShell() {
     setActiveFileTabId(null);
     setRightPanelOpen(false);
     router.replace("/", { scroll: false });
-  }, [router, selectedSession]);
+  }, [router, selectedSession, setNewSessionCwd, setSelectedSession, setSessionKey, patchFocusedRuntime]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     setNewSessionCwd(null);
     setSelectedSession(session);
     setSessionKey((k) => k + 1);
-    setSystemPrompt(null);
+    patchFocusedRuntime({ systemPrompt: null });
     setInitialSessionRestored(true);
     // On mobile, collapse the overlay drawer so the chat is revealed after pick.
     if (isMobile && !isRestore) setSidebarOpen(false);
@@ -460,7 +702,7 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [router, isMobile]);
+  }, [router, isMobile, setNewSessionCwd, setSelectedSession, setSessionKey, patchFocusedRuntime]);
 
   // Open a worker's session from the Subagents tab (transcript).
   const handleOpenTranscript = useCallback(async (sessionId: string) => {
@@ -484,13 +726,12 @@ export function AppShell() {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
     setSessionKey((k) => k + 1);
-    setBranchTree([]);
-    setBranchActiveLeafId(null);
-    setSystemPrompt(null);
+    patchFocusedRuntime({ branchTree: [], branchActiveLeafId: null });
+    patchFocusedRuntime({ systemPrompt: null });
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
     router.replace("/", { scroll: false });
-  }, [router, isMobile]);
+  }, [router, isMobile, setNewSessionCwd, setSelectedSession, setSessionKey, patchFocusedRuntime]);
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
   useGlobalKeyboardShortcuts({
@@ -502,25 +743,36 @@ export function AppShell() {
   // server-computed projectRoot, which the same-project check in
   // handleCwdChange relies on. Hydrate it from the session list so switching
   // worktrees right after creating a session doesn't close the chat.
-  const hydrateSelectedSession = useCallback((sessionId: string) => {
+  /** Fills in the full session record for whichever pane is holding that id. */
+  const hydratePaneSession = useCallback((paneId: string, sessionId: string) => {
     void fetch("/api/sessions")
       .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
       .then((d) => {
         const full = d?.sessions.find((s) => s.id === sessionId);
         if (!full) return;
-        setSelectedSession((prev) => (prev && prev.id === sessionId && !prev.projectRoot ? full : prev));
+        // The pane may have been closed, or moved on, while this was in flight.
+        updatePane(paneId, (pane) => (
+          pane.session && pane.session.id === sessionId && !pane.session.projectRoot
+            ? { ...pane, session: full }
+            : pane
+        ));
       })
       .catch(() => {});
-  }, []);
+  }, [updatePane]);
 
-  // Called by ChatWindow when a new session gets its real id from pi
-  const handleSessionCreated = useCallback((session: SessionInfo) => {
-    setNewSessionCwd(null);
-    setSelectedSession(session);
+  // Called by ChatWindow when a new session gets its real id from pi. Targets the
+  // reporting pane, not the focused one: clicking into another pane during the
+  // round-trip would otherwise drop the new session into whichever pane the user
+  // happened to land on.
+  const handleSessionCreated = useCallback((paneId: string, session: SessionInfo) => {
+    updatePane(paneId, (pane) => ({ ...pane, newSessionCwd: null, session }));
     setRefreshKey((k) => k + 1);
-    hydrateSelectedSession(session.id);
-    router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [router, hydrateSelectedSession]);
+    hydratePaneSession(paneId, session.id);
+    // The URL names a single session, so only the focused pane may rewrite it.
+    if (paneId === focusedPaneIdRef.current) {
+      router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
+    }
+  }, [router, hydratePaneSession, updatePane]);
 
   const handleAgentEnd = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -547,7 +799,11 @@ export function AppShell() {
       setRefreshKey((key) => key + 1);
       if (activeSessionIdRef.current !== sessionId) return;
       setSelectedSession((current) => current?.id === sessionId ? { ...current, name: title } : current);
-      setSessionStats((current) => current?.sessionId === sessionId ? { ...current, sessionName: title } : current);
+      updateFocusedRuntime((runtime) => ({
+        sessionStats: runtime.sessionStats?.sessionId === sessionId
+          ? { ...runtime.sessionStats, sessionName: title }
+          : runtime.sessionStats,
+      }));
       setAutoNameStatus({ kind: "success" });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 1800);
     } catch (error) {
@@ -556,24 +812,87 @@ export function AppShell() {
       setAutoNameStatus({ kind: "error", message });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 5000);
     }
-  }, [autoNameStatus.kind, selectedSession?.id]);
+  }, [autoNameStatus.kind, selectedSession?.id, setSelectedSession, updateFocusedRuntime]);
 
   useEffect(() => {
     if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
     setAutoNameStatus({ kind: "idle" });
   }, [selectedSession?.id]);
 
-  const handleSessionForked = useCallback((newSessionId: string) => {
+  const handleSessionForked = useCallback((paneId: string, newSessionId: string) => {
     setRefreshKey((k) => k + 1);
-    setSessionKey((k) => k + 1);
-    setNewSessionCwd(null);
-    setSelectedSession((prev) => ({
-      ...(prev ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
-      id: newSessionId,
+    updatePane(paneId, (pane) => ({
+      ...pane,
+      remountKey: pane.remountKey + 1,
+      newSessionCwd: null,
+      session: {
+        ...(pane.session ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
+        id: newSessionId,
+      },
     }));
-    hydrateSelectedSession(newSessionId);
-    router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [router, hydrateSelectedSession]);
+    hydratePaneSession(paneId, newSessionId);
+    if (paneId === focusedPaneIdRef.current) {
+      router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
+    }
+  }, [router, hydratePaneSession, updatePane]);
+
+  /**
+   * ChatWindow reports upward through callbacks that carry no pane identity, so
+   * each pane needs its own id bound in. These MUST be referentially stable:
+   * ChatWindow clears its stats on unmount via
+   * `useEffect(() => () => onSessionStatsChange(null), [onSessionStatsChange])`,
+   * so a callback whose identity changed every render would re-run that cleanup
+   * on every render, null the pane's stats, re-render, and loop.
+   *
+   * Keyed on the pane *ids* rather than the pane objects: a pane's session
+   * changes constantly, and rebuilding these then would blink the top bar to
+   * null and back on every message.
+   *
+   * Declared here rather than beside the other pane state because it binds
+   * handlers defined further down — a `const` referenced before its initialiser
+   * throws at render.
+   */
+  const paneIdsKey = panes.map((pane) => pane.id).join(",");
+  const paneCallbacks = useMemo(() => {
+    const map = new Map<string, {
+      onSessionStatsChange: (stats: SessionStatsInfo | null) => void;
+      onContextUsageChange: (usage: ContextUsageInfo | null) => void;
+      onSystemPromptChange: (prompt: string | null) => void;
+      onSubagentsChange: (delegations: SubagentDelegation[]) => void;
+      onTurnChangesChange: (turns: TurnChanges[]) => void;
+      onSessionCreated: (session: SessionInfo) => void;
+      onSessionForked: (newSessionId: string) => void;
+      onBranchDataChange: (
+        tree: SessionTreeNode[],
+        activeLeafId: string | null,
+        onLeafChange: (leafId: string | null) => void,
+      ) => void;
+    }>();
+    for (const paneId of paneIdsKey.split(",")) {
+      map.set(paneId, {
+        onSessionStatsChange: (stats) => handleSessionStatsChange(paneId, stats),
+        onContextUsageChange: (usage) => handleContextUsageChange(paneId, usage),
+        onSystemPromptChange: (prompt) => handleSystemPromptChange(paneId, prompt),
+        onSubagentsChange: (delegations) => handleSubagentsChange(paneId, delegations),
+        onTurnChangesChange: (turns) => handleTurnChangesChange(paneId, turns),
+        onSessionCreated: (session) => handleSessionCreated(paneId, session),
+        onSessionForked: (newSessionId) => handleSessionForked(paneId, newSessionId),
+        onBranchDataChange: (tree, activeLeafId, onLeafChange) =>
+          handleBranchDataChange(paneId, tree, activeLeafId, onLeafChange),
+      });
+    }
+    return map;
+  }, [
+    paneIdsKey,
+    handleSessionStatsChange,
+    handleContextUsageChange,
+    handleSystemPromptChange,
+    handleSubagentsChange,
+    handleTurnChangesChange,
+    handleSessionCreated,
+    handleSessionForked,
+    handleBranchDataChange,
+  ]);
 
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
@@ -586,13 +905,12 @@ export function AppShell() {
       setSelectedSession(null);
       setNewSessionCwd(cwd ?? null);
       setSessionKey((k) => k + 1);
-      setBranchTree([]);
-      setBranchActiveLeafId(null);
-      setSystemPrompt(null);
+      patchFocusedRuntime({ branchTree: [], branchActiveLeafId: null });
+      patchFocusedRuntime({ systemPrompt: null });
       setActiveTopPanel(null);
       router.replace("/", { scroll: false });
     }
-  }, [selectedSession, router]);
+  }, [selectedSession, router, setNewSessionCwd, setSelectedSession, setSessionKey, patchFocusedRuntime]);
 
   const handleOpenFile = useCallback((
     filePath: string,
@@ -657,7 +975,33 @@ export function AppShell() {
   }, [selectedSession]);
 
   // Show chat area if a session is selected, or if we have a cwd to start a new session in
-  const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
+  const paneNewSessionCwd = (pane: ChatPane) =>
+    pane.newSessionCwd ?? (pane.session === null && activeCwd ? activeCwd : null);
+  const effectiveNewSessionCwd = paneNewSessionCwd(focusedPane);
+
+  // Chrome for each pane: what it holds, and whether it wants attention.
+  // Keyed on joined id lists so the map is rebuilt when the sets change rather
+  // than whenever the arrays are re-created.
+  const runningSessionIdsKey = runningSessionIds.join(",");
+  const unreadSessionIdsKey = unreadSessionIds.join(",");
+  const paneMeta = useMemo(() => {
+    const running = new Set(runningSessionIdsKey === "" ? [] : runningSessionIdsKey.split(","));
+    const unread = new Set(unreadSessionIdsKey === "" ? [] : unreadSessionIdsKey.split(","));
+    const meta: Record<string, ChatPaneMeta> = {};
+    for (const pane of panes) {
+      const sessionId = pane.session?.id ?? null;
+      const name = pane.session?.name?.trim();
+      const cwd = pane.session?.cwd ?? pane.newSessionCwd ?? activeCwd;
+      meta[pane.id] = {
+        title: name || (cwd ? getFileName(cwd) || cwd : translate("pane.untitled")),
+        running: sessionId !== null && running.has(sessionId),
+        // An unread marker on the focused pane is stale by definition — focusing
+        // a pane is what clears it — so never badge the pane being looked at.
+        unread: sessionId !== null && unread.has(sessionId) && pane.id !== focusedPaneId,
+      };
+    }
+    return meta;
+  }, [panes, runningSessionIdsKey, unreadSessionIdsKey, focusedPaneId, activeCwd, translate]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
   // While restoring initial session from URL, don't show the placeholder
@@ -706,7 +1050,7 @@ export function AppShell() {
     } finally {
       setProjectTrustBusy(false);
     }
-  }, [projectTrustBusy, projectTrustCwd]);
+  }, [projectTrustBusy, projectTrustCwd, setSessionKey]);
 
   const activeFileTab = fileTabs.find((t) => t.id === activeFileTabId) ?? null;
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
@@ -727,6 +1071,11 @@ export function AppShell() {
     <>
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
+        onRunningSessionsChange={handleRunningSessionsChange}
+        onUnreadSessionsChange={handleUnreadSessionsChange}
+        // Withheld on mobile and at the pane cap, so the menu never offers an
+        // action that would quietly do nothing.
+        onOpenSessionInNewPane={!isMobile && canSplitRow ? handleOpenSessionInNewPane : undefined}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
@@ -1196,6 +1545,37 @@ export function AppShell() {
               </button>
             </div>
           )}
+          {/* Split controls — desktop only, and they act on the focused pane.
+              Disabled rather than hidden at a cap, so the ceiling is discoverable
+              instead of the button vanishing. */}
+          {!isMobile && showChat && (
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <button
+                type="button"
+                className="ui-btn ui-btn--bar ui-btn--icon"
+                title={translate("pane.splitRight")}
+                aria-label={translate("pane.splitRight")}
+                disabled={!canSplitRow}
+                onClick={() => handleSplitPane("row")}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2" /><line x1="12" y1="4" x2="12" y2="20" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="ui-btn ui-btn--bar ui-btn--icon"
+                title={translate("pane.splitDown")}
+                aria-label={translate("pane.splitDown")}
+                disabled={!canSplitColumn}
+                onClick={() => handleSplitPane("column")}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="12" x2="21" y2="12" />
+                </svg>
+              </button>
+            </div>
+          )}
           {/* Session stats + Codex quota — right-aligned in top bar */}
           {showChat && (sessionStats || contextUsage || codexBadge) && (() => {
              const tokens = sessionStats?.tokens;
@@ -1605,27 +1985,48 @@ export function AppShell() {
         </div>
 
         {/* Chat content */}
-        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        <div style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex" }}>
           {showChat ? (
-            <ChatWindow
-              key={sessionKey}
-              session={selectedSession}
-              newSessionCwd={effectiveNewSessionCwd}
-              onAgentEnd={handleAgentEnd}
-              onSessionCreated={handleSessionCreated}
-              onSessionForked={handleSessionForked}
-              modelsRefreshKey={modelsRefreshKey}
-              chatInputRef={chatInputRef}
-              onBranchDataChange={handleBranchDataChange}
-              onSystemPromptChange={handleSystemPromptChange}
-              onSessionStatsChange={handleSessionStatsChange}
-              onTurnChangesChange={handleTurnChangesChange}
-              onSubagentsChange={handleSubagentsChange}
-              clearSubagentsSignal={subagentClearSignal}
-              onOpenTranscript={handleOpenTranscript}
-              onSessionStatsPanelOpen={openSessionStatsPanel}
-              onContextUsageChange={handleContextUsageChange}
-              onOpenFile={handleOpenLinkedFile}
+            <ChatPaneTree
+              layout={layout}
+              focusedPaneId={focusedPaneId}
+              paneMeta={paneMeta}
+              onFocusPane={handleFocusPane}
+              onClosePane={handleClosePane}
+              labels={{
+                close: translate("pane.close"),
+                running: translate("pane.running"),
+                unread: translate("pane.unread"),
+              }}
+              renderPane={(paneId) => {
+                const pane = panes.find((candidate) => candidate.id === paneId);
+                if (!pane) return null;
+                const callbacks = paneCallbacks.get(paneId);
+                return (
+                  <PaneChatWindow
+                    key={`${pane.id}:${pane.remountKey}`}
+                    session={pane.session}
+                    newSessionCwd={paneNewSessionCwd(pane)}
+                    onAgentEnd={handleAgentEnd}
+                    onSessionCreated={callbacks?.onSessionCreated}
+                    onSessionForked={callbacks?.onSessionForked}
+                    modelsRefreshKey={modelsRefreshKey}
+                    // Global shortcuts type into one input, so only the focused
+                    // pane claims the shared ref.
+                    chatInputRef={pane.id === focusedPaneId ? chatInputRef : undefined}
+                    onBranchDataChange={callbacks?.onBranchDataChange}
+                    onSystemPromptChange={callbacks?.onSystemPromptChange}
+                    onSessionStatsChange={callbacks?.onSessionStatsChange}
+                    onTurnChangesChange={callbacks?.onTurnChangesChange}
+                    onSubagentsChange={callbacks?.onSubagentsChange}
+                    clearSubagentsSignal={subagentClearSignal}
+                    onOpenTranscript={handleOpenTranscript}
+                    onSessionStatsPanelOpen={openSessionStatsPanel}
+                    onContextUsageChange={callbacks?.onContextUsageChange}
+                    onOpenFile={handleOpenLinkedFile}
+                  />
+                );
+              }}
             />
           ) : initialCwdStatus === "validating" ? (
             <div

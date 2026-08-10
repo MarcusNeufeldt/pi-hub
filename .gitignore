@@ -2,3 +2,5 @@
 node_modules/
 next-env.d.ts
 *.log
+# Written by `tsc` because the tsconfig is incremental; regenerated on demand.
+tsconfig.tsbuildinfo

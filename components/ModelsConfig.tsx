@@ -1557,11 +1557,25 @@ function AddProviderPicker({
 
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    // Was a hand-rolled fixed overlay rendered as a sibling of the Models dialog.
+    // A Radix modal sets pointer-events:none on the body and re-enables it only
+    // inside its own Content, so anything outside that subtree is inert: this
+    // picker rendered, but could not be clicked or scrolled. Going through the
+    // shared shell makes it a real Radix layer, which stacks above the dialog
+    // underneath and receives pointer events — and brings the focus trap,
+    // Escape handling and scroll lock the hand-rolled version never had.
+    <Modal
+      open
+      onClose={onClose}
+      // The search row is this panel's header, so the accessible name is supplied
+      // hidden rather than drawn twice.
+      title={t("i18n.addProvider")}
+      hideTitle
+      width={820}
+      height="min(72vh, calc(100dvh - 32px))"
+      padded={false}
     >
-      <div style={{ width: 820, maxWidth: "calc(100vw - 32px)", maxHeight: "min(72vh, calc(100vh - 32px))", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, display: "flex", flexDirection: "column", boxShadow: "0 8px 32px rgba(0,0,0,0.22)", overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         {/* Search */}
         <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }}>
@@ -1640,7 +1654,7 @@ function AddProviderPicker({
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

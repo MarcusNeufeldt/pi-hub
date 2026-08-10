@@ -25,10 +25,10 @@ import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { copyText } from "@/lib/clipboard";
 import {
+  badgeReading,
   type CodexUsage,
   formatPlanLabel,
   formatWindowLabel,
-  governingWindow,
 } from "@/lib/codex-usage";
 import { getFileName } from "@/lib/file-paths";
 import { buildFileLineMentionText } from "@/lib/file-fuzzy";
@@ -300,6 +300,10 @@ export function AppShell() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
+  // Derived here rather than inside the top-bar block so the stats button can be
+  // gated on having something to render: a quota reading with no displayable
+  // window would otherwise open an empty strip.
+  const codexBadge = codexUsage ? badgeReading(codexUsage) : null;
 
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "session" | "language" | null>(null);
@@ -1193,7 +1197,7 @@ export function AppShell() {
             </div>
           )}
           {/* Session stats + Codex quota — right-aligned in top bar */}
-          {showChat && (sessionStats || contextUsage || codexUsage) && (() => {
+          {showChat && (sessionStats || contextUsage || codexBadge) && (() => {
              const tokens = sessionStats?.tokens;
             const c = sessionStats?.cost ?? 0;
             const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
@@ -1209,11 +1213,10 @@ export function AppShell() {
             // Badge shows the window closest to its limit, which is not always
             // the one upstream labels "primary": a 5h window at 80% gates the
             // account long before a weekly one at 20%.
-            const quotaWindow = codexUsage ? governingWindow(codexUsage) : null;
-            const quotaStr = codexUsage && quotaWindow
-              ? `${formatPlanLabel(codexUsage.plan)} ${quotaWindow.usedPercent.toFixed(0)}%`
+            const quotaStr = codexBadge
+              ? `${codexBadge.name} ${codexBadge.window.usedPercent.toFixed(0)}%`
               : null;
-            const quotaColor = usageThresholdColor(quotaWindow?.usedPercent ?? null);
+            const quotaColor = usageThresholdColor(codexBadge?.window.usedPercent ?? null);
 
             const tooltipParts: string[] = [];
              if (tokens) {

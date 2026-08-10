@@ -164,6 +164,29 @@ export function governingWindow(usage: CodexUsage): CodexUsageWindow | null {
   ));
 }
 
+/**
+ * What the compact badge should show, with the name to label it by.
+ *
+ * Normally that is the account-level window. Upstream has been observed
+ * reporting per-model buckets with no account window at all, though, and in that
+ * shape a badge keyed only on `governingWindow` would render blank while the
+ * panel below still had rows — so fall back to the busiest bucket and label it
+ * with the model name rather than the plan.
+ */
+export function badgeReading(usage: CodexUsage): { name: string; window: CodexUsageWindow } | null {
+  const accountWindow = governingWindow(usage);
+  if (accountWindow) return { name: formatPlanLabel(usage.plan), window: accountWindow };
+  let busiest: { name: string; window: CodexUsageWindow } | null = null;
+  for (const bucket of usage.extras) {
+    for (const window of bucket.windows) {
+      if (busiest === null || window.usedPercent > busiest.window.usedPercent) {
+        busiest = { name: bucket.label ?? bucket.key, window };
+      }
+    }
+  }
+  return busiest;
+}
+
 /** Compact, locale-neutral period label: "5h", "7d", "30d". */
 export function formatWindowLabel(windowSeconds: number | null): string | null {
   if (windowSeconds === null) return null;

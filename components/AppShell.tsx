@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, memo, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
@@ -83,6 +83,24 @@ interface ChatPane {
 }
 
 const FIRST_PANE_ID = "pane-1";
+
+/**
+ * Panes render through a memoised ChatWindow.
+ *
+ * AppShell re-renders on every `paneRuntimes` change, which means on every token
+ * of a streaming reply. Without this, one pane streaming re-rendered every other
+ * pane's full transcript on each token — an amplification that scales with the
+ * pane count, up to nine.
+ *
+ * This only pays off while every prop a quiet pane receives is referentially
+ * stable, which holds because streaming writes to `paneRuntimes` and never to
+ * `panes`, and because the per-pane callbacks are memoised. If a future prop is
+ * rebuilt each render the comparison silently stops matching and the saving is
+ * lost without anything failing, so keep new props stable — or measure.
+ *
+ * memo does not block context, so useI18n and useTheme still propagate.
+ */
+const PaneChatWindow = memo(ChatWindow);
 
 interface ContextUsageInfo {
   percent: number | null;
@@ -1925,7 +1943,7 @@ export function AppShell() {
                 if (!pane) return null;
                 const callbacks = paneCallbacks.get(paneId);
                 return (
-                  <ChatWindow
+                  <PaneChatWindow
                     key={`${pane.id}:${pane.remountKey}`}
                     session={pane.session}
                     newSessionCwd={paneNewSessionCwd(pane)}

@@ -286,15 +286,6 @@ export function AppShell() {
 
   const canSplitRow = canSplitPane(layout, focusedPaneId, "row");
   const canSplitColumn = canSplitPane(layout, focusedPaneId, "column");
-
-  // Every session on screen, in any pane. The sidebar needs this rather than just
-  // the focused session: its unread bookkeeping treats "not selected" as
-  // "in the background", which stopped being true once panes existed.
-  const visiblePaneSessionIdsKey = panes.map((pane) => pane.session?.id ?? "").join(",");
-  const visiblePaneSessionIds = useMemo(
-    () => visiblePaneSessionIdsKey.split(",").filter((id) => id !== ""),
-    [visiblePaneSessionIdsKey],
-  );
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [tasksRefreshKey, setTasksRefreshKey] = useState(0);
   const [modelsConfigOpen, setModelsConfigOpen] = useState(false);
@@ -1030,7 +1021,6 @@ export function AppShell() {
     <>
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
-        visibleSessionIds={visiblePaneSessionIds}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}

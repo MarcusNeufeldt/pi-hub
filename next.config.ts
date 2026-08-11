@@ -22,6 +22,10 @@ const extraDevOrigins = (process.env.PI_WEB_DEV_ORIGINS ?? "")
   .filter(Boolean);
 
 const nextConfig: NextConfig = {
+  // Scope output file tracing to this package. Without it Next walks up past the
+  // project root looking for the workspace root, which on Windows means stepping
+  // into junctions like `%USERPROFILE%\Application Data` and failing with EPERM.
+  outputFileTracingRoot: __dirname,
   // `next build` type-checks the whole project and halts on the first error, and
   // this tree carries 25 pre-existing ones — about half a single pattern in
   // modules/telegram/sqlite-telegram-store.ts, where the SQLite driver now hands

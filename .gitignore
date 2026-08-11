@@ -2,5 +2,12 @@
 node_modules/
 next-env.d.ts
 *.log
+*.err
 # Written by `tsc` because the tsconfig is incremental; regenerated on demand.
 tsconfig.tsbuildinfo
+# Local environment. Holds the host allowlist and provider API keys, so it must
+# never be committed. Next loads .env.local automatically for both `dev` and
+# `start`, which is the point: env vars set only in the Windows user profile are
+# silently lost whenever the server is started by a different parent process.
+.env*.local
+.env

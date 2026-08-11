@@ -187,6 +187,18 @@ const EVENT_STREAM_IDLE_GRACE_MS = 30_000;
 const AGENT_STATE_RECONCILE_MS = 15_000;
 const BASH_STATE_RECONCILE_MS = 1_000;
 const EVENT_STREAM_CONNECT_TIMEOUT_MS = 5_000;
+/**
+ * Backoff for re-establishing a dead event stream.
+ *
+ * Bounded rather than unlimited: a session that is genuinely gone answers 404
+ * forever, and an uncapped retry would hammer the server for as long as the tab
+ * stays open. Ten attempts starting at 1s and doubling to a 30s ceiling spans
+ * about four minutes of outage, which covers a laptop sleeping or a phone
+ * changing network, while still giving up on a session that is never coming back.
+ */
+const EVENT_STREAM_RECONNECT_BASE_MS = 1_000;
+const EVENT_STREAM_RECONNECT_MAX_MS = 30_000;
+const EVENT_STREAM_MAX_RECONNECT_ATTEMPTS = 10;
 const MAX_NOTICES = 5;
 const NOTICE_VISIBLE_MS = 5000;
 const NOTICE_EXIT_ANIMATION_MS = 180;
@@ -973,6 +985,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const eventStreamGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eventStreamGraceGenerationRef = useRef(0);
   const eventStreamGraceActiveRef = useRef(false);
+  /** Consecutive failed reconnects, and the session they were spent on. */
+  const eventReconnectAttemptsRef = useRef(0);
+  const eventReconnectSessionIdRef = useRef<string | null>(null);
   const subagentsRunningRef = useRef(false);
   const subagentWakeGraceUntilRef = useRef(0);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
@@ -1275,6 +1290,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const connectEvents = useCallback((sid: string): Promise<EventStreamConnectionResult> => {
     closeEvents();
+    // A new session gets a fresh retry budget. Reconnects to the same session
+    // deliberately keep spending the old one, or a failing session would retry
+    // forever by resetting its own counter on every attempt.
+    if (eventReconnectSessionIdRef.current !== sid) {
+      eventReconnectSessionIdRef.current = sid;
+      eventReconnectAttemptsRef.current = 0;
+    }
     const es = new EventSource(`/api/agent/${encodeURIComponent(sid)}/events`);
     eventSourceRef.current = es;
     eventSourceSessionIdRef.current = sid;
@@ -1295,37 +1317,56 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       es.onmessage = (e) => {
         try {
           const event = JSON.parse(e.data) as AgentEvent;
-          if (event.type === "connected") settle("connected");
+          if (event.type === "connected") {
+            // The stream is live again, so the outage is over and the next one
+            // starts from a full budget at the shortest delay.
+            eventReconnectAttemptsRef.current = 0;
+            settle("connected");
+          }
           handleAgentEventRef.current?.(event);
         } catch {
           // ignore
         }
       };
       es.onerror = () => {
-        if (es.readyState === EventSource.CLOSED) {
-          // Fatal error (404/500/content-type mismatch): browser won't
-          // auto-reconnect. Settle the Promise and manually reconnect for
-          // already-running sessions or an active idle grace window.
-          settle("closed");
-          if (eventSourceRef.current === es && (agentRunningRef.current || eventStreamGraceActiveRef.current)) {
-            eventSourceRef.current = null;
-            eventSourceSessionIdRef.current = null;
-            eventConnectionAttemptRef.current = null;
-            const reconnectGeneration = eventStreamGraceGenerationRef.current;
-            setTimeout(() => {
-              if (
-                reconnectGeneration === eventStreamGraceGenerationRef.current
-                && !eventSourceRef.current
-                && (agentRunningRef.current || eventStreamGraceActiveRef.current)
-              ) {
-                void connectEvents(sid);
-              }
-            }, 1000);
-          }
+        if (es.readyState !== EventSource.CLOSED) {
+          // Recoverable (CONNECTING): the browser retries on its own. The connect
+          // timeout above resolves only so callers can decide whether this
+          // connection must be ready before they continue.
+          return;
         }
-        // Recoverable errors (CONNECTING): let EventSource auto-reconnect.
-        // The timeout above resolves only to let callers decide whether this
-        // connection must be ready before they continue.
+        // Fatal (404/500/content-type mismatch, or the connection was dropped):
+        // the browser will not auto-reconnect, so it is on us.
+        settle("closed");
+        // A different EventSource is current, which means closeEvents() ran or a
+        // newer connect superseded this one. Either way this socket is history.
+        if (eventSourceRef.current !== es) return;
+        eventSourceRef.current = null;
+        eventSourceSessionIdRef.current = null;
+        eventConnectionAttemptRef.current = null;
+
+        // Reconnect whenever this session is still the open one -- not only while
+        // the agent is running or an idle-grace window happens to be active, which
+        // is what the previous condition required. Browsers drop SSE for entirely
+        // ordinary reasons (tab backgrounded, screen locked, laptop slept, phone
+        // changed network), and under the old gate an idle session's stream stayed
+        // dead with no retry and nothing in the UI to say so. That is the "left it
+        // open on the PC and it stopped updating" symptom.
+        if (sessionIdRef.current !== sid) return;
+        const attempt = eventReconnectAttemptsRef.current;
+        if (attempt >= EVENT_STREAM_MAX_RECONNECT_ATTEMPTS) return;
+        eventReconnectAttemptsRef.current = attempt + 1;
+        const delay = Math.min(
+          EVENT_STREAM_RECONNECT_BASE_MS * 2 ** attempt,
+          EVENT_STREAM_RECONNECT_MAX_MS,
+        );
+        const reconnectGeneration = eventStreamGraceGenerationRef.current;
+        setTimeout(() => {
+          if (reconnectGeneration !== eventStreamGraceGenerationRef.current) return;
+          if (eventSourceRef.current) return;
+          if (sessionIdRef.current !== sid) return;
+          void connectEvents(sid);
+        }, delay);
       };
     });
     eventConnectionAttemptRef.current = { source: es, promise, pending: true };

@@ -1,18 +1,46 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 
 import { useI18n } from "@/hooks/useI18n";
 import {
+  averagePricePerMTok,
   buildOpenRouterRouting,
+  cacheRateApplies,
   DEFAULT_REPLY_TOKENS,
   isRoutableOpenRouterModel,
   type OpenRouterEndpoint,
   type OpenRouterRoutingValue,
   predictedSeconds,
+  priceExtremes,
   rankByPredictedSpeed,
   REPLY_TOKEN_CHOICES,
 } from "@/lib/openrouter-routing";
+
+/**
+ * Shared column geometry, so the header and the rows cannot drift apart.
+ *
+ * The header renders inside the scroll container as a sticky row for the same
+ * reason: placed outside it, the rows lose width to the scrollbar while the
+ * header keeps it, which knocks every label a few pixels out of line.
+ */
+const COLUMN: Record<
+  "check" | "provider" | "time" | "tps" | "start" | "avgPrice" | "cachePrice",
+  CSSProperties
+> = {
+  check: { width: 12, flexShrink: 0 },
+  provider: { flex: 1, minWidth: 0, textAlign: "left" },
+  time: { flexShrink: 0, minWidth: 44, textAlign: "right" },
+  tps: { flexShrink: 0, minWidth: 40, textAlign: "right" },
+  start: { flexShrink: 0, minWidth: 46, textAlign: "right" },
+  avgPrice: { flexShrink: 0, minWidth: 52, textAlign: "right" },
+  cachePrice: { flexShrink: 0, minWidth: 58, textAlign: "right" },
+};
+
+/** Three decimals throughout: the cheapest cache rates land near $0.003/M. */
+function formatPrice(value: number | null): string {
+  return value === null ? "—" : `$${value.toFixed(3)}`;
+}
 
 /**
  * Picks which upstream providers may serve the selected OpenRouter model.
@@ -142,6 +170,29 @@ export function OpenRouterRoutingMenu({
   };
 
   const ranked = endpoints ? rankByPredictedSpeed(endpoints, replyTokens) : [];
+  // Computed over the ranked list so ties resolve to the faster endpoint.
+  const avgExtremes = priceExtremes(ranked, averagePricePerMTok);
+  const cacheExtremes = priceExtremes(ranked, (endpoint) => endpoint.cacheReadPricePerMTok);
+  const priceColor = (
+    tag: string,
+    extremes: { cheapestTag: string | null; dearestTag: string | null },
+  ): string | null =>
+    tag === extremes.cheapestTag
+      ? "var(--success)"
+      : tag === extremes.dearestTag
+        ? "var(--danger)"
+        : null;
+  /** Colour alone must not carry the meaning, so the extreme is named too. */
+  const priceTitle = (
+    tag: string,
+    extremes: { cheapestTag: string | null; dearestTag: string | null },
+  ): string | undefined =>
+    tag === extremes.cheapestTag
+      ? t("route.cheapest")
+      : tag === extremes.dearestTag
+        ? t("route.dearest")
+        : undefined;
+
   const label = pinned.length > 0
     ? t("route.pinnedCount", { count: pinned.length })
     : sort
@@ -181,7 +232,7 @@ export function OpenRouterRoutingMenu({
           position: "absolute", bottom: "calc(100% + 6px)", right: 0,
           zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
           borderRadius: 8, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
-          overflow: "hidden", width: "min(440px, calc(100vw - 32px))",
+          overflow: "hidden", width: "min(600px, calc(100vw - 32px))",
         }}>
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
@@ -226,9 +277,28 @@ export function OpenRouterRoutingMenu({
               deepseek-v4-flash — and this panel grows upward from the composer,
               so an uncapped list runs straight off the top of the window. */}
           <div style={{ maxHeight: "min(46vh, 340px)", overflowY: "auto" }}>
+          {loadState === "ready" && (
+            <div style={{
+              position: "sticky", top: 0, zIndex: 1, background: "var(--bg)",
+              borderBottom: "1px solid var(--border)",
+              display: "flex", alignItems: "center", gap: 8, padding: "5px 12px",
+              fontSize: "var(--fs-micro)", color: "var(--text-dim)",
+            }}>
+              <span aria-hidden="true" style={COLUMN.check} />
+              <span style={COLUMN.provider}>{t("route.colProvider")}</span>
+              <span style={COLUMN.time}>{t("route.colTime")}</span>
+              <span style={COLUMN.tps}>{t("route.colTps")}</span>
+              <span style={COLUMN.start}>{t("route.colStart")}</span>
+              <span style={COLUMN.avgPrice} title={t("route.avgPriceHint")}>{t("route.colAvgPrice")}</span>
+              <span style={COLUMN.cachePrice} title={t("route.cachePriceHint")}>{t("route.colCachePrice")}</span>
+            </div>
+          )}
           {loadState === "ready" && ranked.map((endpoint) => {
             const checked = pinned.includes(endpoint.tag);
             const seconds = predictedSeconds(endpoint, replyTokens);
+            const avgColor = priceColor(endpoint.tag, avgExtremes);
+            const cacheColor = priceColor(endpoint.tag, cacheExtremes);
+            const cacheCharged = cacheRateApplies(modelId, endpoint);
             return (
               <button
                 key={endpoint.tag}
@@ -243,25 +313,52 @@ export function OpenRouterRoutingMenu({
                   color: checked ? "var(--text)" : "var(--text-muted)",
                 }}
               >
-                <span aria-hidden="true" style={{ width: 12, flexShrink: 0, color: "var(--accent)" }}>
+                <span aria-hidden="true" style={{ ...COLUMN.check, color: "var(--accent)" }}>
                   {checked ? "✓" : ""}
                 </span>
-                <span style={{ flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {endpoint.providerName}
+                {/* Quantization rides with the name rather than owning a column.
+                    It identifies the endpoint — an fp4 endpoint may be fastest to
+                    start and measurably worse — and the price columns need room. */}
+                <span style={{ ...COLUMN.provider, display: "flex", alignItems: "center", gap: 5, overflow: "hidden" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {endpoint.providerName}
+                  </span>
+                  {endpoint.quantization && endpoint.quantization !== "unknown" && (
+                    <span style={{ flexShrink: 0, fontSize: "var(--fs-micro)", color: "var(--text-dim)" }}>
+                      {endpoint.quantization}
+                    </span>
+                  )}
                 </span>
-                <span style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
+                <span style={{ ...COLUMN.time, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
                   {seconds === null ? t("route.unmeasured") : `${seconds.toFixed(1)}s`}
                 </span>
-                <span style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums", color: "var(--text-dim)", minWidth: 62, textAlign: "right" }}>
-                  {endpoint.throughputTps === null ? "—" : `${endpoint.throughputTps.toFixed(0)} tok/s`}
+                <span style={{ ...COLUMN.tps, fontVariantNumeric: "tabular-nums", color: "var(--text-dim)" }}>
+                  {endpoint.throughputTps === null ? "—" : endpoint.throughputTps.toFixed(0)}
                 </span>
-                <span style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums", color: "var(--text-dim)", minWidth: 52, textAlign: "right" }}>
+                <span style={{ ...COLUMN.start, fontVariantNumeric: "tabular-nums", color: "var(--text-dim)" }}>
                   {endpoint.ttftMs === null ? "—" : `${Math.round(endpoint.ttftMs)}ms`}
                 </span>
-                {/* Quantization is a quality tier, not just a speed knob — an fp4
-                    endpoint may be fastest to start and measurably worse. */}
-                <span style={{ flexShrink: 0, color: "var(--text-dim)", minWidth: 34, textAlign: "right" }}>
-                  {endpoint.quantization && endpoint.quantization !== "unknown" ? endpoint.quantization : ""}
+                <span
+                  style={{ ...COLUMN.avgPrice, fontVariantNumeric: "tabular-nums", color: avgColor ?? "var(--text-dim)" }}
+                  title={priceTitle(endpoint.tag, avgExtremes)}
+                >
+                  {formatPrice(averagePricePerMTok(endpoint))}
+                </span>
+                {/* Halved where the rate is published but never charged for this
+                    model — see cacheRateApplies, which owns the rule. Opacity
+                    rather than a colour, so the extreme highlight survives it. */}
+                <span
+                  style={{
+                    ...COLUMN.cachePrice, fontVariantNumeric: "tabular-nums",
+                    color: cacheColor ?? "var(--text-dim)",
+                    opacity: cacheCharged ? 1 : 0.5,
+                  }}
+                  title={[
+                    cacheCharged ? t("route.cacheApplied") : t("route.cacheNotApplied"),
+                    priceTitle(endpoint.tag, cacheExtremes),
+                  ].filter(Boolean).join(" ")}
+                >
+                  {formatPrice(endpoint.cacheReadPricePerMTok)}
                 </span>
               </button>
             );

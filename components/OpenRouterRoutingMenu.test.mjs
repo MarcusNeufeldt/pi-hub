@@ -49,6 +49,53 @@ describe("the provider menu cannot deadlock its own load", () => {
   });
 });
 
+describe("the price columns do not mislead", () => {
+  it("dims a cache rate that is published but never charged", () => {
+    // Showing all 27 at full strength would read as "every one of these gets
+    // cache pricing", which is false for 26 of them on a deepseek model.
+    // Delegated to cacheRateApplies rather than tested against
+    // supportsImplicitCaching directly: pi does send cache_control for
+    // openrouter:anthropic/*, where the rate applies to every endpoint, so
+    // implicit caching alone is the wrong question to ask.
+    assert.match(source, /cacheRateApplies\(modelId, endpoint\)/);
+    assert.match(source, /opacity: cacheCharged \? 1 : 0\.5/);
+    assert.doesNotMatch(
+      source,
+      /opacity: endpoint\.supportsImplicitCaching/,
+      "implicit caching alone would wrongly dim every anthropic/* endpoint",
+    );
+    assert.ok(source.includes("route.cacheNotApplied"));
+    assert.ok(source.includes("route.cacheApplied"));
+  });
+
+  it("names the extreme in a tooltip rather than relying on colour alone", () => {
+    assert.match(source, /priceTitle\(endpoint\.tag, avgExtremes\)/);
+    assert.match(source, /priceTitle\(endpoint\.tag, cacheExtremes\)/);
+    assert.ok(source.includes("route.cheapest") && source.includes("route.dearest"));
+  });
+
+  it("uses the success and danger tokens, not hardcoded colours", () => {
+    assert.match(source, /"var\(--success\)"/);
+    assert.match(source, /"var\(--danger\)"/);
+  });
+
+  it("shares one set of column widths between the header and the rows", () => {
+    // Duplicated widths drift, and the header sits above every row, so a drift
+    // would be permanently visible rather than a one-row glitch.
+    assert.match(source, /const COLUMN: Record</);
+    for (const column of ["check", "provider", "time", "tps", "start", "avgPrice", "cachePrice"]) {
+      assert.ok(source.includes(`COLUMN.${column}`), `header and rows should both use COLUMN.${column}`);
+    }
+  });
+
+  it("keeps the header inside the scroll container so a scrollbar cannot skew it", () => {
+    // Outside it, the rows lose width to the scrollbar and the header does not.
+    const scrollStart = source.indexOf('overflowY: "auto"');
+    const headerStart = source.indexOf('position: "sticky"');
+    assert.ok(scrollStart > 0 && headerStart > scrollStart, "sticky header must render inside the scroll container");
+  });
+});
+
 describe("the provider menu only offers what it can route", () => {
   it("renders nothing for models it cannot route", () => {
     assert.match(source, /if \(!routable\) return null/);

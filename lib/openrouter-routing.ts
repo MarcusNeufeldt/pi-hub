@@ -29,6 +29,24 @@ export interface OpenRouterEndpoint {
   /** USD per million prompt / completion tokens. */
   promptPricePerMTok: number | null;
   completionPricePerMTok: number | null;
+  /**
+   * USD per million tokens read back from the provider's prompt cache.
+   *
+   * Null when the endpoint quotes no cache rate at all, which is not the same as
+   * a cache rate that never applies — see `supportsImplicitCaching`.
+   */
+  cacheReadPricePerMTok: number | null;
+  /**
+   * Whether the provider caches repeated context on its own, with no
+   * `cache_control` breakpoints in the request.
+   *
+   * This decides whether `cacheReadPricePerMTok` is a rate you can actually be
+   * billed. pi only sends breakpoints for `openrouter:anthropic/*` models
+   * (`cacheControlFormat` in the SDK's openai-completions adapter is set for
+   * nothing else), so for every other model the quoted cache rate applies only
+   * where the provider caches implicitly.
+   */
+  supportsImplicitCaching: boolean;
 }
 
 /** What gets written to `compat.openRouterRouting`. */
@@ -111,9 +129,82 @@ export function parseOpenRouterEndpoints(payload: unknown): OpenRouterEndpoint[]
       ttftMs: p50(source.latency_last_30m),
       promptPricePerMTok: perMillion(pricing.prompt),
       completionPricePerMTok: perMillion(pricing.completion),
+      cacheReadPricePerMTok: perMillion(pricing.input_cache_read),
+      supportsImplicitCaching: source.supports_implicit_caching === true,
     });
   }
   return endpoints;
+}
+
+/**
+ * The plain mean of the input and output rate, as one number to compare
+ * endpoints on.
+ *
+ * Deliberately unweighted, which is worth knowing when reading it: a real coding
+ * turn is heavily input-skewed (tens of thousands in, hundreds out), so the mean
+ * gives output far more weight than the bill does. It is still a fair comparator
+ * for this catalogue because most endpoints price output at exactly twice input,
+ * which makes the mean monotonic in the input rate — but it does reorder the few
+ * that break that ratio, so it is a headline figure rather than a cost estimate.
+ *
+ * Rounded like `perMillion` so two endpoints quoting the same rates cannot
+ * differ by float noise and appear as separate extremes.
+ */
+export function averagePricePerMTok(
+  endpoint: Pick<OpenRouterEndpoint, "promptPricePerMTok" | "completionPricePerMTok">,
+): number | null {
+  const { promptPricePerMTok, completionPricePerMTok } = endpoint;
+  if (promptPricePerMTok === null || completionPricePerMTok === null) return null;
+  return Math.round(((promptPricePerMTok + completionPricePerMTok) / 2) * 1e6) / 1e6;
+}
+
+/**
+ * Whether an endpoint's quoted cache-read rate is actually charged for this
+ * model's requests.
+ *
+ * Two ways to get cache pricing, and a quoted rate needs one of them:
+ *  - the request carries `cache_control` breakpoints. The SDK's openai-completions
+ *    adapter sets `cacheControlFormat` only for `provider === "openrouter" &&
+ *    model.id.startsWith("anthropic/")`, so that is the only family pi marks up.
+ *  - the provider caches on its own, with no breakpoints — `supports_implicit_caching`.
+ *
+ * Without either, the endpoint's cache rate is a published number that pi can
+ * never be billed at, which is worth showing differently from one that bites.
+ */
+export function cacheRateApplies(
+  modelId: string,
+  endpoint: Pick<OpenRouterEndpoint, "supportsImplicitCaching">,
+): boolean {
+  return modelId.startsWith("anthropic/") || endpoint.supportsImplicitCaching;
+}
+
+/**
+ * The cheapest and dearest endpoint by some price, for highlighting a column.
+ *
+ * Both are null when fewer than two distinct prices exist — one priced endpoint,
+ * or a catalogue where every endpoint charges the same. Marking the single row as
+ * both best and worst, or painting one of a set of identical prices green, would
+ * assert a difference that is not there.
+ *
+ * Ties keep the first endpoint in the given order, so the caller's sort decides
+ * which of several equally cheap endpoints is labelled.
+ */
+export function priceExtremes(
+  endpoints: readonly OpenRouterEndpoint[],
+  valueOf: (endpoint: OpenRouterEndpoint) => number | null,
+): { cheapestTag: string | null; dearestTag: string | null } {
+  let cheapest: { tag: string; value: number } | null = null;
+  let dearest: { tag: string; value: number } | null = null;
+  for (const endpoint of endpoints) {
+    const value = valueOf(endpoint);
+    if (value === null) continue;
+    if (cheapest === null || value < cheapest.value) cheapest = { tag: endpoint.tag, value };
+    if (dearest === null || value > dearest.value) dearest = { tag: endpoint.tag, value };
+  }
+  if (cheapest === null || dearest === null || cheapest.value === dearest.value) {
+    return { cheapestTag: null, dearestTag: null };
+  }
+  return { cheapestTag: cheapest.tag, dearestTag: dearest.tag };
 }
 
 /**

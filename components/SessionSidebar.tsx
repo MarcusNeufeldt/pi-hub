@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { ContextMenu } from "radix-ui";
 import type { SessionInfo } from "@/lib/types";
+import { skillExpansionToCommand } from "@/lib/slash-display";
 import { useI18n } from "@/hooks/useI18n";
 import { loadHiddenProjects, saveHiddenProjects } from "@/lib/project-visibility";
 import { isSidebarConversationSession } from "@/lib/session-visibility";
@@ -1944,14 +1945,18 @@ function SessionItem({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
+  // A stored first message may be an SDK-expanded <skill> block; collapse it back
+  // to the compact /skill:name args command the user typed before using it as the
+  // no-name fallback, mirroring MessageView's rendering (#457).
+  const displayFirstMessage = skillExpansionToCommand(session.firstMessage) ?? session.firstMessage;
+  const title = session.name || displayFirstMessage.slice(0, 50) || session.id.slice(0, 12);
   /**
    * Tooltip text. The row truncates hard whenever the sidebar is narrow, and the
    * displayed title is itself pre-clipped, so this carries the untruncated name.
    * An unnamed session falls back to its first message, capped so a long prompt
    * does not turn into an unreadable wall of tooltip.
    */
-  const fullTitle = session.name || session.firstMessage.slice(0, 300) || session.id;
+  const fullTitle = session.name || displayFirstMessage.slice(0, 300) || session.id;
 
   // Started from the context menu; the hover button it used to serve is gone.
   const beginRename = useCallback(() => {
@@ -1963,6 +1968,10 @@ function SessionItem({
   const commitRename = useCallback(async () => {
     const name = renameValue.trim();
     setRenaming(false);
+    // Our rename input seeds from the stored name only (empty for an unnamed
+    // session), never from the fallback title, so upstream's extra
+    // `renameValue === title` guard is unnecessary here — and would silently
+    // discard a deliberate rename to exactly the fallback text.
     if (name === (session.name ?? "")) return;
     try {
       await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {

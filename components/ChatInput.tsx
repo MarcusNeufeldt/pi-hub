@@ -15,6 +15,7 @@ import {
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
 import { FolderIcon, getFileIcon } from "./FileIcons";
+import { OpenRouterRoutingMenu } from "./OpenRouterRoutingMenu";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 
@@ -2145,6 +2146,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 backdropFilter: "blur(10px)",
               } : null),
             }}>
+            {/* Provider routing — only rendered for OpenRouter models, where the
+                same model is served by several upstreams at different speeds. */}
+            {!isStreaming && model && (
+              <OpenRouterRoutingMenu
+                provider={model.provider}
+                modelId={model.modelId}
+                disabled={isStreaming}
+                compact={isMobile && !controlsMenuOpen}
+              />
+            )}
             {!isStreaming && onThinkingLevelChange && (
               <div ref={thinkingDropdownRef} style={{ position: "relative" }}>
                 <button

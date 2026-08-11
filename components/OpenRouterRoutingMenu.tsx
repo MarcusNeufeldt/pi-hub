@@ -65,41 +65,53 @@ export function OpenRouterRoutingMenu({
     setLoadState("idle");
     setRouting(null);
     setSaveError(false);
+    requestedModelRef.current = null;
   }, [provider, modelId]);
 
-  // Fetched on first open rather than on mount: most model selections never open
+  /**
+   * Which model a load has been started for. A ref rather than state, and the
+   * load is imperative rather than an effect, because the effect version dead-
+   * locked: `loadState` was both a dependency and something the effect set, so
+   * setting "loading" re-ran the effect, whose cleanup cancelled the very fetch
+   * it had just started. Both requests returned 200 and every result was thrown
+   * away, leaving "Loading providers…" on screen forever.
+   */
+  const requestedModelRef = useRef<string | null>(null);
+
+  // Loaded on first open rather than on mount: most model selections never open
   // this, and a request per selection would be pure waste.
-  useEffect(() => {
-    if (!open || !routable || loadState !== "idle") return;
-    let cancelled = false;
+  const loadProviders = useCallback(async (id: string) => {
+    if (requestedModelRef.current === id) return;
+    requestedModelRef.current = id;
     setLoadState("loading");
-    void (async () => {
-      try {
-        const query = `model=${encodeURIComponent(modelId)}`;
-        const [endpointsResponse, routingResponse] = await Promise.all([
-          fetch(`/api/models/openrouter-endpoints?${query}`, { cache: "no-store" }),
-          fetch(`/api/models/openrouter-routing?${query}`, { cache: "no-store" }),
-        ]);
-        if (cancelled) return;
-        const endpointsData = await endpointsResponse.json() as {
-          available?: boolean;
-          endpoints?: OpenRouterEndpoint[];
-        };
-        const routingData = await routingResponse.json() as { routing?: OpenRouterRoutingValue | null };
-        if (cancelled) return;
-        setRouting(routingData.routing ?? null);
-        if (endpointsData.available && endpointsData.endpoints?.length) {
-          setEndpoints(endpointsData.endpoints);
-          setLoadState("ready");
-        } else {
-          setLoadState("empty");
-        }
-      } catch {
-        if (!cancelled) setLoadState("error");
+    try {
+      const query = `model=${encodeURIComponent(id)}`;
+      const [endpointsResponse, routingResponse] = await Promise.all([
+        fetch(`/api/models/openrouter-endpoints?${query}`, { cache: "no-store" }),
+        fetch(`/api/models/openrouter-routing?${query}`, { cache: "no-store" }),
+      ]);
+      const endpointsData = await endpointsResponse.json() as {
+        available?: boolean;
+        endpoints?: OpenRouterEndpoint[];
+      };
+      const routingData = await routingResponse.json() as { routing?: OpenRouterRoutingValue | null };
+      // Only a superseded model discards the result. Closing the menu must not,
+      // or reopening would find the state still saying "loading".
+      if (requestedModelRef.current !== id) return;
+      setRouting(routingData.routing ?? null);
+      if (endpointsData.available && endpointsData.endpoints?.length) {
+        setEndpoints(endpointsData.endpoints);
+        setLoadState("ready");
+      } else {
+        setLoadState("empty");
       }
-    })();
-    return () => { cancelled = true; };
-  }, [open, routable, loadState, modelId]);
+    } catch {
+      if (requestedModelRef.current !== id) return;
+      // Cleared so the next open retries rather than showing a permanent error.
+      requestedModelRef.current = null;
+      setLoadState("error");
+    }
+  }, []);
 
   const save = useCallback(async (next: OpenRouterRoutingValue | null) => {
     setRouting(next);
@@ -139,7 +151,12 @@ export function OpenRouterRoutingMenu({
   return (
     <div ref={wrapperRef} style={{ position: "relative" }}>
       <button
-        onClick={() => !disabled && setOpen((value) => !value)}
+        onClick={() => {
+          if (disabled) return;
+          const next = !open;
+          setOpen(next);
+          if (next) void loadProviders(modelId);
+        }}
         disabled={disabled}
         title={t("route.title")}
         aria-label={t("route.title")}
@@ -205,6 +222,10 @@ export function OpenRouterRoutingMenu({
             </div>
           )}
 
+          {/* Popular models are served by a lot of providers — 27 for
+              deepseek-v4-flash — and this panel grows upward from the composer,
+              so an uncapped list runs straight off the top of the window. */}
+          <div style={{ maxHeight: "min(46vh, 340px)", overflowY: "auto" }}>
           {loadState === "ready" && ranked.map((endpoint) => {
             const checked = pinned.includes(endpoint.tag);
             const seconds = predictedSeconds(endpoint, replyTokens);
@@ -245,6 +266,7 @@ export function OpenRouterRoutingMenu({
               </button>
             );
           })}
+          </div>
 
           <div style={{ borderTop: "1px solid var(--border)", padding: "6px 12px 8px" }}>
             <div style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", marginBottom: 4 }}>

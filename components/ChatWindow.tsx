@@ -127,8 +127,8 @@ function withAssistantBlocks(
   return next;
 }
 
-export function ProcessDetailsGroup({ messageCount, summary, children, t }: { messageCount: number; summary: ProcessSummary; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
-  const [expanded, setExpanded] = useState(false);
+export function ProcessDetailsGroup({ messageCount, summary, defaultExpanded = false, children, t }: { messageCount: number; summary: ProcessSummary; defaultExpanded?: boolean; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   // The model comes first because it is the one fact the steps inside no longer
   // repeat. Message count moves to the tooltip: it counts how pi chunked the turn,
@@ -1017,9 +1017,13 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                   };
                   const processGroup = (
                     <ProcessDetailsGroup
-                       messageCount={processCount}
-                       t={t}
+                      messageCount={processCount}
                       summary={processSummary}
+                      // A turn that ended without a final answer has nothing else
+                      // to show, so start expanded rather than hiding the only
+                      // content behind a collapsed header (#447).
+                      defaultExpanded={!finalAnswerMessage}
+                      t={t}
                     >
                       {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process", meta: metaForProcess(messages[processIdx]) }))}
                       {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false, meta: metaForProcess(finalProcessMessage) })}

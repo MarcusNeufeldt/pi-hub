@@ -415,7 +415,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
         <TextInput value={editingName} onChange={setEditingName} placeholder="provider-name" mono />
         {editingName !== name && editingName.trim() && (
           <button onClick={() => onRename(editingName.trim())}
-            style={{ marginTop: 4, padding: "3px 10px", background: "var(--accent)", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: "var(--fs-micro)", alignSelf: "flex-start" }}>
+            style={{ marginTop: 4, padding: "3px 10px", background: "var(--accent-fill)", border: "none", borderRadius: 4, color: "var(--accent-on)", cursor: "pointer", fontSize: "var(--fs-micro)", alignSelf: "flex-start" }}>
              {t("i18n.rename")}
           </button>
         )}
@@ -528,7 +528,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
               <button
                 onClick={addSelectedModels}
                 disabled={selectedCount === 0}
-                style={{ height: 28, padding: "0 11px", border: "none", borderRadius: 5, background: selectedCount ? "var(--accent)" : "var(--bg-panel)", color: selectedCount ? "#fff" : "var(--text-dim)", cursor: selectedCount ? "pointer" : "not-allowed", fontSize: "var(--fs-micro)", fontWeight: 600, whiteSpace: "nowrap" }}
+                style={{ height: 28, padding: "0 11px", border: "none", borderRadius: 5, background: selectedCount ? "var(--accent-fill)" : "var(--bg-panel)", color: selectedCount ? "var(--accent-on)" : "var(--text-dim)", cursor: selectedCount ? "pointer" : "not-allowed", fontSize: "var(--fs-micro)", fontWeight: 600, whiteSpace: "nowrap" }}
               >
                 {selectedCount
                   ? t("models.discoveryAddSelectedCount", { count: selectedCount })
@@ -597,13 +597,13 @@ function ThinkingLevelMapEditor({
           color: "var(--text-dim)",
         };
         const btnActive: React.CSSProperties = {
-          background: "var(--accent)",
-          color: "#fff",
+          background: "var(--accent-fill)",
+          color: "var(--accent-on)",
           fontWeight: 600,
         };
         const btnActiveDisabled: React.CSSProperties = {
           background: "var(--danger)",
-          color: "#fff",
+          color: "var(--danger-on)",
           fontWeight: 600,
         };
 
@@ -1272,7 +1272,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
               <button
                 onClick={() => submitCode(loginState.token, inputValue)}
                 disabled={!inputValue.trim()}
-                style={{ padding: "6px 12px", background: inputValue.trim() ? "var(--accent)" : "var(--bg-panel)", border: "none", borderRadius: 5, color: inputValue.trim() ? "#fff" : "var(--text-dim)", cursor: inputValue.trim() ? "pointer" : "not-allowed", fontSize: "var(--fs-meta)", fontWeight: 600, flexShrink: 0 }}
+                style={{ padding: "6px 12px", background: inputValue.trim() ? "var(--accent-fill)" : "var(--bg-panel)", border: "none", borderRadius: 5, color: inputValue.trim() ? "var(--accent-on)" : "var(--text-dim)", cursor: inputValue.trim() ? "pointer" : "not-allowed", fontSize: "var(--fs-meta)", fontWeight: 600, flexShrink: 0 }}
               >
                  {t("i18n.submit")}
               </button>
@@ -1319,7 +1319,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
           <>
             <button
               onClick={handleLogin}
-              style={{ padding: "5px 14px", background: "var(--accent)", border: "none", borderRadius: 5, color: "#fff", cursor: "pointer", fontSize: "var(--fs-meta)", fontWeight: 600 }}
+              style={{ padding: "5px 14px", background: "var(--accent-fill)", border: "none", borderRadius: 5, color: "var(--accent-on)", cursor: "pointer", fontSize: "var(--fs-meta)", fontWeight: 600 }}
             >
                {provider.loggedIn ? t("i18n.relogin") : t("i18n.login")}
             </button>
@@ -1432,9 +1432,9 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
             disabled={saving || !apiKey.trim() || savedOk}
             style={{
               padding: "6px 12px",
-              background: savedOk ? "#16a34a" : apiKey.trim() ? "var(--accent)" : "var(--bg-panel)",
+              background: savedOk ? "#16a34a" : apiKey.trim() ? "var(--accent-fill)" : "var(--bg-panel)",
               border: "none", borderRadius: 5,
-              color: (apiKey.trim() || savedOk) ? "#fff" : "var(--text-dim)",
+              color: (apiKey.trim() || savedOk) ? "var(--accent-on)" : "var(--text-dim)",
               cursor: (saving || !apiKey.trim() || savedOk) ? "not-allowed" : "pointer",
               fontSize: "var(--fs-meta)", fontWeight: 600, flexShrink: 0,
               display: "flex", alignItems: "center", gap: 5,
@@ -2039,9 +2039,9 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
             position: "relative",
             padding: "6px 16px",
             minWidth: 92,
-            background: savedOk ? "#16a34a" : saving ? "var(--bg-panel)" : "var(--accent)",
+            background: savedOk ? "#16a34a" : saving ? "var(--bg-panel)" : "var(--accent-fill)",
             border: "none", borderRadius: 6,
-            color: savedOk ? "#fff" : saving ? "var(--text-muted)" : "#fff",
+            color: savedOk ? "var(--accent-on)" : saving ? "var(--text-muted)" : "var(--accent-on)",
             cursor: (saving || savedOk) ? "default" : "pointer", fontSize: "var(--fs-ui)", fontWeight: 600,
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
             transition: "background-color 0.2s ease, color 0.2s ease",

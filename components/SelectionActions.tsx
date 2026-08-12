@@ -183,6 +183,10 @@ export function SelectionActions({
       ref={barRef}
       role="toolbar"
       aria-label={t("selection.toolbar")}
+      // The class is what prefers-reduced-motion can reach: the override in
+      // globals.css is `.pop-in, .fade-up { animation: none !important }`, and an
+      // inline animation with no matching class ignores it entirely.
+      className="fade-up"
       style={{
         position: "fixed",
         left: anchor.x,

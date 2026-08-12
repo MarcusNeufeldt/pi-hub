@@ -400,8 +400,8 @@ function AddPluginPanel({
           disabled={busy || !source.trim()}
           style={{
             ...buttonStyle(busy || !source.trim()),
-            background: "var(--accent)",
-            color: "white",
+            background: "var(--accent-fill)",
+            color: "var(--accent-on)",
             borderColor: "var(--accent)",
           }}
         >

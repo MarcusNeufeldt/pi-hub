@@ -58,6 +58,10 @@
   --accent-on: #0d1418;
   --success: #12703a;
   --danger: #b32f1a;
+  /* Ink for a filled danger button. Unlike amber, the light-mode red is dark
+     enough to take white (6.29:1) — it is the dark-mode red that does not, so
+     this flips between themes instead of being one value. */
+  --danger-on: #ffffff;
   /* Translucent status washes for chips and rows, so a "completed" or "failed"
      marker can tint its whole row without competing with --text for contrast.
      Derived from the status colours rather than fixed, so a theme change carries. */
@@ -109,6 +113,8 @@ html.dark {
   --accent-on: #0a1113;
   --success: #4ade80;
   --danger: #f87171;
+  /* The dark red is light: white on it is 2.77:1, dark ink 6.89:1. */
+  --danger-on: #0a1113;
   /* Weaker mix in dark: the status hues are already light, so 12% over a dark
      surface reads as a glow rather than a wash. */
   --tint-success: color-mix(in srgb, var(--success) 9%, transparent);
@@ -2481,6 +2487,17 @@ span.linenumber {
 @media (prefers-reduced-motion: reduce) {
   /* Still shows which row is live, just without the rotation. */
   .tool-row__spinner { animation: none; border-top-color: var(--accent); }
+}
+
+/* A rotating glyph for inline SVG spinners. Exists so the rotation is reachable by
+   prefers-reduced-motion: an inline `animation` style cannot be overridden by a
+   media query, which is how one spinner escaped the 15 reduced-motion blocks. */
+.ui-spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-spin { animation: none; }
 }
 
 .tool-row__icon {

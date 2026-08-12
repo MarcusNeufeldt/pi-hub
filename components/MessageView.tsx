@@ -234,7 +234,12 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.onEditContent === next.onEditContent
     && prev.showTimestamp === next.showTimestamp
     && prev.sessionId === next.sessionId
-    && prev.meta === next.meta;
+    && prev.meta === next.meta
+    // Consumed by SubagentNotifyView. Its identity changes when the mobile
+    // breakpoint flips, and omitting it here left that view holding a handler
+    // captured while isMobile was false — so "open transcript" skipped closing
+    // the drawer. Every prop in Props must appear in this list.
+    && prev.onOpenSession === next.onOpenSession;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {

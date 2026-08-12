@@ -69,8 +69,8 @@ const card: React.CSSProperties = {
 function primaryButtonStyle(disabled?: boolean): React.CSSProperties {
   return {
     padding: "6px 14px",
-    background: "var(--accent)",
-    color: "#fff",
+    background: "var(--accent-fill)",
+    color: "var(--accent-on)",
     border: "none",
     borderRadius: 6,
     cursor: disabled ? "not-allowed" : "pointer",

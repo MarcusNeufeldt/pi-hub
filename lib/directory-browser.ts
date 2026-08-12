@@ -45,9 +45,12 @@ export function normalizeDirectory(directory: string): string {
 }
 
 export function getParentDirectory(directory: string): string | null {
+  // path.posix, not the platform default: the test decides which flavour an input
+  // is by its shape, so a POSIX path handed to a win32 process was being resolved
+  // with win32 semantics and came back as "\Users\alex".
   const pathApi = /^[a-zA-Z]:[\\/]/.test(directory) || directory.startsWith("\\\\")
     ? path.win32
-    : path;
+    : path.posix;
   const normalized = pathApi.normalize(directory);
   const parent = pathApi.dirname(normalized);
   return parent === normalized ? null : parent;

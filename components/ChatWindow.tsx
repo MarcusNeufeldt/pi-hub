@@ -1372,8 +1372,8 @@ function ExtensionDialog({
                 padding: "6px 10px",
                 borderRadius: 6,
                 border: "1px solid var(--accent)",
-                background: "var(--accent)",
-                color: "#fff",
+                background: "var(--accent-fill)",
+                color: "var(--accent-on)",
                 cursor: "pointer",
               }}
             >
@@ -1386,8 +1386,8 @@ function ExtensionDialog({
                 padding: "6px 10px",
                 borderRadius: 6,
                 border: "1px solid var(--accent)",
-                background: "var(--accent)",
-                color: "#fff",
+                background: "var(--accent-fill)",
+                color: "var(--accent-on)",
                 cursor: "pointer",
               }}
             >

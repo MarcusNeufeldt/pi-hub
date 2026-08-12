@@ -1135,12 +1135,12 @@ export function SessionSidebar({ selectedSessionId, onRunningSessionsChange, onU
                               display: "flex", alignItems: "center", justifyContent: "center",
                               height: 28, padding: "0 11px", marginRight: 6,
                               background: "var(--danger)", border: "none",
-                              borderRadius: 6, color: "#fff",
+                              borderRadius: 6, color: "var(--danger-on)",
                               cursor: "pointer", fontSize: "var(--fs-micro)", fontWeight: 600,
                               whiteSpace: "nowrap", flexShrink: 0,
                             }}
                           >
-                            {t("sidebar.hide")}
+                            {t("sidebar.hideConfirm")}
                           </button>
                           <button
                             onClick={() => setConfirmHideProject(null)}
@@ -1445,7 +1445,7 @@ export function SessionSidebar({ selectedSessionId, onRunningSessionsChange, onU
                             <button
                               onClick={() => void handleRemoveWorktree(wt.path, true)}
                               disabled={wtBusy}
-                              style={{ padding: "3px 9px", background: "var(--danger)", border: "none", borderRadius: 5, color: "#fff", fontSize: "var(--fs-micro)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                              style={{ padding: "3px 9px", background: "var(--danger)", border: "none", borderRadius: 5, color: "var(--danger-on)", fontSize: "var(--fs-micro)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
                             >
                               {t("sidebar.force")}
                             </button>
@@ -1592,10 +1592,10 @@ export function SessionSidebar({ selectedSessionId, onRunningSessionsChange, onU
                           style={{
                             flex: 1,
                             padding: "4px 0",
-                            background: "var(--accent)",
+                            background: "var(--accent-fill)",
                             border: "none",
                             borderRadius: 5,
-                            color: "#fff",
+                            color: "var(--accent-on)",
                             fontSize: "var(--fs-micro)",
                             fontWeight: 600,
                             cursor: wtBusy || !wtNewBranch.trim() ? "not-allowed" : "pointer",
@@ -1941,6 +1941,7 @@ function SessionItem({
   const [renameValue, setRenameValue] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
@@ -1977,12 +1978,24 @@ function SessionItem({
 
   const performDelete = useCallback(async () => {
     setConfirmDelete(false);
+    setDeleteError(null);
     setDeleting(true);
     try {
-      await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      // fetch only rejects on a network failure, so without this check any 4xx/5xx
+      // was treated as a successful delete: the pane closed, the app navigated
+      // home, and the session reappeared in the reloaded sidebar.
+      const res = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
       onDeleted?.(session.id);
-    } catch {
+    } catch (error) {
       setDeleting(false);
+      // Reopen the confirm row and show why it failed there, so the reason lands
+      // next to a retry instead of only in the console.
+      setDeleteError(error instanceof Error ? error.message : String(error));
+      setConfirmDelete(true);
     }
   }, [session.id, onDeleted]);
 
@@ -1994,6 +2007,7 @@ function SessionItem({
   const handleDeleteCancel = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setConfirmDelete(false);
+    setDeleteError(null);
   }, []);
 
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
@@ -2031,8 +2045,14 @@ function SessionItem({
       {confirmDelete ? (
         /* ── Delete confirmation: same height, two flat buttons ── */
         <>
-          <div style={{ flex: 1, minWidth: 0, fontSize: "var(--fs-meta)", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {t("sidebar.deleteSession", { title: title.slice(0, 22) + (title.length > 22 ? "…" : "") })}
+          <div
+            // A failed delete reopens this row with the reason in place of the
+            // prompt, so the Delete button beside it becomes a retry.
+            title={deleteError ?? undefined}
+            role={deleteError ? "alert" : undefined}
+            style={{ flex: 1, minWidth: 0, fontSize: "var(--fs-meta)", color: deleteError ? "var(--danger)" : "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {deleteError ?? t("sidebar.deleteSession", { title: title.slice(0, 22) + (title.length > 22 ? "…" : "") })}
           </div>
           <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
             <button
@@ -2041,7 +2061,7 @@ function SessionItem({
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
                 height: 30, padding: "0 11px",
                 background: "var(--danger)", border: "none",
-                borderRadius: 6, color: "#fff",
+                borderRadius: 6, color: "var(--danger-on)",
                 cursor: "pointer", fontSize: "var(--fs-meta)", fontWeight: 600,
                 whiteSpace: "nowrap",
               }}

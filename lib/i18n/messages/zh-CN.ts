@@ -160,7 +160,7 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.recent": "最近",
     "sidebar.hideProject": "隐藏项目",
     "sidebar.hideProjectPrompt": "在侧边栏中隐藏此项目？聊天记录仍保留在磁盘上。",
-    "sidebar.hide": "隐藏",
+    "sidebar.hideConfirm": "隐藏",
     "sidebar.hiddenProjects": "已隐藏",
     "sidebar.showHiddenProjects": "显示已隐藏的项目",
     "sidebar.showProject": "显示项目",

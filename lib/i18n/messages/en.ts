@@ -160,7 +160,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.recent": "Recent",
     "sidebar.hideProject": "Hide project",
     "sidebar.hideProjectPrompt": "Hide this project from the sidebar? Chats stay on disk.",
-    "sidebar.hide": "Hide",
+    "sidebar.hideConfirm": "Hide",
     "sidebar.hiddenProjects": "Hidden",
     "sidebar.showHiddenProjects": "Show hidden projects",
     "sidebar.showProject": "Show project",

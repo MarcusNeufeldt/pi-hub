@@ -11,6 +11,15 @@ export const dynamic = "force-dynamic";
 
 const modelNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
+/**
+ * Deadline for the remote catalog fetch.
+ *
+ * Only spent once per four hours, and behind the 60s models cache, so it is not on
+ * a hot path — but the model list is on the UI's critical path, so it must fail to
+ * the stored catalog rather than hang.
+ */
+const MODEL_CATALOG_REFRESH_TIMEOUT_MS = 8_000;
+
 function compareModelEntries(
   a: { id: string; name: string; provider: string },
   b: { id: string; name: string; provider: string }
@@ -37,6 +46,38 @@ async function loadModels(cwd: string): Promise<ModelsData> {
     agentDir,
     ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
   });
+
+  // Pull the remote model catalog, so models released upstream actually show up.
+  //
+  // The provider catalogs in ~/.pi/agent/models-store.json only refresh when
+  // something calls modelRuntime.refresh() with the network allowed, and nothing
+  // here ever did — the one existing call site passes allowNetwork: false as a
+  // cheap local re-read after a set_model miss. So the store only ever advanced
+  // when the pi CLI happened to run, and a browser-only user could sit three days
+  // behind: x-ai/grok-4.6 was in pi's catalog and absent from the picker.
+  //
+  // Cheap to call unconditionally. The SDK skips the fetch when the stored entry
+  // was checked within REMOTE_CATALOG_REFRESH_INTERVAL_MS (4h) and revalidates
+  // with the stored ETag otherwise, so the usual outcome is a no-op or a 304.
+  //
+  // Bounded and non-fatal: refresh() collects per-provider failures into a map
+  // rather than throwing, and a slow or unreachable catalog host must not stall
+  // the model list — serving the stored catalog is the correct degraded answer.
+  try {
+    const refreshed = await services.modelRuntime.refresh({
+      allowNetwork: true,
+      signal: AbortSignal.timeout(MODEL_CATALOG_REFRESH_TIMEOUT_MS),
+    });
+    for (const [providerId, error] of refreshed.errors) {
+      console.error(`[pi-web] model catalog refresh failed for ${providerId}:`, error.message);
+    }
+  } catch (error) {
+    console.error(
+      "[pi-web] model catalog refresh failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
   const modelError = services.modelRuntime.getError();
   const settings: SettingsManager = services.settingsManager;
   // `enabledModels` supports globs and fuzzy patterns, so resolve it the same

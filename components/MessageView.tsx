@@ -788,17 +788,19 @@ function splitThinkingSteps(text: string): string[] {
   return steps.length > 0 ? steps : [text];
 }
 
-function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId, blockIndex }: {
+export function ThinkingBlock({ block, duration, isStreaming, defaultExpanded = false, sessionId, entryId, blockIndex }: {
   block: ThinkingContent;
   duration?: number;
   /** Marks the trailing step as still being written. */
   isStreaming?: boolean;
+  /** Starts open. Used by the UI preview so the trace is visible without a click. */
+  defaultExpanded?: boolean;
   sessionId?: string;
   entryId?: string;
   blockIndex: number;
 }) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -830,10 +832,29 @@ function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId, block
         onClick={() => void toggle()}
         aria-expanded={expanded}
       >
-         <span>{t("i18n.thinking")}</span>
-        {duration !== undefined && (
-          <span style={{ marginLeft: "auto", fontSize: "var(--fs-micro)", color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
-        )}
+        {/* Filled while reasoning is arriving, dimmed once it has settled, so the
+            glyph carries the state even before the label is read. */}
+        <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"
+          fill={isStreaming ? "var(--text-muted)" : "var(--text-dim)"} style={{ flexShrink: 0 }}>
+          <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" />
+        </svg>
+        {/* One label, two states. While streaming it shimmers as the progress
+            indicator; once done it states how long it took, which is more useful
+            than a bare "Thinking" beside a separate number. */}
+        {isStreaming
+          ? <span className="think-block__label--working">{t("i18n.thinking")}</span>
+          : (
+            <span className="think-block__label--done">
+              {duration !== undefined
+                ? t("i18n.thoughtForSeconds", { seconds: duration })
+                : t("i18n.thinking")}
+            </span>
+          )}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+          className={`think-block__chevron${expanded ? " is-open" : ""}`}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
       </button>
       <Collapse open={expanded}>
         {/* Was a hardcoded #f87171 that the palette retune could not reach. */}
@@ -850,9 +871,13 @@ function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId, block
               <div
                 key={index}
                 className={`think-step${isStreaming && index === steps.length - 1 ? " is-active" : ""}`}
+                // Cascade rather than all at once. Set inline because the delay
+                // depends on position, which CSS cannot express without a rule
+                // per index.
+                style={{ animationDelay: `${index * 120}ms` }}
               >
                 <span className="think-step__marker" aria-hidden="true" />
-                <span>{step}</span>
+                <span className="think-step__text">{step}</span>
               </div>
             ));
           })()}
@@ -862,6 +887,31 @@ function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId, block
   );
 }
 
+
+/**
+ * Leading glyph for a trace row, chosen from the tool name.
+ *
+ * A shape is faster to scan down a column of rows than a word: the eye can tell
+ * "three reads then an edit" without reading any of them. Names vary between
+ * providers, so this matches on substrings and falls back to a neutral dot rather
+ * than guessing.
+ */
+function toolRowIcon(toolName: string): React.ReactNode {
+  const name = toolName.toLowerCase();
+  const svg = (path: React.ReactNode) => (
+    <svg className="tool-row__icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {path}
+    </svg>
+  );
+  if (/bash|shell|exec|command|terminal/.test(name)) return svg(<><path d="M4 17l5-5-5-5" /><path d="M13 19h7" /></>);
+  if (/edit|write|create|patch|replace/.test(name)) return svg(<path d="M4 20h4L20 8l-4-4L4 16v4z" />);
+  if (/read|view|open|cat|file/.test(name)) return svg(<><path d="M14 3v5h5" /><path d="M19 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" /></>);
+  if (/search|grep|glob|find|list/.test(name)) return svg(<><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>);
+  if (/subagent|task|agent|spawn/.test(name)) return svg(<><circle cx="12" cy="6" r="3" /><path d="M6 20a6 6 0 0 1 12 0" /></>);
+  if (/fetch|http|web|url|request/.test(name)) return svg(<><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" /></>);
+  return svg(<circle cx="12" cy="12" r="4" />);
+}
 
 function ToolCallBlock({ block, result, duration, isStreaming }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean }) {
   const [expanded, setExpanded] = useState(() => isEditToolName(block.toolName));
@@ -887,6 +937,10 @@ function ToolCallBlock({ block, result, duration, isStreaming }: { block: ToolCa
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
       >
+        {/* A live row shows a spinner in place of its icon: the row that is
+            working is the one thing worth finding in a long trace, and swapping
+            the glyph keeps the columns aligned instead of inserting an element. */}
+        {isRunning ? <span className="tool-row__spinner" aria-hidden="true" /> : toolRowIcon(block.toolName)}
         {/* The tool name is the identifier, so it reads as text. Only a failure
             takes colour — the block itself no longer signals success. */}
         <span style={{ color: isError ? "var(--danger)" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: "var(--fs-meta)", flexShrink: 0 }}>

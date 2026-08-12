@@ -1068,6 +1068,11 @@ span.linenumber {
   to { background-position: -200% 0; }
 }
 
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @keyframes pop-in {
   from { opacity: 0; transform: scale(0.6); }
   to { opacity: 1; transform: scale(1); }
@@ -2415,6 +2420,103 @@ span.linenumber {
   white-space: pre-wrap;
 }
 
+/* Tool calls as a compact trace, closer to a build log than a stack of cards.
+
+   The reference treatment for this is a 24px row: leading type icon, mono name,
+   truncated target, a ring spinner while the row is live, and a right-aligned
+   mono duration. Ours was a 44px card per call, which is why a turn with six
+   tool calls read as six panels instead of one list.
+
+   Height is only tightened for fine pointers. --tap exists because a 24px row is
+   not a touch target, so coarse-pointer devices keep the full height; the density
+   win is for the desktop where the calls are actually read. */
+@media (pointer: fine) {
+  .tool-block__header {
+    min-height: 26px;
+    padding-block: 3px;
+  }
+}
+
+/* Ring spinner: a full border with one contrasting edge, rotated. Cheaper than an
+   SVG and it inherits currentColor, so the error variant needs no second rule. */
+.tool-row__spinner {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  border: 1.5px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
+  border-top-color: var(--accent);
+  border-radius: var(--r-full);
+  animation: spin 700ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Still shows which row is live, just without the rotation. */
+  .tool-row__spinner { animation: none; border-top-color: var(--accent); }
+}
+
+.tool-row__icon {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+/* Thinking header. A compact pill rather than a full-width bar: the label is the
+   only thing here, so the hit area should be the width of the words. */
+.think-block__header {
+  width: fit-content;
+  margin-left: calc(var(--sp-2) * -1);
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-md);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  font-size: var(--fs-meta);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.think-block__header:hover {
+  background: var(--bg-hover);
+}
+
+/* While reasoning is still arriving the label is the progress indicator, so it
+   shimmers; once it settles it states the duration instead and fades in. Reusing
+   the loader's sweep keeps one motion vocabulary for "work in progress". */
+.think-block__label--working {
+  background-image: linear-gradient(90deg, var(--text-dim) 35%, var(--text) 50%, var(--text-dim) 65%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer-text 1.4s linear infinite;
+  white-space: nowrap;
+}
+
+.think-block__label--done {
+  color: var(--text-muted);
+  white-space: nowrap;
+  animation: fade-in 350ms var(--ease) both;
+}
+
+.think-block__chevron {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: transform var(--dur-slow) var(--ease-expo);
+}
+
+.think-block__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .think-block__label--working {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: var(--text-muted);
+    color: var(--text-muted);
+  }
+  .think-block__chevron { transition: none; }
+}
+
 /* Reasoning rendered as a trace of steps rather than one wall of text.
    Measured over 78 real thinking blocks from recent sessions: every one had at
    least two blank-line-separated paragraphs (median 2, up to 5) and a median of
@@ -2464,6 +2566,26 @@ span.linenumber {
 
 .think-step + .think-step {
   margin-top: var(--sp-3);
+}
+
+/* Steps cascade rather than appearing together. The delay is set inline per row,
+   because the count is only known at render; 120ms is long enough to read as a
+   sequence and short enough that four steps still settle inside half a second. */
+.think-step {
+  animation: fade-up 320ms var(--ease-expo) both;
+}
+
+/* Prose wraps and stays muted — it is reasoning, not a heading. Their step
+   variant truncates instead, which is right for a labelled action and wrong for
+   a sentence. */
+.think-step__text {
+  white-space: pre-wrap;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .think-step { animation: none; }
 }
 
 /* The step still being written. Only the dot animates: sweeping a gradient

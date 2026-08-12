@@ -35,6 +35,10 @@ interface ModelOption {
 interface Props {
   onSend: (message: string, images?: AttachedImage[]) => void;
   onAbort: () => void;
+  /** Stop is in flight; the button shows a pending state and is disabled. */
+  aborting?: boolean;
+  /** Drops the agent process. Offered because abort itself can hang. */
+  onForceReset?: () => void;
   onSteer?: (message: string, images?: AttachedImage[]) => void;
   onFollowUp?: (message: string, images?: AttachedImage[]) => void;
   onPromptWithStreamingBehavior?: (message: string, behavior: "steer" | "followUp", images?: AttachedImage[]) => void;
@@ -354,7 +358,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange,
+  onSend, onAbort, aborting, onForceReset, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
@@ -2420,7 +2424,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             {isStreaming && (
               <button
                 onClick={onAbort}
-                 title={t("chat.stopAgent")}
+                disabled={aborting}
+                 title={aborting ? t("chat.stopping") : t("chat.stopAgent")}
+                 aria-label={aborting ? t("chat.stopping") : t("chat.stopAgent")}
                 className="ui-btn ui-btn--danger-tint"
                 style={{
                   gap: 6,
@@ -2432,10 +2438,41 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   letterSpacing: "-0.01em",
                 }}
               >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" />
+                {/* A pending state, because abort is a request that can be slow or
+                    fail. Without it the button looked identical whether the stop
+                    was working, queued, or hung — which is how a wedged turn read
+                    as "Stop does nothing". */}
+                {aborting ? (
+                  <span className="tool-row__spinner" aria-hidden="true" />
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" />
+                  </svg>
+                )}
+                 {aborting ? t("chat.stopping") : t("chat.stop")}
+              </button>
+            )}
+            {/* Only offered while a turn is live: it drops the agent process, which
+                is the remedy when abort itself will not return. */}
+            {isStreaming && onForceReset && (
+              <button
+                onClick={onForceReset}
+                disabled={aborting}
+                 title={t("chat.forceResetHint")}
+                 aria-label={t("chat.forceReset")}
+                className="ui-btn ui-btn--quiet"
+                style={{
+                  gap: 5,
+                  paddingInline: "10px",
+                  borderRadius: "var(--r-md)",
+                  fontSize: "var(--fs-micro)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 9-9" /><polyline points="3 3 3 9 9 9" />
                 </svg>
-                 {t("chat.stop")}
+                {(!isMobile || controlsMenuOpen) && <span>{t("chat.forceReset")}</span>}
               </button>
             )}
 

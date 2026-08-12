@@ -1094,6 +1094,28 @@ export function hasBusyRpcSessionForCwd(cwd: string): boolean {
   );
 }
 
+/**
+ * Tear one session's wrapper down without asking it to cooperate.
+ *
+ * Deliberately `destroy()` and not `shutdown()`. `shutdown()` first awaits
+ * `waitForExtensionsBound()` and emits a `session_shutdown` extension event, both
+ * of which can block on the very turn that is wedged — which is precisely when
+ * this is needed. `destroy()` is synchronous: it aborts any bash, cancels pending
+ * UI requests, disposes the inner session and drops it from the registry.
+ *
+ * The next request for this id starts a fresh session from the transcript on disk,
+ * so nothing is lost but the in-flight turn, which by definition was not
+ * progressing.
+ *
+ * Returns false when there was no live session to reset.
+ */
+export function destroyRpcSession(sessionId: string): boolean {
+  const session = getRegistry().get(sessionId);
+  if (!session) return false;
+  session.destroy();
+  return true;
+}
+
 export async function destroyRpcSessionsForCwd(cwd: string): Promise<number> {
   const targetCwd = normalizeRpcCwd(cwd);
   const sessions = Array.from(getRegistry().values()).filter(

@@ -13,7 +13,7 @@ import type {
   ToolResultMessage,
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
-import { sendAgentCommand } from "@/lib/agent-client";
+import { AgentCommandTimeoutError, sendAgentCommand } from "@/lib/agent-client";
 import { getToolNamesForPreset, type ToolEntry } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { SubagentRunView, SubagentTimelineEvent } from "@/lib/subagent-run-view";
@@ -180,6 +180,14 @@ const USER_SCROLL_INTENT_MS = 1200;
 // scrolling is active. Larger values make follow more lenient; smaller values
 // require the user to stay closer to the bottom.
 const SCROLL_BOTTOM_THRESHOLD = 150;
+/**
+ * How long to wait for the agent to acknowledge a stop before calling it stuck.
+ *
+ * Generous enough that a busy-but-healthy run loop answers well inside it, short
+ * enough that the user is not left guessing. An abort that misses this deadline is
+ * not slow — it is waiting on a run loop that will never answer.
+ */
+const ABORT_TIMEOUT_MS = 10_000;
 const PROMPT_SETTLE_INITIAL_DELAY_MS = 800;
 const PROMPT_SETTLE_POLL_MS = 600;
 const PROMPT_SETTLE_MAX_MS = 20_000;
@@ -804,6 +812,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [compactError, setCompactError] = useState<string | null>(null);
   const [compactResult, setCompactResult] = useState<CompactResultInfo | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
+  // Stop is in flight. Without this the button looks identical whether the
+  // abort is being processed, is slow, or has hung.
+  const [aborting, setAborting] = useState(false);
   const [promptAnchorActive, setPromptAnchorActive] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
   const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
@@ -2340,19 +2351,75 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const sid = sessionIdRef.current;
     if (!sid) return;
     if (bashRunningRef.current) {
+      setAborting(true);
       try {
-        await sendAgentCommand(sid, { type: "abort_bash" });
+        await sendAgentCommand(sid, { type: "abort_bash" }, { timeoutMs: ABORT_TIMEOUT_MS });
       } catch (e) {
         console.error("Failed to abort bash:", e);
+        addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      } finally {
+        setAborting(false);
       }
       return;
     }
+    setAborting(true);
     try {
-      await sendAgentCommand(sid, { type: "abort" });
+      // Deadline, because "abort" waits for the run loop to acknowledge the
+      // cancellation and a wedged run loop never does. Without it the request
+      // hangs forever and the button is indistinguishable from a no-op.
+      await sendAgentCommand(sid, { type: "abort" }, { timeoutMs: ABORT_TIMEOUT_MS });
     } catch (e) {
       console.error("Failed to abort:", e);
+      const timedOut = e instanceof AgentCommandTimeoutError;
+      addNotice({
+        type: "error",
+        // Point at the only thing that works when abort itself is stuck, rather
+        // than leaving the user to discover that a server restart is the remedy.
+        message: timedOut
+          ? `${e.message} The turn may be wedged — use Force reset to drop the agent process for this session.`
+          : (e instanceof Error ? e.message : String(e)),
+      });
+    } finally {
+      setAborting(false);
     }
-  }, []);
+  }, [addNotice]);
+
+  /**
+   * Drop the session's agent process outright.
+   *
+   * The escape hatch when `abort` is itself stuck. Does not ask the run loop for
+   * permission; the transcript is on disk and the next request rebuilds the session
+   * from it.
+   */
+  const handleForceReset = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    setAborting(true);
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/reset`, {
+        method: "POST",
+        signal: AbortSignal.timeout(ABORT_TIMEOUT_MS),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        reset?: boolean; reason?: string; error?: string;
+      };
+      if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
+      agentRunningRef.current = false;
+      setAgentRunning(false);
+      setAgentPhase(null);
+      addNotice({
+        type: "info",
+        message: body.reset
+          ? "Agent process dropped. Reload or send a message to start a fresh one."
+          : "No live agent process for this session.",
+      });
+    } catch (e) {
+      console.error("Failed to force reset:", e);
+      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setAborting(false);
+    }
+  }, [addNotice]);
 
   const handleFork = useCallback(async (entryId: string) => {
     if (bashRunningRef.current) return;
@@ -2845,6 +2912,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
+    aborting,
+    handleForceReset,
     subagents,
     clearSubagents,
     isNew,

@@ -714,7 +714,7 @@ function AssistantMessageView({
       <div className={`turn-surface${isStreaming ? " turn-surface--live" : ""}`}>
       <div className="turn-blocks">
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? generationDuration : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
+          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? generationDuration : undefined)} toolCallDurations={toolCallDurations} toolsStartedAt={message.endedAt ?? message.timestamp} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
         ))}
       </div>
 
@@ -787,7 +787,7 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, toolsStartedAt, cwd, onOpenFile, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; toolsStartedAt?: number; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -798,7 +798,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const durationMs = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} durationMs={durationMs} isStreaming={isStreaming} />;
+    return <ToolCallBlock block={tc} result={result} durationMs={durationMs} isStreaming={isStreaming} startedAt={toolsStartedAt} />;
   }
   return null;
 }
@@ -948,7 +948,43 @@ function toolRowIcon(toolName: string): React.ReactNode {
   return svg(<circle cx="12" cy="12" r="4" />);
 }
 
-function ToolCallBlock({ block, result, durationMs, isStreaming }: { block: ToolCallContent; result?: ToolResultMessage; durationMs?: number; isStreaming?: boolean }) {
+/**
+ * Ticking elapsed readout for work still in progress.
+ *
+ * A running row previously showed no time at all — the duration column only
+ * rendered once a result arrived — so a tool call that had been hanging for ninety
+ * minutes looked exactly like one that started a second ago. That is the single
+ * thing that would have made a wedged turn self-evident.
+ */
+function LiveDuration({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    // One second is enough for a readout that only ever shows whole seconds.
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const elapsed = Math.max(0, now - startedAt);
+  return (
+    <span
+      style={{
+        fontSize: "var(--fs-micro)",
+        // Amber once it has run long enough to be suspicious. Not an error — a long
+        // build legitimately takes minutes — but worth the eye landing on it.
+        color: elapsed > TOOL_SLOW_AFTER_MS ? "var(--accent)" : "var(--text-dim)",
+        flexShrink: 0,
+        fontVariantNumeric: "tabular-nums",
+      }}
+      title={`Running for ${formatDuration(elapsed)}`}
+    >
+      {formatDuration(elapsed)}
+    </span>
+  );
+}
+
+/** Past this, a running tool call is worth a second look rather than a shrug. */
+const TOOL_SLOW_AFTER_MS = 60_000;
+
+function ToolCallBlock({ block, result, durationMs, isStreaming, startedAt }: { block: ToolCallContent; result?: ToolResultMessage; durationMs?: number; isStreaming?: boolean; startedAt?: number }) {
   const [expanded, setExpanded] = useState(() => isEditToolName(block.toolName));
   const inputStr = JSON.stringify(block.input, null, 2);
   const isEditTool = isEditToolName(block.toolName);
@@ -984,9 +1020,11 @@ function ToolCallBlock({ block, result, durationMs, isStreaming }: { block: Tool
         <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-micro)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
           {getToolPreview(block)}
         </span>
-        {durationMs !== undefined && (
-          <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{formatDuration(durationMs)}</span>
-        )}
+        {isRunning && startedAt !== undefined
+          ? <LiveDuration startedAt={startedAt} />
+          : durationMs !== undefined && (
+            <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{formatDuration(durationMs)}</span>
+          )}
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
           <polyline points="2 3.5 5 6.5 8 3.5" />
         </svg>

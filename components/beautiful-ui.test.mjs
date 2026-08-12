@@ -58,8 +58,14 @@ describe("SelectionActions stays inside its container", () => {
     // that are not distributed with it; this app carries no icon package.
     // Asserted against import statements only — the file's own comment names
     // those packages in order to explain that it does not use them.
+    //
+    // Checks that nothing outside this repo is imported, rather than pinning an
+    // exact list: an allow-list of ["react"] failed the moment the labels were
+    // moved onto the i18n system, which is a change this guard has no business
+    // blocking.
     const imports = [...selection.matchAll(/^import[\s\S]*?from\s+"([^"]+)";$/gm)].map((m) => m[1]);
-    assert.deepEqual(imports, ["react"], `unexpected imports: ${imports.join(", ")}`);
+    const external = imports.filter((source) => source !== "react" && !source.startsWith("@/") && !source.startsWith("."));
+    assert.deepEqual(external, [], `unexpected third-party imports: ${external.join(", ")}`);
   });
 });
 
@@ -221,7 +227,11 @@ describe("chat wiring", () => {
   it("scopes the selection bar to the message list and disables it mid-turn", () => {
     assert.match(chatWindow, /containerRef=\{scrollContainerRef\}/);
     assert.match(chatWindow, /disabled=\{sessionBusy\}/);
-    assert.match(chatWindow, /chatInputRef\?\.current\?\.insertText\(prompt\)/);
+    // The selection is attached to the composer, not spliced into its text: a
+    // quoted block inserted at the caret landed in the middle of whatever was
+    // already typed. The instruction shortcuts seed the question separately.
+    assert.match(chatWindow, /chatInputRef\?\.current\?\.attachContext\(selection\)/);
+    assert.match(chatWindow, /intent\.instruction.*prependText\(intent\.instruction\)/s);
   });
 
   it("gives the loader a stable turn start time", () => {

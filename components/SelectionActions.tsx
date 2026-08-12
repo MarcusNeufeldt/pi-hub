@@ -1,18 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * Contextual action bar anchored under selected text: highlight a passage in a
- * reply and hand it to the agent.
+ * reply and carry it into the composer as context for the next question.
  *
  * Interaction design adapted from Beautiful UI (beautifului.dev). That component
  * pulls ten icons from `iconoir-react` and two internal atoms that are not
  * distributed with it, so this rebuild uses inline SVGs and this app's tokens and
  * adds no dependency.
  *
+ * Every action attaches the selection to the composer rather than pasting it into
+ * the text. The three instruction actions additionally seed the question. Nothing
+ * sends on its own — the composer stays in the user's hands.
+ *
  * Scoped to a container rather than the document: selecting inside the composer,
- * the file explorer or a settings panel must not offer to rewrite it. Positioned
+ * the file explorer or a settings panel must not offer to act on it. Positioned
  * with viewport coordinates and `position: fixed`, so no scroll offset arithmetic
  * and no reposition-on-scroll listener — the bar simply hides when the selection
  * leaves the visible area.
@@ -20,9 +25,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface SelectionIntent {
   id: string;
-  label: string;
-  /** Built from the selected text; what actually reaches the agent. */
-  prompt: (selection: string) => string;
+  /** i18n key, not a literal: this bar is the one piece of chat UI that used to
+      ship hardcoded English labels. */
+  labelKey: string;
+  /**
+   * Seeded into the composer as the question. Omitted for the plain
+   * attach action, which leaves the user to write their own.
+   */
+  instruction?: string;
   icon: React.ReactNode;
 }
 
@@ -34,21 +44,28 @@ const strokeIcon = (path: React.ReactNode) => (
 
 export const DEFAULT_SELECTION_INTENTS: SelectionIntent[] = [
   {
+    // First and unadorned: attaching the selection and asking your own question is
+    // the common case, and the canned instructions are shortcuts on top of it.
+    id: "attach",
+    labelKey: "selection.addToChat",
+    icon: strokeIcon(<><path d="M12 5v14M5 12h14" /></>),
+  },
+  {
     id: "explain",
-    label: "Explain",
-    prompt: (text) => `Explain this:\n\n${text}`,
+    labelKey: "selection.explain",
+    instruction: "Explain this.",
     icon: strokeIcon(<><circle cx="12" cy="12" r="9" /><path d="M12 17v-5M12 8h.01" /></>),
   },
   {
     id: "improve",
-    label: "Improve",
-    prompt: (text) => `Improve this, keeping its meaning:\n\n${text}`,
+    labelKey: "selection.improve",
+    instruction: "Improve this, keeping its meaning.",
     icon: strokeIcon(<path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 14.6 7 18.2l1.9-5.8L4 8.8h6.1z" />),
   },
   {
     id: "shorten",
-    label: "Shorten",
-    prompt: (text) => `Rewrite this more concisely:\n\n${text}`,
+    labelKey: "selection.shorten",
+    instruction: "Rewrite this more concisely.",
     icon: strokeIcon(<path d="M4 8h16M4 12h10M4 16h6" />),
   },
 ];
@@ -56,7 +73,7 @@ export const DEFAULT_SELECTION_INTENTS: SelectionIntent[] = [
 /** Below this, a "selection" is usually a stray click-drag. */
 const MIN_SELECTION_LENGTH = 2;
 const GAP_FROM_SELECTION = 8;
-const ESTIMATED_BAR_WIDTH = 260;
+const ESTIMATED_BAR_WIDTH = 320;
 
 export function SelectionActions({
   containerRef,
@@ -66,10 +83,12 @@ export function SelectionActions({
 }: {
   /** Only selections inside this element raise the bar. */
   containerRef: React.RefObject<HTMLElement | null>;
-  onAction: (prompt: string, selectedText: string, intentId: string) => void;
+  /** Receives the selected text and the chosen intent. Attaching is the caller's job. */
+  onAction: (selection: string, intent: SelectionIntent) => void;
   intents?: SelectionIntent[];
   disabled?: boolean;
 }) {
+  const { t } = useI18n();
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const [text, setText] = useState("");
   const barRef = useRef<HTMLDivElement>(null);
@@ -153,7 +172,7 @@ export function SelectionActions({
   if (!anchor || !text) return null;
 
   const run = (intent: SelectionIntent) => {
-    onAction(intent.prompt(text), text, intent.id);
+    onAction(text, intent);
     // Drop the highlight too, or the bar reappears on the next selectionchange.
     window.getSelection()?.removeAllRanges();
     hide();
@@ -163,7 +182,7 @@ export function SelectionActions({
     <div
       ref={barRef}
       role="toolbar"
-      aria-label="Selection actions"
+      aria-label={t("selection.toolbar")}
       style={{
         position: "fixed",
         left: anchor.x,
@@ -181,25 +200,31 @@ export function SelectionActions({
         animation: "fade-up 140ms var(--ease) both",
       }}
     >
-      {intents.map((intent) => (
-        <button
-          key={intent.id}
-          type="button"
-          // onMouseDown would fire before the selection is readable in some
-          // browsers; the pointerdown guard above keeps this click alive.
-          onClick={() => run(intent)}
-          className="ui-btn ui-btn--sm"
-          style={{
-            gap: 5,
-            paddingInline: 8,
-            fontSize: "var(--fs-micro)",
-            borderRadius: "var(--r-sm)",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {intent.icon}
-          {intent.label}
-        </button>
+      {intents.map((intent, index) => (
+        <div key={intent.id} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {/* Separator after the primary action: the shortcuts are a different
+              kind of thing from "attach and let me write the question". */}
+          {index === 1 && (
+            <span aria-hidden="true" style={{ width: 1, alignSelf: "stretch", margin: "2px 2px", background: "var(--border)" }} />
+          )}
+          <button
+            type="button"
+            // onMouseDown would fire before the selection is readable in some
+            // browsers; the pointerdown guard above keeps this click alive.
+            onClick={() => run(intent)}
+            className={`ui-btn ui-btn--sm${index === 0 ? " ui-btn--accent" : ""}`}
+            style={{
+              gap: 5,
+              paddingInline: 8,
+              fontSize: "var(--fs-micro)",
+              borderRadius: "var(--r-sm)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {intent.icon}
+            {t(intent.labelKey)}
+          </button>
+        </div>
       ))}
     </div>
   );

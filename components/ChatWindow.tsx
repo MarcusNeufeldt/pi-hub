@@ -852,7 +852,13 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
         <SelectionActions
           containerRef={scrollContainerRef}
           disabled={sessionBusy}
-          onAction={(prompt) => chatInputRef?.current?.insertText(prompt)}
+          onAction={(selection, intent) => {
+            // The selection always becomes an attachment; only the shortcut
+            // intents also seed the question. prependText puts the instruction
+            // ahead of any existing draft and leaves the caret at the end.
+            chatInputRef?.current?.attachContext(selection);
+            if (intent.instruction) chatInputRef?.current?.prependText(intent.instruction);
+          }}
         />
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]">
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>

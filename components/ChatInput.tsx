@@ -5,6 +5,7 @@ import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, Slas
 import type { SkillsResponse } from "@/lib/api-types";
 import type { TextContent, UserMessage } from "@/lib/types";
 import { clearDraft, getDraft, setDraft, type ChatDraftImage } from "@/lib/draft-store";
+import { composeWithContext, snippetLineCount, snippetPreview } from "@/lib/selection-context";
 import {
   MAX_ATTACHED_IMAGE_BYTES,
   MAX_ATTACHED_IMAGES,
@@ -76,6 +77,12 @@ interface Props {
 export interface ChatInputHandle {
   insertText: (text: string) => void;
   insertIfEmpty: (text: string) => void;
+  /**
+   * Attach selected transcript text as context for the next message and focus the
+   * composer. Deliberately not an insert: the quote is prefixed at send time, so
+   * the question stays editable without a block sitting inside it.
+   */
+  attachContext: (text: string) => void;
   replaceMessage: (message: UserMessage) => void;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
@@ -370,6 +377,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
+  // Transcript selections carried into the next message. Not persisted with the
+  // draft: they belong to the question being written now, and the draft store
+  // holds only text and images.
+  const [contextSnippets, setContextSnippets] = useState<{ id: string; text: string }[]>([]);
+  // A counter rather than a timestamp or random id, so keys are stable and the
+  // component stays deterministic under test.
+  const snippetSeq = useRef(0);
   const trimmedValue = value.trimStart();
   const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
   const bashExcluded = bashMode && trimmedValue.startsWith("!!");
@@ -554,6 +568,22 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
       });
     },
+    attachContext(text: string) {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      snippetSeq.current += 1;
+      const id = `ctx-${snippetSeq.current}`;
+      setContextSnippets((prev) => [...prev, { id, text: trimmed }]);
+      // Focus is the point of the gesture: the selection is attached, now type the
+      // question. Deferred a frame so the chip has laid out and the textarea has
+      // its final height before the caret lands.
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      });
+    },
     addImages(files: File[]) {
       processImageFiles(files);
     },
@@ -616,6 +646,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const clearInput = useCallback(() => {
     setValue("");
     setAtQuery(null);
+    setContextSnippets([]);
     setHistoryMenuOpen(false);
     if (draftKey) clearDraft(draftKey);
     if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
@@ -669,20 +700,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const handleSend = useCallback(async () => {
-    const msg = value.trim();
-    if (!msg && !attachedImages.length) return;
+    const typed = value.trim();
+    if (!typed && !attachedImages.length) return;
     if (isStreaming) return;
     onAudioUnlock?.();
-    if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
-      const result = await onBuiltinCommand(msg);
+    // Slash detection runs on what was typed, not on the composed message: a
+    // prefixed context block would hide the leading "/" and turn every command
+    // into prose.
+    if (!attachedImages.length && typed.startsWith("/") && onBuiltinCommand) {
+      const result = await onBuiltinCommand(typed);
       if (result.handled) {
         if (!result.error) clearInput();
         return;
       }
     }
-    onSend(msg, attachedImages.length ? attachedImages : undefined);
+    onSend(
+      composeWithContext(contextSnippets.map((s) => s.text), typed),
+      attachedImages.length ? attachedImages : undefined,
+    );
     clearInput();
-  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, contextSnippets, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -899,23 +936,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const sendQueued = useCallback((mode: "steer" | "followup") => {
-    const msg = value.trim();
-    if (!msg && !attachedImages.length) return;
+    const typed = value.trim();
+    if (!typed && !attachedImages.length) return;
     if (attachedImages.length) return;
     onAudioUnlock?.();
     const streamingBehavior = mode === "steer" ? "steer" : "followUp";
-    if (msg.startsWith("/") && onPromptWithStreamingBehavior) {
-      onPromptWithStreamingBehavior(msg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+    // Slash detection on what was typed, as in handleSend: a prefixed context
+    // block would hide the leading "/".
+    if (typed.startsWith("/") && onPromptWithStreamingBehavior) {
+      onPromptWithStreamingBehavior(typed, streamingBehavior, attachedImages.length ? attachedImages : undefined);
       clearInput();
       return;
     }
+    // This is the second send path, and clearInput drops the snippets — so it has
+    // to carry them too, or attached context vanishes without ever being sent.
+    const msg = composeWithContext(contextSnippets.map((s) => s.text), typed);
     if (mode === "steer" && onSteer) {
       onSteer(msg, attachedImages.length ? attachedImages : undefined);
     } else if (mode === "followup" && onFollowUp) {
       onFollowUp(msg, attachedImages.length ? attachedImages : undefined);
     }
     clearInput();
-  }, [value, attachedImages, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, contextSnippets, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
     const lastIndex = displayedSlashCommands.length - 1;
@@ -1356,6 +1398,39 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             }}
           >
             {compactError}
+          </div>
+        )}
+        {/* Attached transcript selections. Above the images and the textarea, so
+            what will be prefixed to the message reads before what follows it. */}
+        {contextSnippets.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
+            {contextSnippets.map((snippet) => {
+              const lines = snippetLineCount(snippet.text);
+              return (
+                <div key={snippet.id} className="ctx-chip">
+                  <svg className="ctx-chip__mark" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M7 6v12M11 9h6M11 15h6" />
+                  </svg>
+                  <span className="ctx-chip__text" title={snippet.text}>
+                    {snippetPreview(snippet.text)}
+                  </span>
+                  {lines > 1 && (
+                    <span className="ctx-chip__count">{t("chat.contextLines", { count: lines })}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setContextSnippets((prev) => prev.filter((s) => s.id !== snippet.id))}
+                    title={t("chat.removeContext")}
+                    aria-label={t("chat.removeContext")}
+                    className="ctx-chip__remove"
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
         {/* Image previews */}

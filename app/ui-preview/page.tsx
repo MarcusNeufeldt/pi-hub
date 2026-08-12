@@ -9,6 +9,7 @@ import { MessageView, ThinkingBlock } from "@/components/MessageView";
 import { SelectionActions } from "@/components/SelectionActions";
 import { I18nProvider, useI18n } from "@/hooks/useI18n";
 import { summarizeProcess } from "@/lib/message-display";
+import { composeWithContext } from "@/lib/selection-context";
 import type { AssistantMessage, ToolResultMessage } from "@/lib/types";
 
 /**
@@ -323,7 +324,11 @@ export default function UiPreviewPage() {
         )}
         <SelectionActions
           containerRef={proseRef}
-          onAction={(prompt, _text, intentId) => setHanded(`[${intentId}] ${prompt}`)}
+          onAction={(selection, intent) => setHanded(
+            // Shows what the composer would receive: the message as it would be
+            // sent, with the attached selection already prefixed.
+            composeWithContext([selection], intent.instruction ?? ""),
+          )}
         />
       </section>
 

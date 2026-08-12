@@ -38,11 +38,21 @@ Two settings matter. `ExecutionTimeLimit` of zero stops Windows from killing the
 task after its default three days. `RestartCount` brings the server back if it
 exits.
 
-Restart it after a rebuild:
+Restart it after a rebuild. `Restart-ScheduledTask` is not enough, and neither is
+`schtasks /end` on its own — see Troubleshooting for why the `taskkill` is required:
 
 ```powershell
-Restart-ScheduledTask -TaskName "pi-hub server"
+npx next build
+$held = Get-NetTCPConnection -State Listen -LocalPort 30141 -ErrorAction SilentlyContinue
+schtasks /end /tn "pi-hub server"
+if ($held) { taskkill /PID $held.OwningProcess /F }   # the step that frees the port
+schtasks /run /tn "pi-hub server"
 ```
+
+`C:\Users\marcu\pi-web\deploy.ps1` does exactly this with error handling — it builds
+first, so a failed build leaves the running server untouched on the previous build,
+and it health-checks afterwards. The "Rebuild Pi Hub" desktop shortcut runs it.
+Keep it separate from the "Pi Hub" launcher shortcut, which only opens the UI.
 
 An at-logon trigger fires when that user logs in, not when the machine boots. If
 the machine reboots and waits at the lock screen, the server is down until someone
@@ -126,7 +136,33 @@ keeps the build moving; `npx tsc --noEmit` is the real gate and still reports ev
 one. Remove that block once the count reaches zero.
 
 **Code changes have no effect.**
-A production build does not hot reload. Rebuild, then restart the task.
+A production build does not hot reload. Rebuild, then restart the task — but the
+restart is the part that usually goes wrong, below.
+
+**The restart reported success and the old build kept serving.**
+Two separate traps, both observed:
+
+`Restart-ScheduledTask` is part of the ScheduledTasks module and is not available in
+every shell here; when it is missing you get a `CommandNotFoundException` and nothing
+restarts.
+
+`schtasks /end` prints `SUCCESS` and does *not* stop the server. The task action is
+`cmd.exe /c node ... next start`, and ending the task kills the `cmd` wrapper while
+the `node` child keeps the port. It happens whether or not that wrapper is still
+alive, so the check is the port, never the exit code:
+
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 30141
+```
+
+If anything is still listening after `/end`, `taskkill /PID <pid> /F` it before
+`schtasks /run`, or the new instance cannot bind and you keep serving the old build.
+A node process whose parent `cmd` has already exited is orphaned and outside the
+task's control entirely — same fix.
+
+Confirm you are actually on the new build rather than trusting the restart: compare
+`.next/BUILD_ID` against a token you just changed appearing in the served CSS, e.g.
+`curl -s http://127.0.0.1:30141/ | grep -o '/_next/static/[^/]*/'`.
 
 **The server is down after a reboot.**
 An at-logon task does not run before anyone logs in. Log in, or convert the task to

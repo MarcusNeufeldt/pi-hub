@@ -58,6 +58,15 @@
   --accent-on: #0d1418;
   --success: #12703a;
   --danger: #b32f1a;
+  /* Translucent status washes for chips and rows, so a "completed" or "failed"
+     marker can tint its whole row without competing with --text for contrast.
+     Derived from the status colours rather than fixed, so a theme change carries. */
+  --tint-success: color-mix(in srgb, var(--success) 12%, transparent);
+  --tint-danger: color-mix(in srgb, var(--danger) 12%, transparent);
+  --tint-accent: color-mix(in srgb, var(--accent) 12%, transparent);
+  /* A 1px inset ring instead of a border: it does not take part in layout, so a
+     chip can gain an edge without its box growing and shifting the row. */
+  --sh-hairline: inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
   --user-bg: #dae7eb;
   --assistant-bg: #f4f8f9;
   /* Surface a turn's content sits on: one subtle step off --bg, with --tool-bg a
@@ -85,6 +94,12 @@ html.dark {
   --accent-on: #0a1113;
   --success: #4ade80;
   --danger: #f87171;
+  /* Weaker mix in dark: the status hues are already light, so 12% over a dark
+     surface reads as a glow rather than a wash. */
+  --tint-success: color-mix(in srgb, var(--success) 9%, transparent);
+  --tint-danger: color-mix(in srgb, var(--danger) 9%, transparent);
+  --tint-accent: color-mix(in srgb, var(--accent) 10%, transparent);
+  --sh-hairline: inset 0 0 0 1px color-mix(in srgb, var(--border) 80%, transparent);
   --user-bg: #16232a;
   --assistant-bg: #0a1113;
   /* Dark mode inverts the convention: inset surfaces go lighter, not darker, so
@@ -1852,6 +1867,46 @@ span.linenumber {
    cursor: pointer, which lies when the chip is just a label. */
 .ui-chip--static {
   cursor: default;
+}
+
+/* Chips and rows that show numbers use tabular figures, so a count ticking from
+   9 to 10 does not shift everything after it. */
+.ui-chip,
+.ui-row,
+.ui-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Edge without a border: the hairline is an inset ring, so adding it cannot
+   change a chip's box and nudge its neighbours. */
+.ui-chip--edge {
+  box-shadow: var(--sh-hairline);
+}
+
+/* Status washes. Applied to the whole chip or row rather than just the text, so
+   the state is legible at a glance down a long list. */
+.ui-tint--success { background: var(--tint-success); color: var(--success); }
+.ui-tint--danger { background: var(--tint-danger); color: var(--danger); }
+.ui-tint--accent { background: var(--tint-accent); color: var(--accent); }
+
+/* Section label above a group of rows. Uppercase with open tracking reads as
+   structure rather than content, which is what lets it be this small without
+   being mistaken for data. Never use it for prose. */
+.ui-label {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Recessed well for content that sits inside a card: code, payloads, diffs.
+   Pairs with the hairline so the inset edge survives on both themes, where a
+   plain border would read too hard in dark. */
+.ui-well {
+  background: var(--bg-subtle);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-hairline);
 }
 
 /* ---- panel header ------------------------------------------------------- */

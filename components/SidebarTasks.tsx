@@ -11,18 +11,34 @@ import {
 
 const TASKS_POLL_MS = 15_000;
 
+/**
+ * Status colours come from the theme, not from fixed hex values.
+ *
+ * These were hardcoded (#16a34a, #ef4444, #4ade80, #60a5fa), which meant a task
+ * row kept mid-tone greens and reds regardless of scheme: too dark against the
+ * dark canvas and too saturated against the light one, and immune to any future
+ * palette change. --success and --danger already carry a per-scheme value.
+ */
 const STATUS_COLORS: Record<TaskDto["status"], string> = {
-  active: "#16a34a",
-  paused: "#d97706",
+  active: "var(--success)",
+  paused: "var(--accent)",
   completed: "var(--text-dim)",
 };
 
 function runStatusColor(status: RunSummaryDto["status"]): string {
-  if (status === "success") return "#16a34a";
-  if (status === "failed" || status === "missed") return "#ef4444";
-  if (status === "running") return "#4ade80";
-  if (status === "queued") return "#60a5fa";
+  if (status === "success" || status === "running") return "var(--success)";
+  if (status === "failed" || status === "missed") return "var(--danger)";
+  // Queued is waiting, not healthy or broken; it should not borrow either colour.
+  if (status === "queued") return "var(--text-muted)";
   return "var(--text-dim)";
+}
+
+/** Wash matching the status colour, for chips that tint their whole box. */
+function runStatusTint(status: RunSummaryDto["status"]): string | undefined {
+  if (status === "success") return "var(--tint-success)";
+  if (status === "failed" || status === "missed") return "var(--tint-danger)";
+  if (status === "running") return "var(--tint-accent)";
+  return undefined;
 }
 
 function formatRunTime(run: RunSummaryDto): string {
@@ -63,13 +79,10 @@ function TaskRow({ task, onOpen }: { task: TaskDto; onOpen: () => void }) {
   // only as a 4px sub-dot. While running, the label becomes "Running" and the
   // countdown is suppressed — the next scheduled run is noise mid-execution.
   const isRunning = lastRun === "running";
-  const lastRunColor = lastRun === "success"
-    ? "#16a34a"
-    : lastRun === "failed" || lastRun === "missed"
-      ? "#ef4444"
-      : lastRun === "running"
-        ? "#4ade80"
-        : "var(--text-dim)";
+  // Same theme-driven mapping as the list above, rather than a second copy of the
+  // hex values it was duplicating.
+  const lastRunColor = lastRun ? runStatusColor(lastRun) : "var(--text-dim)";
+  const lastRunTint = lastRun ? runStatusTint(lastRun) : undefined;
 
   return (
     <button
@@ -104,8 +117,24 @@ function TaskRow({ task, onOpen }: { task: TaskDto; onOpen: () => void }) {
         <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, color: "var(--text)" }}>
           {task.name}
         </span>
-        <span style={{ display: "flex", gap: 6, minWidth: 0, marginTop: 2, fontSize: "var(--fs-micro)", color: isRunning ? "var(--success)" : "var(--text-dim)" }}>
-          <span>{isRunning ? t("task.runs.running") : statusLabel}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, marginTop: 2, fontSize: "var(--fs-micro)", color: "var(--text-dim)" }}>
+          {/* The outcome carries a tint so it reads as a state at a glance down a
+              long list, instead of relying on a 4px dot and coloured text. Rows
+              with no outcome yet stay plain — an untinted row is information too. */}
+          <span
+            className="ui-chip ui-chip--static"
+            style={{
+              flexShrink: 0,
+              paddingInline: 5,
+              lineHeight: 1.5,
+              fontSize: "var(--fs-micro)",
+              fontWeight: 500,
+              color: isRunning ? "var(--success)" : lastRunTint ? lastRunColor : "var(--text-dim)",
+              background: isRunning ? "var(--tint-accent)" : lastRunTint,
+            }}
+          >
+            {isRunning ? t("task.runs.running") : statusLabel}
+          </span>
           {!isRunning && task.status === "active" && <span>{formatNextRun(task.nextRunAt)}</span>}
         </span>
       </span>
@@ -283,7 +312,7 @@ export function SidebarTasks({
           {loading ? (
             <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--text-dim)" }}>{t("task.load.loading")}</div>
           ) : error ? (
-            <button onClick={() => void refresh()} style={{ margin: "6px 10px", padding: "6px 8px", background: "none", border: "1px solid var(--border)", borderRadius: 5, color: "#ef4444", cursor: "pointer", fontSize: 11 }}>
+            <button onClick={() => void refresh()} style={{ margin: "6px 10px", padding: "6px 8px", background: "none", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", color: "var(--danger)", cursor: "pointer", fontSize: "var(--fs-micro)" }}>
               {t("task.load.retry")}
             </button>
           ) : (

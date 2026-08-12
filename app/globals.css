@@ -1005,6 +1005,43 @@ span.linenumber {
   50% { opacity: 0.5; }
 }
 
+/* Pixel-grid loader: each cell brightens as a wavefront passes, driven by a
+   per-cell animation-delay rather than JS, so nine cells cost one style rule. */
+@keyframes pixel-on {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 1; }
+}
+
+/* Sweeps a highlight band across text clipped to the glyphs. The element must
+   set background-image, background-size and -webkit-background-clip: text. */
+@keyframes shimmer-text {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The loader is decorative and sits next to a live timer that keeps ticking, so
+   freezing it costs no information. */
+@media (prefers-reduced-motion: reduce) {
+  .pixel-grid-cell { animation: none !important; opacity: 0.35 !important; }
+  .shimmer-label {
+    animation: none !important;
+    background: none !important;
+    -webkit-text-fill-color: var(--text-muted) !important;
+    color: var(--text-muted) !important;
+  }
+  .pop-in, .fade-up { animation: none !important; }
+}
+
 @keyframes notice-shelf-in {
   from {
     opacity: 0;

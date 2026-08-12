@@ -8,6 +8,8 @@ import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantB
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { LoadingState } from "./LoadingState";
+import { SelectionActions } from "./SelectionActions";
 import { extractTurnChanges, type TurnChanges } from "@/lib/session-changes";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
@@ -251,6 +253,14 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     onPromptFinished: wrappedOnPromptFinished,
   });
   const sessionBusy = agentRunning || bashRunning;
+
+  // When the current turn started, so the loader's elapsed time survives the
+  // re-renders streaming causes. Reading Date.now() at mount of the indicator
+  // instead would restart the clock every time the message list re-rendered.
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
+  useEffect(() => {
+    setTurnStartedAt(agentRunning ? Date.now() : null);
+  }, [agentRunning]);
 
   // --- Subagents pushed to the right panel (AppShell) ----------------------
   const subagentsSigRef = useRef("");
@@ -836,6 +846,15 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
             <NoticeShelf notices={notices} floating align="right" />
           </div>
         </div>
+        {/* Scoped to the message list, so selecting in the composer, the file
+            explorer or a settings panel does not offer to rewrite it. Disabled
+            mid-turn: the composer is where the follow-up goes, and inserting into
+            it while the agent is streaming invites a lost edit. */}
+        <SelectionActions
+          containerRef={scrollContainerRef}
+          disabled={sessionBusy}
+          onAction={(prompt) => chatInputRef?.current?.insertText(prompt)}
+        />
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]">
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div style={{ width: "100%", minWidth: 0, maxWidth: 820, margin: "0 auto" }}>
@@ -1019,8 +1038,11 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
             )}
 
             {agentRunning && !streamState.streamingMessage && agentPhase && (
-              <div className="py-2 text-[13px] text-text-muted">
-                <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t)}</span>
+              <div className="py-2">
+                {/* The phase label already says what is happening; the grid adds
+                    "still moving" and the timer adds "how long", which a pulsing
+                    word cannot. */}
+                <LoadingState label={phaseLabel(agentPhase, t)} startedAt={turnStartedAt} />
               </div>
             )}
 

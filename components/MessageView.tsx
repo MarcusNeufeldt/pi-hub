@@ -7,7 +7,7 @@ import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { SpeakButton } from "./SpeakButton";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
-import { getAssistantErrorMessage, isEmptyThinkingBlock } from "@/lib/message-display";
+import { formatDuration, getAssistantErrorMessage, isEmptyThinkingBlock, modelDisplayLabel } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import type {
@@ -132,9 +132,21 @@ interface Props {
   prevAssistantEntryId?: string;
   onEditContent?: (message: UserMessage) => void;
   showTimestamp?: boolean;
-  prevTimestamp?: number;
   sessionId?: string;
   onOpenSession?: (sessionId: string) => void;
+  /**
+   * How much provenance this turn shows above itself.
+   *
+   * "full" is a turn standing on its own. Inside a collapsed process group the
+   * group header states the model, cost and elapsed time once, so a step repeating
+   * all three is noise — a ten-message group printed the same model name ten
+   * times. "none" drops the line; "model" keeps just the model, for the one step
+   * where it changed mid-turn and the header's single name would be a lie.
+   *
+   * The per-message actions (copy, read aloud) follow this: they act on a final
+   * answer, not on an intermediate step.
+   */
+  meta?: "full" | "model" | "none";
 }
 
 function formatTime(ts?: number): string | null {
@@ -183,12 +195,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, onOpenSession }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, sessionId, onOpenSession, meta }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} sessionId={sessionId} entryId={entryId} meta={meta ?? "full"} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -221,8 +233,8 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.prevAssistantEntryId === next.prevAssistantEntryId
     && prev.onEditContent === next.onEditContent
     && prev.showTimestamp === next.showTimestamp
-    && prev.prevTimestamp === next.prevTimestamp
-    && prev.sessionId === next.sessionId;
+    && prev.sessionId === next.sessionId
+    && prev.meta === next.meta;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
@@ -405,16 +417,16 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           display: "flex", alignItems: "center", justifyContent: "flex-end",
           gap: 6, marginTop: 3,
         }}>
-          <div style={{
-            display: "flex", gap: 3,
-            opacity: hovered ? 1 : 0,
-            pointerEvents: hovered ? "auto" : "none",
-            transition: "opacity 0.12s",
-          }}>
+          {/* Mounted on hover, not faded: a hidden button's label is still part of
+              a text selection, so copying the transcript picked up a stray "Copy"
+              after every message. */}
+          <div style={{ display: "flex", gap: 3, minHeight: 20 }}>
+            {hovered && (
             <button
               className={`ui-btn ui-btn--hint${copied ? " ui-btn--accent" : ""}`}
               onClick={copyContent}
                title={t("i18n.copyMessage")}
+              style={{ animation: "fade-in 0.12s var(--ease-expo)" }}
             >
               {copied ? (
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -428,13 +440,12 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
               )}
                {copied ? t("i18n.copied") : t("i18n.copy")}
             </button>
+            )}
           </div>
-          {(canFork || canNavigate) && (
+          {(canFork || canNavigate) && (hovered || forking) && (
             <div style={{
               display: "flex", gap: 3,
-              opacity: (hovered || forking) ? 1 : 0,
-              pointerEvents: (hovered || forking) ? "auto" : "none",
-              transition: "opacity 0.12s",
+              animation: "fade-in 0.12s var(--ease-expo)",
             }}>
               {canNavigate && (
                 <button
@@ -483,9 +494,9 @@ function AssistantMessageView({
   cwd,
   onOpenFile,
   showTimestamp,
-  prevTimestamp,
   sessionId,
   entryId,
+  meta = "full",
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
@@ -494,9 +505,9 @@ function AssistantMessageView({
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
   showTimestamp?: boolean;
-  prevTimestamp?: number;
   sessionId?: string;
   entryId?: string;
+  meta?: "full" | "model" | "none";
 }) {
   const { t } = useI18n();
   const time = showTimestamp ? formatTime(message.timestamp) : null;
@@ -512,32 +523,46 @@ function AssistantMessageView({
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
 
-  // Streaming-based timing for thinking blocks
+  // Streaming-based timing for thinking blocks. Milliseconds, like every other
+  // duration here — formatDuration renders them and the trace bar divides them.
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
   const [streamingDurations, setStreamingDurations] = useState<Map<number, number>>(new Map());
 
-  // Thinking duration derived from file timestamps: time from prev message end to this message end
-  // This is the total generation time (thinking + any text before first tool call)
-  const thinkingDurationFromFile = useMemo<number | undefined>(() => {
-    if (!message.timestamp || !prevTimestamp) return undefined;
-    const secs = Math.round((message.timestamp - prevTimestamp) / 1000);
-    return secs > 0 ? secs : undefined;
-  }, [message.timestamp, prevTimestamp]);
+  // How long this message took to generate: start (timestamp) to end (endedAt).
+  //
+  // This used to measure from the *previous* message's timestamp, on the
+  // assumption that message.timestamp marked the end of generation. It marks the
+  // start, so the subtraction produced the few milliseconds between a tool result
+  // landing and the next message being created — under a second, which the
+  // `> 0` guard then discarded. 1,820 of 1,947 thinking blocks across 25 real
+  // sessions (93%) lost their duration that way and fell back to a bare label.
+  const generationDuration = useMemo<number | undefined>(() => {
+    if (!message.timestamp || !message.endedAt) return undefined;
+    const ms = message.endedAt - message.timestamp;
+    return ms > 0 ? ms : undefined;
+  }, [message.timestamp, message.endedAt]);
 
-  // Tool call durations derived from session file timestamps (accurate for completed messages)
-  // assistant message timestamp = when generation ended = when tools started running
-  // toolResult timestamp = when tool execution finished
+  // Tool execution time: from the end of generation to the tool result landing.
+  //
+  // Anchored on endedAt, not timestamp. Anchoring on the start of generation
+  // charged the model's own thinking time to the tool, which overstated every one
+  // of 2,484 measured call/result pairs — median 12s shown against a median 0s of
+  // actual execution. Falls back to timestamp for a live turn, which has no entry
+  // on disk yet and so no endedAt.
   const toolCallDurations = useMemo<Map<string, number>>(() => {
     const map = new Map<string, number>();
-    if (!toolResults || !message.timestamp) return map;
+    const generationEnd = message.endedAt ?? message.timestamp;
+    if (!toolResults || !generationEnd) return map;
     for (const [callId, result] of toolResults) {
-      if (result.timestamp && message.timestamp) {
-        const secs = Math.round((result.timestamp - message.timestamp) / 1000);
-        if (secs > 0) map.set(callId, secs);
+      if (result.timestamp) {
+        const ms = result.timestamp - generationEnd;
+        // Sub-second is real and worth showing as "<1s"; only a negative gap is
+        // nonsense (a result that predates the generation it answers).
+        if (ms >= 0) map.set(callId, ms);
       }
     }
     return map;
-  }, [toolResults, message.timestamp]);
+  }, [toolResults, message.timestamp, message.endedAt]);
 
   const textContent = blocks
     .filter((b): b is TextContent => b.type === "text")
@@ -558,7 +583,7 @@ function AssistantMessageView({
       setStreamingDurations((prev: Map<number, number>) => {
         const next = new Map(prev);
         for (const [idx, start] of blockStartTimesRef.current) {
-          if (!next.has(idx)) next.set(idx, Math.round((now - start) / 1000));
+          if (!next.has(idx)) next.set(idx, now - start);
         }
         return next;
       });
@@ -586,7 +611,7 @@ function AssistantMessageView({
           if (!next.has(originalIndex) && blockStartTimesRef.current.has(originalIndex)) {
             const start = blockStartTimesRef.current.get(originalIndex)!;
             const nextStart = blockStartTimesRef.current.get(nextOriginalIndex) ?? now;
-            next.set(originalIndex, Math.round((nextStart - start) / 1000));
+            next.set(originalIndex, nextStart - start);
             changed = true;
           }
         }
@@ -622,12 +647,13 @@ function AssistantMessageView({
           with the content and cost every turn permanent horizontal space for
           reference data you want occasionally. One line, dim and small, reads as
           a caption; the content gets the full width back. */}
+      {meta !== "none" && (
       <div className="turn-meta">
         {message.provider && (() => {
-          const label = modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model;
+          const label = modelDisplayLabel(message, modelNames);
           return <span className="turn-meta__model" title={label}>{label}</span>;
         })()}
-        {isStreaming && (
+        {meta === "full" && isStreaming && (
           // Amber pulse = this turn is live, the one meaning amber carries. No
           // text label: no i18n key exists for it and inventing one would need a
           // zh-CN translation too. The existing agent-running string labels it
@@ -640,12 +666,12 @@ function AssistantMessageView({
             <span className="ui-rail__dot is-live" />
           </span>
         )}
-        {message.usage && !isStreaming && formatUsageCompact(message.usage).map((part) => (
+        {meta === "full" && message.usage && !isStreaming && formatUsageCompact(message.usage).map((part) => (
           // Full breakdown stays on title; the line shows the two scalars.
           <span key={part} title={formatUsage(message.usage!)}>{part}</span>
         ))}
-        {time && !isStreaming && <span>{time}</span>}
-        {isStreaming && (() => {
+        {meta === "full" && time && !isStreaming && <span>{time}</span>}
+        {meta === "full" && isStreaming && (() => {
           let chars = 0;
           for (const b of blocks) {
             if (b.type === "text") chars += (b as TextContent).text?.length ?? 0;
@@ -678,11 +704,12 @@ function AssistantMessageView({
           );
         })()}
       </div>
+      )}
 
       <div className={`turn-surface${isStreaming ? " turn-surface--live" : ""}`}>
       <div className="turn-blocks">
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
+          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? generationDuration : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
         ))}
       </div>
 
@@ -707,22 +734,27 @@ function AssistantMessageView({
         </div>
       )}
 
-      {/* Actions only. Usage and timestamp moved to the gutter above. */}
+      {/* Actions only. Usage and timestamp moved to the gutter above.
+
+          Mounted on hover rather than faded to opacity 0. A hidden-but-present
+          button still contributes its label to a text selection, so copying a
+          transcript picked up a stray "Copy" and "Read aloud" after every message
+          that had them — visible in any paste of the page. It also left an
+          invisible tab stop behind, since pointer-events: none does not remove an
+          element from the focus order. Not rendering it fixes both. */}
+      {meta === "full" && (
       <div style={{
         display: "flex", alignItems: "center", gap: 8, marginTop: "var(--sp-3)",
+        // The row keeps its height whether or not the buttons are mounted, so
+        // revealing them does not shift the message below.
+        minHeight: 22,
       }}>
-        {textContent && !isStreaming && (
+        {hovered && textContent && !isStreaming && (
           <button
             className={`ui-btn ui-btn--hint${copied ? " ui-btn--accent" : ""}`}
             onClick={copyContent}
              title={t("i18n.copyMessage")}
-            style={{
-              // Reveal-on-hover of the turn stays inline: it is driven by the
-              // parent's hovered state, not by this element's own pointer state.
-              opacity: hovered ? 1 : 0,
-              pointerEvents: hovered ? "auto" : "none",
-              transition: "opacity 0.12s",
-            }}
+            style={{ animation: "fade-in 0.12s var(--ease-expo)" }}
           >
             {copied ? (
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -737,17 +769,14 @@ function AssistantMessageView({
              {copied ? t("i18n.copied") : t("i18n.copy")}
           </button>
         )}
-        {textContent && !isStreaming && (
+        {hovered && textContent && !isStreaming && (
           <SpeakButton
             text={textContent}
-            style={{
-              opacity: hovered ? 1 : 0,
-              pointerEvents: hovered ? "auto" : "none",
-              transition: "opacity 0.12s, color 0.12s",
-            }}
+            style={{ animation: "fade-in 0.12s var(--ease-expo)" }}
           />
         )}
       </div>
+      )}
       </div>
     </div>
   );
@@ -758,13 +787,13 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} isStreaming={isStreaming} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
+    return <ThinkingBlock block={block as ThinkingContent} durationMs={streamingDuration} isStreaming={isStreaming} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
-    const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} isStreaming={isStreaming} />;
+    const durationMs = toolCallDurations?.get(tc.toolCallId);
+    return <ToolCallBlock block={tc} result={result} durationMs={durationMs} isStreaming={isStreaming} />;
   }
   return null;
 }
@@ -788,9 +817,10 @@ function splitThinkingSteps(text: string): string[] {
   return steps.length > 0 ? steps : [text];
 }
 
-export function ThinkingBlock({ block, duration, isStreaming, defaultExpanded = false, sessionId, entryId, blockIndex }: {
+export function ThinkingBlock({ block, durationMs, isStreaming, defaultExpanded = false, sessionId, entryId, blockIndex }: {
   block: ThinkingContent;
-  duration?: number;
+  /** Generation time in milliseconds. Undefined for a session with no entry yet. */
+  durationMs?: number;
   /** Marks the trailing step as still being written. */
   isStreaming?: boolean;
   /** Starts open. Used by the UI preview so the trace is visible without a click. */
@@ -845,8 +875,8 @@ export function ThinkingBlock({ block, duration, isStreaming, defaultExpanded = 
           ? <span className="think-block__label--working">{t("i18n.thinking")}</span>
           : (
             <span className="think-block__label--done">
-              {duration !== undefined
-                ? t("i18n.thoughtForSeconds", { seconds: duration })
+              {durationMs !== undefined
+                ? t("i18n.thoughtFor", { duration: formatDuration(durationMs) })
                 : t("i18n.thinking")}
             </span>
           )}
@@ -913,7 +943,7 @@ function toolRowIcon(toolName: string): React.ReactNode {
   return svg(<circle cx="12" cy="12" r="4" />);
 }
 
-function ToolCallBlock({ block, result, duration, isStreaming }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isStreaming?: boolean }) {
+function ToolCallBlock({ block, result, durationMs, isStreaming }: { block: ToolCallContent; result?: ToolResultMessage; durationMs?: number; isStreaming?: boolean }) {
   const [expanded, setExpanded] = useState(() => isEditToolName(block.toolName));
   const inputStr = JSON.stringify(block.input, null, 2);
   const isEditTool = isEditToolName(block.toolName);
@@ -949,13 +979,26 @@ function ToolCallBlock({ block, result, duration, isStreaming }: { block: ToolCa
         <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-micro)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
           {getToolPreview(block)}
         </span>
-        {duration !== undefined && (
-          <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+        {durationMs !== undefined && (
+          <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{formatDuration(durationMs)}</span>
         )}
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
           <polyline points="2 3.5 5 6.5 8 3.5" />
         </svg>
       </button>
+
+      {/* Where the turn's time went, as a share of the whole process span.
+          The row publishes its own duration and reads the total from an inherited
+          custom property, so it needs no prop threaded down from the group. When
+          no group sets a total the width resolves to zero and the bar is simply
+          absent — which is what a standalone row should show. */}
+      {durationMs !== undefined && (
+        <span
+          className="tool-row__bar"
+          style={{ "--row-ms": durationMs } as React.CSSProperties}
+          aria-hidden="true"
+        />
+      )}
 
       {/* ── Expanded: input args ── */}
       {expanded && !isEditTool && (

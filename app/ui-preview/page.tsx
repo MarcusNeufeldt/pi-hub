@@ -3,10 +3,13 @@
 import { useRef, useState } from "react";
 
 import { ApprovalCard, type ApprovalAnswers } from "@/components/ApprovalCard";
+import { ProcessDetailsGroup } from "@/components/ChatWindow";
 import { LoadingState, type LoadingVariant } from "@/components/LoadingState";
-import { ThinkingBlock } from "@/components/MessageView";
+import { MessageView, ThinkingBlock } from "@/components/MessageView";
 import { SelectionActions } from "@/components/SelectionActions";
-import { I18nProvider } from "@/hooks/useI18n";
+import { I18nProvider, useI18n } from "@/hooks/useI18n";
+import { summarizeProcess } from "@/lib/message-display";
+import type { AssistantMessage, ToolResultMessage } from "@/lib/types";
 
 /**
  * Preview harness for the components ported from Beautiful UI. Not linked from
@@ -65,6 +68,85 @@ const THINKING_SAMPLE = [
   "So the order is: write the entry, set the variable, restart, then confirm the models appear. Verifying before the restart would report a false negative.",
 ].join("\n\n");
 
+/**
+ * A process group built from the real components, timed the way real sessions are.
+ *
+ * The numbers come from one measured session: generation of several seconds per
+ * step, tool execution under a second except for one genuinely slow command. Under
+ * the old anchoring every one of those rows would have read as the generation time
+ * plus the execution time — 12s where the tool took none of it.
+ */
+const PROCESS_MODEL_NAMES = { "opencode-go:deepseek-v4-flash": "DeepSeek V4 Flash (2x usage)" };
+
+const PROCESS_STEPS = [
+  { generateMs: 4_000, executeMs: 300, command: "ls /f/explore/pi-hub/ | head -30" },
+  { generateMs: 9_000, executeMs: 90_000, command: "grep -rln --exclude-dir=node_modules 'Rename unnamed sessions' ." },
+  { generateMs: 6_000, executeMs: 400, command: "cat modules/scheduler/paths.ts | head -40" },
+  { generateMs: 5_000, executeMs: 200, command: "sqlite3 ~/.pi/hub/app.db 'SELECT * FROM scheduled_tasks;'" },
+];
+
+const PROCESS_TRACE = (() => {
+  const messages: AssistantMessage[] = [];
+  const toolResults = new Map<string, ToolResultMessage>();
+  // Fixed epoch: a preview that moved with the clock could not be compared
+  // between reloads.
+  let clock = 1_786_514_978_050;
+
+  PROCESS_STEPS.forEach((step, index) => {
+    const startedAt = clock;
+    const endedAt = startedAt + step.generateMs;
+    const toolCallId = `preview-call-${index}`;
+    messages.push({
+      role: "assistant",
+      model: "deepseek-v4-flash",
+      provider: "opencode-go",
+      timestamp: startedAt,
+      endedAt,
+      usage: { input: 2_100, output: 180, cacheRead: 0, cacheWrite: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.0004 } },
+      content: [
+        { type: "thinking", thinking: THINKING_SAMPLE.split("\n\n").slice(0, 2).join("\n\n") },
+        { type: "toolCall", toolCallId, toolName: "bash", input: { command: step.command } },
+      ],
+    });
+    toolResults.set(toolCallId, {
+      role: "toolResult",
+      toolCallId,
+      toolName: "bash",
+      content: [{ type: "text", text: "(output elided for the preview)" }],
+      timestamp: endedAt + step.executeMs,
+    });
+    clock = endedAt + step.executeMs + 5;
+  });
+
+  const summary = summarizeProcess(
+    messages.map((message) => ({ message, countCost: true })),
+    toolResults,
+    PROCESS_MODEL_NAMES,
+  );
+  return { messages, toolResults, summary };
+})();
+
+function ProcessTracePreview() {
+  // useI18n has to run below the provider, so this cannot be inlined into the
+  // page component that mounts it.
+  const { t } = useI18n();
+  return (
+    <div style={{ maxWidth: 620, marginTop: "var(--sp-3)" }}>
+      <ProcessDetailsGroup messageCount={PROCESS_TRACE.messages.length} summary={PROCESS_TRACE.summary} t={t}>
+        {PROCESS_TRACE.messages.map((message, index) => (
+          <MessageView
+            key={index}
+            message={message}
+            meta="none"
+            toolResults={PROCESS_TRACE.toolResults}
+            modelNames={PROCESS_MODEL_NAMES}
+          />
+        ))}
+      </ProcessDetailsGroup>
+    </div>
+  );
+}
+
 const QUESTIONS = [
   {
     id: "scope",
@@ -117,6 +199,18 @@ export default function UiPreviewPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section style={{ marginTop: "var(--sp-7)" }}>
+        <h2 style={{ fontSize: "var(--fs-ui)", color: "var(--text-muted)" }}>Process group</h2>
+        <p style={{ fontSize: "var(--fs-micro)", color: "var(--text-dim)", marginTop: 4, maxWidth: 620 }}>
+          One turn&apos;s intermediate steps behind a single line. The header states the
+          model, tool count, elapsed time and cost once; the steps inside repeat none
+          of it — before, each of the four printed its own model name, token count and
+          cost. Expand it: the bar under each row is that row&apos;s share of the elapsed
+          time, so the one slow command is visible without reading a number.
+        </p>
+        <ProcessTracePreview />
       </section>
 
       <section style={{ marginTop: "var(--sp-7)" }}>
@@ -176,7 +270,7 @@ export default function UiPreviewPage() {
             <div style={{ marginTop: 6 }}>
               <ThinkingBlock
                 block={{ type: "thinking", thinking: THINKING_SAMPLE }}
-                duration={4}
+                durationMs={4200}
                 defaultExpanded
                 blockIndex={0}
               />
@@ -192,7 +286,7 @@ export default function UiPreviewPage() {
         <div style={{ maxWidth: 460, marginTop: 6 }}>
           <ThinkingBlock
             block={{ type: "thinking", thinking: THINKING_SAMPLE }}
-            duration={2}
+            durationMs={2000}
             isStreaming
             defaultExpanded
             blockIndex={1}

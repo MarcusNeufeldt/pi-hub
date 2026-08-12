@@ -1,10 +1,10 @@
 "use client";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, CustomMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
+import { formatDuration, getAssistantErrorMessage, getDisplayableAssistantBlocks, modelDisplayLabel, splitFinalAssistantBlocks, summarizeProcess, type ProcessSummary } from "@/lib/message-display";
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
@@ -97,16 +97,6 @@ function getUserInputText(message: AgentMessage): string | null {
   return text.length > 0 ? text : null;
 }
 
-function countToolCalls(messages: AgentMessage[], indices: number[]): number {
-  let count = 0;
-  for (const idx of indices) {
-    const msg = messages[idx];
-    if (msg?.role !== "assistant") continue;
-    count += countToolCallBlocks(getDisplayableAssistantBlocks(msg as AssistantMessage));
-  }
-  return count;
-}
-
 function hasDisplayableProcessMessage(message: AgentMessage): boolean {
   if (message.role === "assistant") {
     return getDisplayableAssistantBlocks(message as AssistantMessage).length > 0;
@@ -137,42 +127,50 @@ function withAssistantBlocks(
   return next;
 }
 
-function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { messageCount: number; toolCallCount: number; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
+export function ProcessDetailsGroup({ messageCount, summary, children, t }: { messageCount: number; summary: ProcessSummary; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
   const [expanded, setExpanded] = useState(false);
-  const parts = [t("chat.processDetails"), `${messageCount} ${t(messageCount === 1 ? "chat.message" : "chat.messages")}`];
-  if (toolCallCount > 0) parts.push(`${toolCallCount} ${t(toolCallCount === 1 ? "chat.toolCall" : "chat.toolCalls")}`);
+
+  // The model comes first because it is the one fact the steps inside no longer
+  // repeat. Message count moves to the tooltip: it counts how pi chunked the turn,
+  // which is an implementation detail next to "how many tools, how long, how much".
+  const parts: string[] = [];
+  if (summary.modelLabel) parts.push(summary.modelLabel);
+  else if (summary.modelCount > 1) parts.push(t("chat.processModels", { count: summary.modelCount }));
+  if (summary.toolCallCount > 0) {
+    parts.push(`${summary.toolCallCount} ${t(summary.toolCallCount === 1 ? "chat.toolCall" : "chat.toolCalls")}`);
+  }
+  if (summary.elapsedMs !== null) parts.push(formatDuration(summary.elapsedMs));
+  if (summary.costTotal > 0) parts.push(`$${summary.costTotal.toFixed(4)}`);
+  // Nothing to aggregate (a group of custom messages, say) still needs a label.
+  if (parts.length === 0) parts.push(t("chat.processDetails"));
+
+  const countLabel = `${messageCount} ${t(messageCount === 1 ? "chat.message" : "chat.messages")}`;
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div
+      className="process-group"
+      // The scale every row's time bar multiplies itself by, pre-divided here so
+      // the rule is a multiplication: a row outside any group inherits no scale and
+      // a missing multiplier defaults to zero, which is the width an unscaled bar
+      // should have. Rows need no prop threaded down to learn the size of the whole.
+      style={summary.elapsedMs ? ({ "--trace-scale": 100 / summary.elapsedMs } as CSSProperties) : undefined}
+    >
       <button
         type="button"
+        className="process-group__header"
         aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          width: "auto",
-          minHeight: 24,
-          padding: "2px 0",
-          border: "none",
-          background: "transparent",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
-        }}
-        title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
+        title={`${countLabel} — ${expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}`}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`process-group__chevron${expanded ? " is-open" : ""}`}>
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span className="process-group__summary">
           {parts.join(" · ")}
         </span>
       </button>
       <Collapse open={expanded}>
-        <div style={{ marginTop: 8 }}>
+        <div className="process-group__body">
           {children}
         </div>
       </Collapse>
@@ -889,7 +887,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; meta?: "full" | "model" | "none" } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
@@ -927,7 +925,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                     prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
                     onEditContent={handleEditContent}
                     showTimestamp={showTimestamp}
-                    prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
+                    meta={options.meta ?? "full"}
                     onOpenSession={onOpenTranscript}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                   />
@@ -994,14 +992,29 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                     .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
                     .find((value): value is number => typeof value === "number")
                     ?? (finalAnswerMessage ? undefined : visibleRefIndexByMessage.get(finalAssistantIdx));
+                  const processEntries = [
+                    ...visibleProcessIndices.map((processIdx) => ({ message: messages[processIdx], countCost: true })),
+                    ...(finalProcessMessage ? [{ message: finalProcessMessage, countCost: false }] : []),
+                  ];
+                  const processSummary = summarizeProcess(processEntries, toolResultsMap, modelNames);
+                  // A step names its model only where the header's single name stops
+                  // being true — the step that switched to a different one.
+                  let lastProcessModel: string | null = processSummary.modelLabel;
+                  const metaForProcess = (message: AgentMessage): "model" | "none" => {
+                    if (message.role !== "assistant" || !(message as AssistantMessage).provider) return "none";
+                    const label = modelDisplayLabel(message as AssistantMessage, modelNames);
+                    if (label === lastProcessModel) return "none";
+                    lastProcessModel = label;
+                    return "model";
+                  };
                   const processGroup = (
                     <ProcessDetailsGroup
                        messageCount={processCount}
                        t={t}
-                      toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
+                      summary={processSummary}
                     >
-                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }))}
-                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false })}
+                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process", meta: metaForProcess(messages[processIdx]) }))}
+                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false, meta: metaForProcess(finalProcessMessage) })}
                     </ProcessDetailsGroup>
                   );
                   rendered.push(

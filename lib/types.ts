@@ -60,7 +60,20 @@ export interface AssistantMessage {
   provider: string;
   stopReason?: string;
   errorMessage?: string;
+  /** When generation *started*. Set by pi when the message object is created. */
   timestamp?: number;
+  /**
+   * When generation *finished*, taken from the session entry's own timestamp.
+   *
+   * `timestamp` is stamped when the message is created, which is the instant the
+   * turn resumes — it matches the preceding tool result to within a few
+   * milliseconds. Measured over 2,484 call/result pairs in 25 sessions, treating
+   * it as the generation end made every tool call look 12s slower than it was
+   * (median), because the model's own thinking time landed in the tool's number.
+   * Only the session file knows when generation ended, so the reader carries it
+   * across; live streaming messages have no entry yet and leave this undefined.
+   */
+  endedAt?: number;
   usage?: {
     input: number;
     output: number;

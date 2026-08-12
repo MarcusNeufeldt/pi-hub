@@ -2694,6 +2694,95 @@ span.linenumber {
   border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
+/* This row's share of the turn's total time.
+   The row publishes its own --row-ms; the enclosing process group publishes
+   --trace-scale, which is 100 divided by the elapsed total. Multiplying the two
+   gives a percentage, and turns a column of unrelated numbers into a picture of
+   where the time actually went.
+
+   The scale is pre-divided in JS rather than divided here on purpose: a row
+   outside any group inherits no scale, and only a *multiplier* defaults to zero
+   cleanly. Dividing by a defaulted total would make an ungrouped row render a
+   full-width bar — the opposite of absent.
+
+   Rows whose share rounds below a pixel show nothing, which is the honest result:
+   65% of measured tool calls finish inside a second, and the bar is there to mark
+   the ones that did not. */
+.tool-row__bar {
+  display: block;
+  height: 2px;
+  margin-left: -16px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  width: calc(var(--trace-scale, 0) * var(--row-ms, 0) * 1%);
+  max-width: calc(100% - 10px);
+}
+
+/* ---- process group ------------------------------------------------------ */
+/* One turn's intermediate steps, folded behind a single line.
+   The header states the model, tool count, elapsed time and cost once. The steps
+   inside carry none of it: before this, every step printed its own model name,
+   token count and cost, so a ten-message group said "DeepSeek V4 Flash" ten times
+   and stacked twenty numbers that are only meaningful summed. */
+.process-group {
+  margin-bottom: var(--sp-6);
+}
+
+.process-group__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: auto;
+  max-width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-1) var(--sp-2);
+  margin-left: calc(-1 * var(--sp-2));
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  /* --text-muted, not --text-dim. In dark the dim token (#6b7d84) is *darker* than
+     the muted one (#9aabb1), so it loses contrast against a dark surface while
+     still reading fine on white — a line set in it looks correct in light mode and
+     nearly vanishes in dark. This line also carries the only statement of model,
+     time and cost for a collapsed turn, so it is not decoration. */
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+
+.process-group__header:hover {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+
+.process-group__chevron {
+  flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease-expo);
+}
+
+.process-group__chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.process-group__summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.process-group__body {
+  margin-top: var(--sp-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .process-group__chevron { transition: none; }
+}
+
 /* ---- transcript gutter rail -------------------------------------------- */
 /* The signature element: one mono rail carrying per-turn time, model, token
    and cost deltas, with an amber dot while the turn is live. Amber means

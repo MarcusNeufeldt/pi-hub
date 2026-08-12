@@ -303,9 +303,15 @@ function entryToUiMessage(
   // normalizeToolCalls is a secondary guard (returns non-assistant messages as-is).
   switch (entry.type) {
     case "message": {
-      const message = options.deferToolResultImages
+      const base = options.deferToolResultImages
         ? omitToolResultBase64Images(normalizeToolCalls(entry.message))
         : normalizeToolCalls(entry.message);
+      // The entry timestamp is the only record of when generation ended — the
+      // message's own timestamp is when it started. Carry it so the UI can time
+      // thinking and tool execution separately instead of conflating them.
+      const message = base.role === "assistant"
+        ? { ...base, endedAt: parseEntryTimestamp(entry.timestamp) }
+        : base;
       if (!options.deferThinking || message.role !== "assistant") return message;
       return {
         ...message,

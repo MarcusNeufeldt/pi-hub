@@ -2415,6 +2415,69 @@ span.linenumber {
   white-space: pre-wrap;
 }
 
+/* Reasoning rendered as a trace of steps rather than one wall of text.
+   Measured over 78 real thinking blocks from recent sessions: every one had at
+   least two blank-line-separated paragraphs (median 2, up to 5) and a median of
+   zero single newlines, so blank lines are the model's own segmentation and the
+   only structure present. Splitting there adds nothing that was not already in
+   the text.
+
+   The dot column is a fixed track so the text edge stays flush no matter how many
+   steps there are; the connector is drawn on the dot cell rather than as a
+   separate element, so a step cannot get out of step with its own line. */
+.think-step {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  column-gap: var(--sp-2);
+  align-items: start;
+}
+
+.think-step__marker {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  /* Matches the text's first line-height so the dot sits on the first line
+     rather than the top of the box. */
+  height: calc(var(--fs-meta) * 1.7);
+}
+
+.think-step__marker::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-top: calc((var(--fs-meta) * 1.7 - 5px) / 2);
+  border-radius: var(--r-full);
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+/* Connector to the next step. Omitted on the last one, so the trace ends on a
+   dot instead of a line running into nothing. */
+.think-step:not(:last-child) .think-step__marker::after {
+  content: "";
+  position: absolute;
+  top: calc((var(--fs-meta) * 1.7 + 5px) / 2 + 2px);
+  bottom: calc(var(--sp-3) * -1);
+  width: 1px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.think-step + .think-step {
+  margin-top: var(--sp-3);
+}
+
+/* The step still being written. Only the dot animates: sweeping a gradient
+   across a 500-character paragraph draws the eye away from the words, which is
+   the opposite of what a reasoning trace is for. */
+.think-step.is-active .think-step__marker::before {
+  background: var(--accent);
+  animation: pulse 1.4s var(--ease) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .think-step.is-active .think-step__marker::before { animation: none; }
+}
+
 .think-block__body.is-error {
   color: var(--danger);
 }

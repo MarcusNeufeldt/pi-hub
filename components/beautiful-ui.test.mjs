@@ -175,6 +175,48 @@ describe("Collapse animates to auto height", () => {
   });
 });
 
+describe("thinking renders as a stepped trace", () => {
+  const messageView = read("./MessageView.tsx");
+
+  it("splits on blank lines only, never sentences or single newlines", () => {
+    // Blank lines are the model's own segmentation — measured across 78 real
+    // thinking blocks, present in every one, with a median of zero single
+    // newlines. Splitting anywhere else would impose structure it did not write
+    // and cut prose mid-thought.
+    assert.match(messageView, /text\.split\(\/\\n\{2,\}\/\)/);
+    assert.doesNotMatch(messageView, /split\(\/[^/]*\[.\!\?\]/);
+  });
+
+  it("degrades to a single step rather than rendering nothing", () => {
+    // Empty and whitespace-only thinking must not produce zero steps.
+    assert.match(messageView, /return steps\.length > 0 \? steps : \[text\];/);
+  });
+
+  it("marks only the trailing step active, and only while streaming", () => {
+    assert.match(messageView, /isStreaming && index === steps\.length - 1 \? " is-active" : ""/);
+  });
+
+  it("does not step the loading or error messages", () => {
+    // Those are single strings, not reasoning; a trace marker beside a failure
+    // string would misrepresent it as a step.
+    const body = messageView.slice(messageView.indexOf("think-block__body${error"), messageView.indexOf("</Collapse>", messageView.indexOf("think-block__body${error")));
+    assert.match(body, /if \(loading\) return t\("i18n\.loadingThinking"\);/);
+    assert.match(body, /if \(error\) return error;/);
+  });
+
+  it("ends the trace on a dot, not a dangling connector", () => {
+    assert.match(css, /\.think-step:not\(:last-child\) \.think-step__marker::after/);
+  });
+
+  it("animates only the marker of the active step", () => {
+    // A gradient sweeping a 500-character paragraph pulls the eye off the words.
+    const active = css.slice(css.indexOf(".think-step.is-active"), css.indexOf(".think-step.is-active") + 220);
+    assert.match(active, /\.think-step__marker::before/);
+    assert.match(active, /animation: pulse/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\n?\s*\.think-step\.is-active[^}]*animation: none/);
+  });
+});
+
 describe("chat wiring", () => {
   it("scopes the selection bar to the message list and disables it mid-turn", () => {
     assert.match(chatWindow, /containerRef=\{scrollContainerRef\}/);

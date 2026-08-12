@@ -8,7 +8,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { SpeakButton } from "./SpeakButton";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { formatDuration, getAssistantErrorMessage, isEmptyThinkingBlock, modelDisplayLabel } from "@/lib/message-display";
-import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
+import { buildDisplayRows, parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import type {
   AgentMessage,
@@ -1057,7 +1057,7 @@ function PairedDiffResult({ diff }: {
   );
 }
 
-export function SplitPatchView({ text }: { text: string }) {
+export function SplitPatchView({ text, changedOnly = false }: { text: string; changedOnly?: boolean }) {
   const { t } = useI18n();
   const files = useMemo(() => parseUnifiedPatch(text), [text]);
   if (!files) return <PatchTextView text={text} />;
@@ -1094,15 +1094,18 @@ export function SplitPatchView({ text }: { text: string }) {
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}>
-            {file.rows.map((row, rowIndex) => {
-              if (row.type === "hunk") {
-                return null;
+            {buildDisplayRows(file.rows, changedOnly).map((item) => {
+              if (item.kind === "gap") {
+                return (
+                  <div key={item.key} className="diff-gap" style={{ gridColumn: "1 / -1" }}>
+                    {t("changes.hiddenLines", { count: item.count })}
+                  </div>
+                );
               }
-
               return (
-                <div key={rowIndex} style={{ display: "contents" }}>
-                  <SplitDiffCellView cell={row.left} side="left" />
-                  <SplitDiffCellView cell={row.right} side="right" />
+                <div key={item.key} style={{ display: "contents" }}>
+                  <SplitDiffCellView cell={item.row.left} side="left" />
+                  <SplitDiffCellView cell={item.row.right} side="right" />
                 </div>
               );
             })}
@@ -1134,16 +1137,19 @@ function SplitDiffHeader({ title, side }: { title: string; side: "left" | "right
 function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" | "right" }) {
   const bg =
     cell.type === "added"
-      ? "rgba(34,197,94,0.12)"
+      ? "var(--diff-add-bg)"
       : cell.type === "removed"
-      ? "rgba(248,113,113,0.13)"
+      ? "var(--diff-del-bg)"
       : cell.type === "empty"
       ? "var(--bg-subtle)"
       : "transparent";
   const marker =
     cell.type === "added" ? "+" : cell.type === "removed" ? "-" : " ";
+  // The palette's own status hues, which are already tuned per theme. The
+  // literals here before were a light-mode green on both schemes: #22c55e read
+  // 1.94:1 against the added row in light, under the 4.5:1 floor.
   const markerColor =
-    cell.type === "added" ? "#22c55e" : cell.type === "removed" ? "#f87171" : "var(--text-dim)";
+    cell.type === "added" ? "var(--diff-add-fg)" : cell.type === "removed" ? "var(--diff-del-fg)" : "var(--text-dim)";
 
   return (
     <div
@@ -1208,13 +1214,15 @@ function PatchTextView({ text }: { text: string }) {
           line.startsWith("-") && !line.startsWith("---") ? "removed" :
           "context";
         const bg =
-          kind === "added" ? "rgba(34,197,94,0.12)" :
-          kind === "removed" ? "rgba(248,113,113,0.13)" :
-          kind === "hunk" ? "rgba(96,165,250,0.12)" :
+          kind === "added" ? "var(--diff-add-bg)" :
+          kind === "removed" ? "var(--diff-del-bg)" :
+          // Was a blue rgba literal under accent-coloured text — the one tint in
+          // the diff that matched no token in either palette.
+          kind === "hunk" ? "var(--diff-hunk-bg)" :
           "transparent";
         const color =
-          kind === "added" ? "#22c55e" :
-          kind === "removed" ? "#f87171" :
+          kind === "added" ? "var(--diff-add-fg)" :
+          kind === "removed" ? "var(--diff-del-fg)" :
           kind === "hunk" ? "var(--accent)" :
           "var(--text)";
 
@@ -1225,9 +1233,9 @@ function PatchTextView({ text }: { text: string }) {
               display: "flex",
               background: bg,
               borderLeft: kind === "added"
-                ? "3px solid #22c55e"
+                ? "3px solid var(--success)"
                 : kind === "removed"
-                ? "3px solid #f87171"
+                ? "3px solid var(--danger)"
                 : kind === "hunk"
                 ? "3px solid var(--accent)"
                 : "3px solid transparent",

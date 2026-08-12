@@ -37,6 +37,10 @@ export function PerTurnDiffView({
   );
   // Diff visibility: collapsed by default (+/− stats rows, per-file expand).
   const [collapsedAll, setCollapsedAll] = useState(true);
+  // Changed lines only, on by default: this panel exists to answer "what did the
+  // turn change", and unchanged context is the bulk of a diff's height. Runs of it
+  // collapse to a counted marker rather than disappearing.
+  const [changedOnly, setChangedOnly] = useState(true);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
   // Reset per-file expansion when switching turns.
@@ -86,6 +90,35 @@ export function PerTurnDiffView({
           {t("changes.title")} ({totalFiles})
         </span>
         <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setChangedOnly((v) => !v)}
+          title={changedOnly ? t("changes.showContext") : t("changes.changedOnly")}
+          aria-label={changedOnly ? t("changes.showContext") : t("changes.changedOnly")}
+          aria-pressed={changedOnly}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 26,
+            height: 24,
+            padding: 0,
+            // Active is the default state, so it reads as engaged rather than as a
+            // plain button: a tinted fill and the accent, matching how the other
+            // pressed toggles in the app signal themselves.
+            background: changedOnly ? "var(--tint-accent)" : "none",
+            border: `1px solid ${changedOnly ? "color-mix(in srgb, var(--accent) 45%, transparent)" : "var(--border)"}`,
+            borderRadius: 6,
+            color: changedOnly ? "var(--accent)" : "var(--text-muted)",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          {/* Funnel: the diff is being filtered down to its changed lines. Distinct
+              from the chevron pairs the collapse control next to it uses. */}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="3 4 21 4 14 12.5 14 20 10 17.5 10 12.5" />
+          </svg>
+        </button>
         <button
           onClick={() => setCollapsedAll((v) => !v)}
           title={collapsedAll ? t("changes.expandAll") : t("changes.collapseAll")}
@@ -230,13 +263,17 @@ export function PerTurnDiffView({
                         </svg>
                       </button>
                     )}
+                    {/* Palette tokens, not literals: #16a34a and #ef4444 were a
+                        single pair of values serving both schemes, and measured
+                        3.08:1 and 3.52:1 against the light surface — under the
+                        4.5:1 floor for text this small. */}
                     {stats.add > 0 && (
-                      <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "#16a34a", flexShrink: 0 }}>
+                      <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--success)", flexShrink: 0 }}>
                         +{stats.add}
                       </span>
                     )}
                     {stats.del > 0 && (
-                      <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "#ef4444", flexShrink: 0 }}>
+                      <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--danger)", flexShrink: 0 }}>
                         −{stats.del}
                       </span>
                     )}
@@ -246,7 +283,7 @@ export function PerTurnDiffView({
                   </div>
                   {fileExpanded && (
                     <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-                      <SplitPatchView text={c.diff} />
+                      <SplitPatchView text={c.diff} changedOnly={changedOnly} />
                     </div>
                   )}
                 </div>

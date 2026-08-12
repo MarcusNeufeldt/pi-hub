@@ -127,3 +127,36 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
 function cleanPatchPath(path: string): string {
   return path.split("\t")[0].trim();
 }
+
+/**
+ * A row to draw, after optionally dropping the unchanged context.
+ *
+ * Runs of context collapse into a single marker rather than vanishing: a diff that
+ * silently splices distant hunks together reads as one contiguous edit, which is a
+ * worse lie than showing the context was there.
+ */
+export type DiffDisplayRow =
+  | { kind: "line"; row: Extract<SplitDiffRow, { type: "line" }>; key: string }
+  | { kind: "gap"; count: number; key: string };
+
+export function buildDisplayRows(rows: SplitDiffRow[], changedOnly: boolean): DiffDisplayRow[] {
+  const out: DiffDisplayRow[] = [];
+  let contextRun = 0;
+  rows.forEach((row, index) => {
+    if (row.type === "hunk") return;
+    // "empty" is the placeholder opposite an added or removed line, so anything
+    // that is not context on both sides is part of the change.
+    const changed = row.left.type !== "context" || row.right.type !== "context";
+    if (!changedOnly || changed) {
+      if (contextRun > 0) {
+        out.push({ kind: "gap", count: contextRun, key: `gap-${index}` });
+        contextRun = 0;
+      }
+      out.push({ kind: "line", row, key: `line-${index}` });
+      return;
+    }
+    contextRun++;
+  });
+  if (contextRun > 0) out.push({ kind: "gap", count: contextRun, key: "gap-end" });
+  return out;
+}

@@ -1,19 +1,21 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { getTelegramStatus } from "@/lib/telegram-client";
 
 const STORAGE_KEY = "pi-telegram-notify-enabled";
 
 /**
- * Manages the "notify via Telegram on completion" toggle for the Web chat,
- * mirroring {@link useAudio}. The preference is sticky (localStorage), and
- * the hook also tracks whether Telegram is configured so the toggle can be
- * hidden entirely when there is nowhere to send a notification.
+ * Manages the "notify via Telegram on completion" preference for the Web chat,
+ * mirroring {@link useAudio}. The preference is sticky (localStorage).
  *
- * The toggle only controls intent — the actual notification is dispatched by
- * the chat layer (ChatWindow) when a run finishes, reading `notifyEnabledRef`
- * so a toggled-mid-run change does not retroactively fire.
+ * It only controls intent — the actual notification is dispatched by the chat
+ * layer (ChatWindow) when a run finishes, reading `notifyEnabledRef` so a
+ * change made mid-run does not retroactively fire.
+ *
+ * This used to also poll /api/integrations/telegram/status on mount and on every
+ * return to the foreground, so the composer's toggle could hide itself when there
+ * was nowhere to send. That toggle is gone, so the request had no reader left and
+ * only cost a round trip per mount.
  */
 export function useTelegramNotify() {
   const [enabled, setEnabled] = useState<boolean>(() => {
@@ -24,30 +26,6 @@ export function useTelegramNotify() {
   useEffect(() => {
     enabledRef.current = enabled;
   }, [enabled]);
-
-  const [configured, setConfigured] = useState(false);
-
-  // Check whether Telegram is set up once on mount (and again when the tab
-  // returns to the foreground, in case it was configured in another tab).
-  const checkConfigured = useCallback(async () => {
-    try {
-      const status = await getTelegramStatus();
-      setConfigured(Boolean(status.configured && status.userCount > 0));
-    } catch {
-      // Status endpoint unreachable — keep the toggle hidden to avoid a
-      // no-op button.
-      setConfigured(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void checkConfigured();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void checkConfigured();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [checkConfigured]);
 
   const toggle = useCallback(() => {
     setEnabled((prev) => {
@@ -66,7 +44,5 @@ export function useTelegramNotify() {
     notifyEnabled: enabled,
     notifyEnabledRef: enabledRef,
     onNotifyToggle: toggle,
-    telegramConfigured: configured,
-    refreshConfigured: checkConfigured,
   };
 }

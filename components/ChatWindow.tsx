@@ -181,7 +181,10 @@ export function ProcessDetailsGroup({ messageCount, summary, children, t }: { me
 export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onTurnChangesChange, onSubagentsChange, clearSubagentsSignal, onOpenTranscript }: Props) {
   const { t } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
-  const { notifyEnabled, notifyEnabledRef, onNotifyToggle, telegramConfigured } = useTelegramNotify();
+  // Only the ref: with the composer's toggle gone there is nothing to render the
+  // enabled state or flip it, and nothing left to gate on whether Telegram is
+  // configured. The dispatch below still reads the stored preference.
+  const { notifyEnabledRef } = useTelegramNotify();
   const isMobile = useIsMobile();
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
@@ -623,9 +626,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       soundEnabled={soundEnabled}
       onSoundToggle={onSoundToggle}
       onAudioUnlock={unlockAudio}
-      notifyTelegramEnabled={notifyEnabled}
-      onNotifyTelegramToggle={onNotifyToggle}
-      telegramConfigured={telegramConfigured}
       draftKey={session?.id ?? (newSessionCwd ? `new:${newSessionCwd}` : undefined)}
       cwd={session?.cwd ?? newSessionCwd}
     />

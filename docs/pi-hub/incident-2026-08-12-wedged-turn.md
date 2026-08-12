@@ -111,17 +111,32 @@ never dispatches the commands. There is no timeout on the MCP request itself.
 
 ## Action Items
 
-**pi-hub (ours)**
+**pi-hub (ours)** — done in `4f8661d`, except where noted
 
-- Add a force-reset endpoint that destroys the RPC session for one session id, so a
-  wedged turn does not require restarting every session.
-- Put a timeout on the abort request, and give Stop a pending state. A hanging abort
-  must surface as an error, not as silence.
-- Fix the phase label. It read "Waiting for model" for 79 minutes while the agent
-  was waiting on a tool.
-- Show elapsed time on a *running* tool row. The trace already has a duration
-  column, but it only renders once a row completes — so a 90-minute tool call looks
-  exactly like a fast one.
+- **Done.** `POST /api/sessions/[id]/reset` destroys the RPC session for one session
+  id, so a wedged turn no longer requires restarting every session. Uses `destroy()`
+  rather than `shutdown()`, which would block on the wedged turn.
+- **Done.** `sendAgentCommand` takes an optional deadline and abort uses it, so a
+  hanging abort surfaces as an error naming Force reset instead of vanishing. Stop
+  has a pending state and cannot be double-fired.
+- **Done.** A running tool row shows live elapsed time, accent past a minute.
+  Anchored on the message's `endedAt`, which is when tools began. This is the change
+  that would have made the incident self-evident: the row would have read `79m`.
+- **Not done — the original item was based on a wrong premise.** It said "fix the
+  phase label", on the assumption that the label was wrong. Reading the transitions
+  shows it was not: the phase becomes `running_tools` on `tool_execution_start` and
+  returns to `waiting_model` on `tool_execution_end`. "Waiting for model" was
+  therefore *stale, not mislabelled* — pi never emitted `tool_execution_start`,
+  because it never dispatched the call. The correct fix is a **staleness detector**:
+  when a turn is running and no agent event has arrived for some minutes, say so
+  rather than displaying a confident phase from before the stall. Relabelling would
+  have hidden a real signal.
+
+That last point also sharpens the attribution below: the absence of a
+`tool_execution_start` event is independent evidence that the wedge happened
+*before* dispatch, which weakens the case against context-mode and strengthens the
+case that pi never issued the request. It is not conclusive — the UI could have
+missed the event — but it is the one signal that distinguishes the two.
 
 **pi (upstream)**
 

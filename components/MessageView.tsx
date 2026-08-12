@@ -2,6 +2,7 @@
 
 import { memo, useState, useRef, useEffect, useMemo } from "react";
 import { MarkdownBody } from "./MarkdownBody";
+import { Collapse } from "./ui/Collapse";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { SpeakButton } from "./SpeakButton";
@@ -817,12 +818,12 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
           <span style={{ marginLeft: "auto", fontSize: "var(--fs-micro)", color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
         )}
       </button>
-      {expanded && (
-        // Was a hardcoded #f87171 that the palette retune could not reach.
+      <Collapse open={expanded}>
+        {/* Was a hardcoded #f87171 that the palette retune could not reach. */}
         <div className={`think-block__body${error ? " is-error" : ""}`}>
            {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
         </div>
-      )}
+      </Collapse>
     </div>
   );
 }
@@ -1351,7 +1352,7 @@ function SubagentNotifyView({
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>
-        {expanded && (
+        <Collapse open={expanded}>
           <div style={{ padding: "0 10px 8px" }}>
             {info.output && (
               <div style={{ fontSize: "var(--fs-micro)", lineHeight: 1.5, color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "var(--font-mono)" }}>
@@ -1392,7 +1393,7 @@ function SubagentNotifyView({
               </button>
             )}
           </div>
-        )}
+        </Collapse>
       </div>
     </div>
   );

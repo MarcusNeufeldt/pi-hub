@@ -131,6 +131,50 @@ describe("the ports use this app's design system", () => {
   });
 });
 
+describe("Collapse animates to auto height", () => {
+  const collapse = read("./ui/Collapse.tsx");
+  const messageView = read("./MessageView.tsx");
+
+  it("transitions grid-template-rows rather than max-height", () => {
+    // 0fr -> 1fr resolves against real content, so nothing has to guess a height.
+    // A max-height ceiling either clips or spends the duration on empty space.
+    assert.match(css, /\.ui-collapse\s*\{[\s\S]*?grid-template-rows:\s*0fr/);
+    assert.match(css, /\.ui-collapse\.is-open\s*\{\s*\n?\s*grid-template-rows:\s*1fr/);
+    assert.match(css, /transition:\s*grid-template-rows[^;]*var\(--ease-expo\)/);
+  });
+
+  it("keeps min-height:0 on the inner element", () => {
+    // Without it the grid row will not shrink below its content and the panel
+    // simply does not move — the failure looks like the transition being ignored.
+    assert.match(css, /\.ui-collapse__inner\s*\{[\s\S]*?min-height:\s*0/);
+    assert.match(css, /\.ui-collapse__inner\s*\{[\s\S]*?overflow:\s*hidden/);
+  });
+
+  it("mounts one frame before flipping the class", () => {
+    // Setting mounted and open together starts the element at 1fr with nothing
+    // to transition from, and the panel appears instantly.
+    assert.match(collapse, /requestAnimationFrame\(\(\) => setActive\(true\)\)/);
+    assert.match(collapse, /cancelAnimationFrame/);
+  });
+
+  it("does not unmount or hide content while closing", () => {
+    // Either would remove the content mid-transition, so the panel would blink
+    // out instead of closing.
+    assert.doesNotMatch(collapse, /hidden=\{/);
+    assert.match(collapse, /const \[mounted, setMounted\] = useState\(open\)/);
+  });
+
+  it("switches instantly under reduced motion", () => {
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\n?\s*\.ui-collapse \{ transition: none; \}/);
+  });
+
+  it("replaces the instant-snap disclosures on the per-turn surfaces", () => {
+    // Thinking blocks and tool output render on essentially every turn.
+    assert.match(messageView, /<Collapse open=\{expanded\}>/);
+    assert.match(chatWindow, /<Collapse open=\{expanded\}>/);
+  });
+});
+
 describe("chat wiring", () => {
   it("scopes the selection bar to the message list and disables it mid-turn", () => {
     assert.match(chatWindow, /containerRef=\{scrollContainerRef\}/);

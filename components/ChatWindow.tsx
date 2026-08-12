@@ -10,6 +10,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { LoadingState } from "./LoadingState";
 import { SelectionActions } from "./SelectionActions";
+import { Collapse } from "./ui/Collapse";
 import { extractTurnChanges, type TurnChanges } from "@/lib/session-changes";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
@@ -170,11 +171,11 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { mes
           {parts.join(" · ")}
         </span>
       </button>
-      {expanded && (
+      <Collapse open={expanded}>
         <div style={{ marginTop: 8 }}>
           {children}
         </div>
-      )}
+      </Collapse>
     </div>
   );
 }

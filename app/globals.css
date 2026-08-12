@@ -154,6 +154,11 @@ html.dark {
   --dur: 200ms;
   --dur-slow: 320ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Sharper decelerating curve for panels that open and close. It leaves fast
+     and settles slowly, so a disclosure feels answered immediately even at
+     320ms, where --ease spends more of its budget in the middle and reads as
+     softer. Reserved for size and position changes; --ease still owns hovers. */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Stacking order — mirrors the values already used across components */
   --z-backdrop: 199;
@@ -1018,6 +1023,35 @@ span.linenumber {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* Expand/collapse that animates to the content's own height.
+
+   grid-template-rows 0fr -> 1fr is the only way to transition to auto height
+   without measuring: the row resolves against real content, so nothing has to
+   know how tall the panel is. max-height needs a guessed ceiling, and a guess
+   that is too small clips while one that is too large makes the open feel slow
+   because most of the duration animates empty space.
+
+   The inner element must carry overflow:hidden AND min-height:0 — without the
+   latter the grid row refuses to shrink below its content and nothing moves. */
+.ui-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-slow) var(--ease-expo);
+}
+.ui-collapse.is-open {
+  grid-template-rows: 1fr;
+}
+.ui-collapse__inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Collapsing is a layout change, not decoration: with reduced motion the panel
+   should switch state instantly rather than slide. */
+@media (prefers-reduced-motion: reduce) {
+  .ui-collapse { transition: none; }
 }
 
 /* Pixel-grid loader: each cell brightens as a wavefront passes, driven by a

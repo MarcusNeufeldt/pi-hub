@@ -7,7 +7,7 @@ import { ProcessDetailsGroup } from "@/components/ChatWindow";
 import { LoadingState, type LoadingVariant } from "@/components/LoadingState";
 import { MessageView, ThinkingBlock } from "@/components/MessageView";
 import { SelectionActions } from "@/components/SelectionActions";
-import { I18nProvider, useI18n } from "@/hooks/useI18n";
+import { useI18n } from "@/hooks/useI18n";
 import { summarizeProcess } from "@/lib/message-display";
 import { composeWithContext } from "@/lib/selection-context";
 import type { AssistantMessage, ToolResultMessage } from "@/lib/types";
@@ -178,10 +178,6 @@ export default function UiPreviewPage() {
   const [answers, setAnswers] = useState<ApprovalAnswers | null>(null);
 
   return (
-    // The real components read translations, and I18nProvider is mounted in
-    // app/page.tsx rather than the root layout — so this route has to supply it
-    // itself or every t() call throws.
-    <I18nProvider>
     <main style={{ padding: "var(--sp-6)", maxWidth: 900, margin: "0 auto", color: "var(--text)" }}>
       <h1 style={{ fontSize: "var(--fs-title)", marginBottom: "var(--sp-2)" }}>UI preview</h1>
       <p style={{ fontSize: "var(--fs-meta)", color: "var(--text-dim)", marginTop: 0 }}>
@@ -356,6 +352,5 @@ export default function UiPreviewPage() {
         )}
       </section>
     </main>
-    </I18nProvider>
   );
 }

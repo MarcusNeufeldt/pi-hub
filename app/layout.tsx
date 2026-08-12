@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
+import { I18nProvider } from "@/hooks/useI18n";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -80,7 +81,15 @@ export default function RootLayout({
         />
       </head>
       <body translate="no" className="notranslate">
-        {children}
+        {/* Every route gets translations. This used to be mounted per-page in
+            app/page.tsx, so any new route crashed with "useI18n must be used
+            inside I18nProvider" the first time it rendered a component that reads
+            one — which is exactly what /ui-preview did. The provider is a client
+            component and hydrates its locale in an effect, so it stays safe to
+            render from this server layout. */}
+        <I18nProvider>
+          {children}
+        </I18nProvider>
         <PwaRegistration />
       </body>
     </html>

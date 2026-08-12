@@ -1281,8 +1281,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         background: "transparent",
         // Bottom padding lifts the composer card clear of the pane edge instead
         // of welding it there; the dock's scrim fades the transcript into it.
-        padding: "0 16px var(--sp-6)",
-        paddingRight: isMobile ? 16 : 52, // desktop: 16px base + 36px for ChatMinimap alignment
+        //
+        // Safe-area insets on top of that. AppShell's top bar accounts for them in
+        // nine places and this footer accounted for them in none, so on a notched
+        // phone the composer ran under the rounded corners and the home indicator.
+        // env() resolves to 0 where there is no inset, so this is inert elsewhere.
+        paddingTop: 0,
+        paddingLeft: "calc(16px + env(safe-area-inset-left))",
+        // desktop: 16px base + 36px for ChatMinimap alignment
+        paddingRight: isMobile ? "calc(16px + env(safe-area-inset-right))" : 52,
+        paddingBottom: "calc(var(--sp-6) + env(safe-area-inset-bottom))",
       }}
     >
       {/* Hidden file input */}
@@ -1946,6 +1954,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   alignSelf: "flex-end",
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "7px 14px",
+                  // This button is styled entirely inline rather than through
+                  // .ui-btn, so it never inherited the tap floor every other
+                  // control obeys: 7px padding at --fs-ui computes to roughly 32px
+                  // against a 44px minimum on mobile. The primary action was the
+                  // smallest target in the footer.
+                  minHeight: "var(--tap)",
                   // --accent-fill + --accent-on: dark ink on amber (5.9:1),
                   // not white (3.1:1). Shadow was a stale blue rgba(37,99,235).
                   background: (value.trim() || attachedImages.length) ? "var(--accent-fill)" : "var(--bg-panel)",
@@ -2163,22 +2177,27 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             justifyContent: "flex-end",
             position: "relative",
             marginLeft: isMobile ? 0 : "auto",
+            // Open on mobile, take a row of the bottom-bar grid rather than
+            // hovering over the column next door. This element is the grid item,
+            // so spanning has to happen here; the controls inside then have the
+            // full composer width to wrap into.
+            ...(isMobile && controlsMenuOpen ? { gridColumn: "1 / -1" } : null),
           }}>
-            {isMobile && (
+            {/* Not rendered while open, rather than left in place at
+                visibility: hidden. The controls now occupy their own row, so an
+                invisible full-width placeholder would just reserve a gap; the
+                close button inside the row is what dismisses it. */}
+            {isMobile && !controlsMenuOpen && (
               <button
                 type="button"
-                 title={controlsMenuOpen ? undefined : t("chat.moreControls")}
+                 title={t("chat.moreControls")}
                  aria-label={t("chat.moreControls")}
-                aria-expanded={controlsMenuOpen}
-                aria-hidden={controlsMenuOpen || undefined}
-                tabIndex={controlsMenuOpen ? -1 : undefined}
+                aria-expanded={false}
                 onClick={() => {
                   setModelDropdownOpen(false);
                   setModelFilter("");
                   setControlsMenuOpen(true);
                 }}
-                // pointerEvents: none while the menu is open already prevents any
-                // hover, so the controlsMenuOpen guards were redundant.
                 className="ui-btn"
                 style={{
                   width: "100%",
@@ -2186,32 +2205,37 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   borderRadius: "var(--r-md)",
                   fontSize: "var(--fs-meta)",
                   fontWeight: 500,
-                  visibility: controlsMenuOpen ? "hidden" : "visible",
-                  pointerEvents: controlsMenuOpen ? "none" : "auto",
                 }}
               >
                 {t("chat.moreControls")}
               </button>
             )}
+            {/* Open on mobile, this flows in its own full-width row and wraps.
+                It used to be absolutely positioned at `right: 0` with
+                `width: max-content`, `maxWidth: calc(100vw - 32px)`,
+                `flexWrap: nowrap` and no `overflow` — and the contents cannot
+                shrink to fit: .ui-btn sets `white-space: nowrap` so a labelled
+                control's min-content is its whole label, and .ui-btn--icon pins
+                44px with `flex-shrink: 0`. Sound, Telegram and the close button
+                alone were 124px of immovable width before any label. Measured
+                against the 328px available on a 360px phone, the open row came to
+                roughly 406px, and the excess was unreachable: it could neither
+                wrap nor scroll. Flowing and wrapping removes the arithmetic
+                entirely, and it no longer covers the model selector it is used to
+                configure. */}
             <div style={{
               display: isMobile ? (controlsMenuOpen ? "flex" : "none") : "flex",
               alignItems: "center",
-              gap: isMobile ? 1 : 2,
+              gap: isMobile ? 4 : 2,
               ...(isMobile ? {
-                position: "absolute",
-                right: 0,
-                bottom: 0,
-                zIndex: 60,
-                padding: 1,
-                width: "max-content",
-                maxWidth: "calc(100vw - 32px)",
-                flexWrap: "nowrap",
+                flexWrap: "wrap",
                 justifyContent: "flex-end",
+                rowGap: 4,
+                width: "100%",
+                padding: 4,
                 border: "1px solid color-mix(in srgb, var(--border) 72%, transparent)",
                 borderRadius: 10,
-                background: "color-mix(in srgb, var(--bg-panel) 92%, var(--bg))",
-                boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
-                backdropFilter: "blur(10px)",
+                background: "var(--bg-subtle)",
               } : null),
             }}>
             {/* Provider routing — only rendered for OpenRouter models, where the

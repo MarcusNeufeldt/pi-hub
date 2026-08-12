@@ -480,6 +480,18 @@ export function AppShell() {
   const sessionStats = focusedRuntime.sessionStats;
   const [autoNameStatus, setAutoNameStatus] = useState<AutoNameStatus>({ kind: "idle" });
   const autoNameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Sessions with a title request in flight, by id.
+   *
+   * `autoNameStatus` cannot answer "is work running": it is display state for the
+   * focused session and gets reset to idle on every session switch, while the
+   * request keeps going server-side. Switching away and back therefore left an
+   * idle-looking button that would happily start a second generation for a
+   * session already being titled — two model calls, last write winning. Tracking
+   * the work separately also lets the spinner come back when you return to a
+   * session that is still generating.
+   */
+  const autoNamingIdsRef = useRef<Set<string>>(new Set());
   const activeSessionIdRef = useRef<string | null>(selectedSession?.id ?? null);
   activeSessionIdRef.current = selectedSession?.id ?? null;
   const handleSessionStatsChange = useCallback((paneId: string, stats: SessionStatsInfo | null) => {
@@ -768,8 +780,11 @@ export function AppShell() {
 
   const handleAutoName = useCallback(async () => {
     const sessionId = selectedSession?.id;
-    if (!sessionId || autoNameStatus.kind === "naming") return;
+    // Guarded on the in-flight set rather than on the visible status, which a
+    // session switch clears out from under a request that is still running.
+    if (!sessionId || autoNamingIdsRef.current.has(sessionId)) return;
     if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
+    autoNamingIdsRef.current.add(sessionId);
     setActiveTopPanel(null);
     setAutoNameStatus({ kind: "naming" });
 
@@ -798,12 +813,21 @@ export function AppShell() {
       const message = error instanceof Error ? error.message : String(error);
       setAutoNameStatus({ kind: "error", message });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 5000);
+    } finally {
+      // Runs for the early returns above too, so a request that finished while
+      // another session was focused still releases its slot.
+      autoNamingIdsRef.current.delete(sessionId);
     }
-  }, [autoNameStatus.kind, selectedSession?.id, setSelectedSession, updateFocusedRuntime]);
+  }, [selectedSession?.id, setSelectedSession, updateFocusedRuntime]);
 
   useEffect(() => {
     if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
-    setAutoNameStatus({ kind: "idle" });
+    const sessionId = selectedSession?.id;
+    // Returning to a session that is still generating shows the spinner again
+    // instead of an idle button that invites a duplicate request.
+    setAutoNameStatus(sessionId && autoNamingIdsRef.current.has(sessionId)
+      ? { kind: "naming" }
+      : { kind: "idle" });
   }, [selectedSession?.id]);
 
   const handleSessionForked = useCallback((paneId: string, newSessionId: string) => {

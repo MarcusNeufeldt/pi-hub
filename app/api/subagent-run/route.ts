@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import {
   buildSubagentRunView,
@@ -35,7 +35,13 @@ export async function GET(req: NextRequest) {
 
     if (dir) {
       const resolved = resolve(dir);
-      const allowedRoot = resolve(join(tmpdir(), "pi-subagents-user-marcu", "async-subagent-runs"));
+      // The dispatcher that writes these runs lives outside this repo and names
+      // the directory after the OS user, so derive it the same way rather than
+      // hardcoding one machine's username — a hardcoded name 403s every run for
+      // anyone else.
+      const allowedRoot = resolve(
+        join(tmpdir(), `pi-subagents-user-${userInfo().username}`, "async-subagent-runs"),
+      );
       if (!resolved.startsWith(allowedRoot + "\\") && !resolved.startsWith(allowedRoot + "/")) {
         return NextResponse.json({ error: "forbidden" }, { status: 403 });
       }

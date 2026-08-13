@@ -11,7 +11,7 @@ function session(overrides) {
   return {
     id: "session-1",
     name: undefined,
-    path: "C:\\Users\\marcu\\.pi\\agent\\sessions\\project\\session.jsonl",
+    path: "C:\\Users\\dev\\.pi\\agent\\sessions\\project\\session.jsonl",
     firstMessage: "Build the feature",
     messageCount: 4,
     modified: "2026-08-09T10:00:00.000Z",

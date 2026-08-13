@@ -1,6 +1,6 @@
 # Incident: A Turn Wedged for 90 Minutes on an Unanswered MCP Call
 
-**Date:** 2026-08-12 · **Session:** `019ff6ce-319a-7123-a131-38ef63a157ea` ·
+**Date:** 2026-08-12 · **Session:** `<redacted>` ·
 **Duration:** ~90 min from stall to recovery · **Resolution:** full server restart
 
 A turn stopped making progress and could not be recovered from inside the app. The

@@ -9,6 +9,18 @@ try {
   piVersion = (JSON.parse(readFileSync(piPkgPath, "utf8")) as { version: string }).version;
 } catch { /* package not found, use default */ }
 
+// Extra dev origins for whichever machine this checkout runs on, comma-separated:
+//
+//   PI_WEB_DEV_ORIGINS=vita.example-tailnet.ts.net,other-host.local
+//
+// Kept in .env.local rather than here because a tailnet hostname names a private
+// network, and this file is public. Next calls loadEnvConfig() before it reads
+// this config (server/config.js), so .env.local is already applied.
+const extraDevOrigins = (process.env.PI_WEB_DEV_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const nextConfig: NextConfig = {
   // `next build` type-checks the whole project and halts on the first error, and
   // this tree carries 25 pre-existing ones — about half a single pattern in
@@ -37,14 +49,19 @@ const nextConfig: NextConfig = {
   // 0.0.0.0 (needed to reach it from a phone) stops Next from inferring its own
   // origin, so every host looks cross-origin and HMR silently stops working.
   // 192.168.*.* does not cover Tailscale's 100.x range.
+  //
+  // Patterns match label by label (server/app-render/csrf-protection.ts): '*'
+  // consumes exactly one whole label, and a partial-label glob like 'tail*' is
+  // compared literally, so it can never match. '*.ts.net' therefore covers
+  // host.ts.net but NOT machine.tailnet.ts.net — a two-label tailnet host has to
+  // be named in full, which is what PI_WEB_DEV_ORIGINS is for.
   allowedDevOrigins: [
     'localhost',
     '127.0.0.1',
     '192.168.*.*',
     '100.*.*.*',
-    '*.tail*.ts.net',
     '*.ts.net',
-    'vita.tail914baa.ts.net',
+    ...extraDevOrigins,
   ],
   async headers() {
     return [

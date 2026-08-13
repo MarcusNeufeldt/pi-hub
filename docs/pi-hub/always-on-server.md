@@ -49,7 +49,7 @@ if ($held) { taskkill /PID $held.OwningProcess /F }   # the step that frees the 
 schtasks /run /tn "pi-hub server"
 ```
 
-`C:\Users\marcu\pi-web\deploy.ps1` does exactly this with error handling — it builds
+`%USERPROFILE%\pi-web\deploy.ps1` does exactly this with error handling — it builds
 first, so a failed build leaves the running server untouched on the previous build,
 and it health-checks afterwards. The "Rebuild Pi Hub" desktop shortcut runs it.
 Keep it separate from the "Pi Hub" launcher shortcut, which only opens the UI.

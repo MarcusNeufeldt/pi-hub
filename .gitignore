@@ -11,3 +11,7 @@ tsconfig.tsbuildinfo
 # silently lost whenever the server is started by a different parent process.
 .env*.local
 .env
+# Subagent run artifacts: inputs, outputs and full transcripts of delegated runs.
+# Local scratch, and it holds whatever those runs discussed, so it must never be
+# committed to a public repo.
+.pi-subagents/

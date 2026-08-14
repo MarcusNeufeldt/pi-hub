@@ -115,19 +115,32 @@ an `openrouter` entry (never print its contents; it holds live secrets).
 ## 4. Install the recommended pi extensions
 
 Extensions are pi packages, installed with `pi install` and recorded in the
-`packages` array of `~/.pi/agent/settings.json`. Both of these are strongly
+`packages` array of `~/.pi/agent/settings.json`. All three below are strongly
 recommended: they are what turn pi from a single-file assistant into something
-that can use your tools and delegate work.
+that can use your tools, reach the web, and delegate work.
 
 ```bash
 pi install pi-mcp-adapter
 pi install pi-subagents
+pi install pi-web-access
 ```
 
 | Package | What it gives you |
 | --- | --- |
 | `pi-mcp-adapter` | MCP (Model Context Protocol) adapter — exposes MCP servers to pi as tools |
 | `pi-subagents` | Single-agent delegation and scripted multi-agent workflows |
+| `pi-web-access` | Web search, URL fetching, PDF extraction, video understanding. **No API key required** — Exa provides zero-config search. Optional provider keys go in `~/.pi/web-search.json`. |
+
+### Optional: persistent memory
+
+```bash
+pi install pi-hermes-memory
+```
+
+Gives pi memory that survives across sessions, plus secret scanning. It also
+ships session-search tools, which overlap Pi Hub's built-in search — hermes
+searches from inside a pi conversation, Pi Hub's modal searches your whole
+history from the UI. Install it for the memory, not for search.
 
 **Verify:**
 

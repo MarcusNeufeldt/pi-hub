@@ -68,20 +68,28 @@ pi auth check --provider openrouter    # prints: ready
 
 ## Recommended pi extensions
 
-Extensions are pi packages. These two are what turn pi from a single assistant
-into something that can drive your tools and delegate work — install both unless
-you have a reason not to:
+Extensions are pi packages. These three are what turn pi from a single assistant
+into something that can drive your tools, reach the web, and delegate work —
+install all three unless you have a reason not to:
 
 ```bash
 pi install pi-mcp-adapter
 pi install pi-subagents
-pi list                    # both should appear under "User packages:"
+pi install pi-web-access
+pi list                    # all three should appear under "User packages:"
 ```
 
 | Package | What it gives you |
 | --- | --- |
 | **`pi-mcp-adapter`** | MCP (Model Context Protocol) adapter — exposes your MCP servers to pi as tools. Server definitions live in `~/.pi/agent/mcp.json`; the adapter bridges them, it does not supply any. |
 | **`pi-subagents`** | Single-agent delegation and scripted multi-agent workflows, so a session can hand work to child agents. |
+| **`pi-web-access`** | Web search, URL fetching, PDF extraction, and video understanding. Works with **no API key** — Exa provides zero-config search — so there is nothing to sign up for. Add keys in `~/.pi/web-search.json` only if you want specific providers. |
+
+**Optional: `pi install pi-hermes-memory`** — persistent memory across sessions,
+plus secret scanning. Worth knowing that its session-search tools overlap Pi
+Hub's built-in search: hermes gives *pi* search tools inside a conversation,
+while Pi Hub's search is the UI modal over your whole session history. Useful
+together, but you do not need it for search alone.
 
 Add `-l` to scope an install to the current project instead of globally, and run
 `pi config` to enable or disable individual resources a package provides. The

@@ -620,16 +620,19 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       window.localStorage.setItem(DEEPSEEK_REMINDER_KEY, today);
     } catch { /* nothing to do if storage is unavailable */ }
 
+    // Both helpers default to the browser's resolved zone; passing the state's
+    // zone to both keeps the windows and the boundary in the same frame.
     const state = pricingStateAt(now);
-    const windows = peakWindowsLocal(now);
+    const windows = peakWindowsLocal(now, state.timeZone);
+    const zone = state.timeZone;
     addNotice({
       id: "deepseek-pricing",
       type: state.inEffect && state.isPeak ? "warning" : "info",
       message: !state.inEffect
-        ? t("deepseek.pricingUpcoming", { windows })
+        ? t("deepseek.pricingUpcoming", { windows, zone })
         : state.isPeak
-          ? t("deepseek.pricingPeak", { until: state.changesAtLocal, windows })
-          : t("deepseek.pricingOffPeak", { until: state.changesAtLocal, windows }),
+          ? t("deepseek.pricingPeak", { until: state.changesAtLocal, windows, zone })
+          : t("deepseek.pricingOffPeak", { until: state.changesAtLocal, windows, zone }),
     });
   }, [displayModelValue, addNotice, t]);
 

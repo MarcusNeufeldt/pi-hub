@@ -78,34 +78,69 @@ export function shouldRemind(lastShownDayKey: string | null, at: Date): boolean 
   return localDayKey(at) !== lastShownDayKey;
 }
 
+/**
+ * The viewer's IANA zone, e.g. "Europe/Berlin". Named in the reminder because
+ * DeepSeek published the windows in UTC, so a bare "08:00–12:00" invites being
+ * read as UTC by exactly the person who most needs it converted.
+ */
+export function resolvedTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+/*
+ * Formatting goes through Intl with an explicit timeZone rather than Date's
+ * local getters. Both convert correctly, but only this form can be tested for a
+ * zone other than the host's: Node on Windows ignores the TZ environment
+ * variable for anything but UTC, so a getHours()-based implementation is
+ * effectively untestable here — which is how a format-only assertion ended up
+ * passing without proving any conversion happened.
+ */
+function formatHourMinute(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone,
+  }).format(at);
+}
+
 export interface PricingState {
   /** False before the announced start, when nothing has changed yet. */
   inEffect: boolean;
   isPeak: boolean;
-  /** Local HH:MM at which the current state ends. */
+  /** HH:MM in `timeZone` at which the current state ends. */
   changesAtLocal: string;
+  /** The zone the times above are expressed in. */
+  timeZone: string;
 }
 
-export function pricingStateAt(at: Date): PricingState {
-  const boundary = nextBoundaryAt(at);
+export function pricingStateAt(at: Date, timeZone = resolvedTimeZone()): PricingState {
   return {
     inEffect: at.getTime() >= PRICING_EFFECTIVE_AT_MS,
     isPeak: isPeakAt(at),
-    changesAtLocal: `${String(boundary.getHours()).padStart(2, "0")}:${String(boundary.getMinutes()).padStart(2, "0")}`,
+    changesAtLocal: formatHourMinute(nextBoundaryAt(at), timeZone),
+    timeZone,
   };
 }
 
-/** Peak windows rendered in the viewer's own timezone, e.g. "03:00–06:00, 08:00–12:00". */
-export function peakWindowsLocal(at: Date): string {
-  const reference = new Date(at);
-  reference.setUTCMinutes(0, 0, 0);
-  const spans = PEAK_WINDOWS_UTC.map(([start, end]) => {
-    const from = new Date(reference);
+/**
+ * Peak windows in the viewer's zone, e.g. "03:00–06:00, 08:00–12:00" for Berlin.
+ *
+ * `at` supplies the date, which matters: the same UTC window lands on different
+ * local hours either side of a DST transition.
+ */
+export function peakWindowsLocal(at: Date, timeZone = resolvedTimeZone()): string {
+  const onTheHour = new Date(at);
+  onTheHour.setUTCMinutes(0, 0, 0);
+  return PEAK_WINDOWS_UTC.map(([start, end]) => {
+    const from = new Date(onTheHour);
     from.setUTCHours(start);
-    const to = new Date(reference);
+    const to = new Date(onTheHour);
     to.setUTCHours(end);
-    const fmt = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    return `${fmt(from)}–${fmt(to)}`;
-  });
-  return spans.join(", ");
+    return `${formatHourMinute(from, timeZone)}–${formatHourMinute(to, timeZone)}`;
+  }).join(", ");
 }

@@ -5,6 +5,12 @@ import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecuti
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { formatDuration, getAssistantErrorMessage, getDisplayableAssistantBlocks, modelDisplayLabel, splitFinalAssistantBlocks, summarizeProcess, type ProcessSummary } from "@/lib/message-display";
+import { isDeepSeekModel, localDayKey, peakWindowsLocal, pricingStateAt, shouldRemind } from "@/lib/deepseek-pricing";
+
+/** Persistent once-a-day gate for the DeepSeek pricing reminder. */
+const DEEPSEEK_REMINDER_KEY = "pi-deepseek-pricing-reminder";
+/** Same gate for this page load, shared across the ChatWindow each pane mounts. */
+let deepSeekReminderDay: string | null = null;
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
@@ -234,7 +240,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     loading, error, messages, entryIds, streamState,
     agentRunning, aborting, handleForceReset, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
-    isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats,
+    isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats, addNotice,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
@@ -579,6 +585,53 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     scrollUserMsgToTop,
     streamState.streamingMessage,
   ]);
+
+  /*
+   * Remind once a day that DeepSeek bills on a clock.
+   *
+   * pi's cost model has no time-varying rate, so the cost readout is wrong for
+   * part of every day on these models and a toast is the honest substitute.
+   *
+   * The localStorage key is the persistent gate; the module-level day key is a
+   * second gate for this page load, because every pane mounts its own ChatWindow
+   * and all of them would otherwise read "not shown yet" before any of them
+   * writes. Keying that guard on the day rather than a boolean keeps a tab left
+   * open across midnight working.
+   */
+  useEffect(() => {
+    if (!isDeepSeekModel(displayModelValue)) return;
+    const now = new Date();
+    const today = localDayKey(now);
+    if (deepSeekReminderDay === today) return;
+
+    let lastShown: string | null = null;
+    try {
+      lastShown = window.localStorage.getItem(DEEPSEEK_REMINDER_KEY);
+    } catch {
+      // Private mode or blocked storage: fall through and remind once per load.
+    }
+    if (!shouldRemind(lastShown, now)) {
+      deepSeekReminderDay = today;
+      return;
+    }
+
+    deepSeekReminderDay = today;
+    try {
+      window.localStorage.setItem(DEEPSEEK_REMINDER_KEY, today);
+    } catch { /* nothing to do if storage is unavailable */ }
+
+    const state = pricingStateAt(now);
+    const windows = peakWindowsLocal(now);
+    addNotice({
+      id: "deepseek-pricing",
+      type: state.inEffect && state.isPeak ? "warning" : "info",
+      message: !state.inEffect
+        ? t("deepseek.pricingUpcoming", { windows })
+        : state.isPeak
+          ? t("deepseek.pricingPeak", { until: state.changesAtLocal, windows })
+          : t("deepseek.pricingOffPeak", { until: state.changesAtLocal, windows }),
+    });
+  }, [displayModelValue, addNotice, t]);
 
   const availableThinkingLevels = displayModelValue
     ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)

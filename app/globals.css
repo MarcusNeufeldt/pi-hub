@@ -3054,3 +3054,177 @@ span.linenumber {
     animation: none;
   }
 }
+
+/* ── Session search ───────────────────────────────────────────────────────────
+   Results are a single column of stacked buttons rather than a table: each row
+   has to stay one tap target on mobile, and the snippets are variable-height.
+   The copy-link control sits outside the open button so a link can be taken
+   without navigating away. */
+.session-search__head {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+.session-search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.session-search__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.session-search__ask {
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  white-space: nowrap;
+}
+
+.session-search__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-3);
+  list-style: none;
+  overflow-y: auto;
+}
+.session-search__item {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.session-search__open {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-panel);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.session-search__open:hover {
+  background: var(--bg-hover);
+}
+.session-search__open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.session-search__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.session-search__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.session-search__badge {
+  flex: 0 0 auto;
+  padding: 1px var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--accent-fill);
+  color: var(--accent-on);
+  font-size: var(--fs-micro);
+}
+.session-search__source {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: var(--fs-micro);
+}
+.session-search__reason {
+  color: var(--accent);
+  font-size: var(--fs-meta);
+}
+.session-search__snippet {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  /* Two lines is enough to judge relevance without the row dominating. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.session-search__meta {
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+}
+.session-search__link {
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  align-self: center;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+}
+.session-search__empty {
+  padding: var(--sp-4);
+  color: var(--text-dim);
+  text-align: center;
+}
+.session-search__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  color: var(--text-dim);
+  font-size: var(--fs-micro);
+}
+.session-search__error {
+  color: var(--danger, #d5534f);
+}
+
+@media (max-width: 640px) {
+  /* The copy control drops below the row so the session title keeps full width. */
+  .session-search__item {
+    flex-wrap: wrap;
+  }
+  .session-search__link {
+    align-self: stretch;
+    width: 100%;
+  }
+}
+
+/* Shown when the ranking model is not configured. Deliberately a notice rather
+   than an error: name and content search still work without it. */
+.session-search__notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-3) var(--sp-3) 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+.session-search__notice-title {
+  color: var(--text);
+}
+.session-search__notice-action {
+  align-self: flex-start;
+  min-height: var(--tap);
+}

@@ -26,6 +26,7 @@ import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { TasksConfig } from "./TasksConfig";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
+import { SessionSearchModal } from "./SessionSearchModal";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
@@ -210,12 +211,27 @@ export function AppShell() {
     () => initialNavigation.requestedCwd ? "validating" : "idle",
   );
   const [initialCwdError, setInitialCwdError] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   // Each pane carries its own remount key, read at its render site; only the
   // setter is needed here, for the session-switch paths that force a remount.
   const setSessionKey = useCallback((next: StateUpdate<number>) => {
     updateFocusedPane((pane) => ({ ...pane, remountKey: applyStateUpdate(next, pane.remountKey) }));
   }, [updateFocusedPane]);
+
+  // Ctrl/Cmd+K opens session search. Registered on the window rather than a
+  // container so it works regardless of focus, including from inside the
+  // composer — the chord is not otherwise bound anywhere in the app.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "k" || !(event.metaKey || event.ctrlKey)) return;
+      if (event.altKey || event.shiftKey || event.repeat) return;
+      event.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Each pane reports its own stats, context usage, subagents and diffs; the
   // chrome around the panes reads whichever pane has focus.
@@ -1316,6 +1332,16 @@ export function AppShell() {
           </button>
           <button
             className="ui-btn ui-btn--bar ui-btn--quiet"
+            onClick={() => setSearchOpen(true)}
+            title={translate("search.open")}
+            aria-label={translate("search.open")}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" /><line x1="16.5" y1="16.5" x2="21" y2="21" />
+            </svg>
+          </button>
+          <button
+            className="ui-btn ui-btn--bar ui-btn--quiet"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               toggleTheme({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
@@ -2149,6 +2175,12 @@ export function AppShell() {
       </svg>
     </button>
     {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
+    <SessionSearchModal
+      open={searchOpen}
+      onClose={() => setSearchOpen(false)}
+      onSelectSession={handleSelectSession}
+      onOpenModels={() => setModelsConfigOpen(true)}
+    />
     {projectTrustDialogOpen && projectTrustCwd && (
       <ProjectTrustDialog
         cwd={projectTrustCwd}

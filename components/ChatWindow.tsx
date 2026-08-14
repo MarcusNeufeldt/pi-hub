@@ -240,7 +240,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     loading, error, messages, entryIds, streamState,
     agentRunning, aborting, handleForceReset, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
-    isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats, addNotice,
+    isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats, addNotice, dismissNotice,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
@@ -627,6 +627,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     const zone = state.timeZone;
     addNotice({
       id: "deepseek-pricing",
+      sticky: true,
       type: state.inEffect && state.isPeak ? "warning" : "info",
       message: !state.inEffect
         ? t("deepseek.pricingUpcoming", { windows, zone })
@@ -804,7 +805,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 </span>
               </div>
             </div>
-            <NoticeShelf notices={notices} align="right" />
+            <NoticeShelf notices={notices} align="right" onDismiss={dismissNotice} dismissLabel={t("notice.dismiss")} />
             {chatInputElement}
           </div>
         </div>
@@ -900,7 +901,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
           }}
         >
           <div style={{ maxWidth: 820, margin: "0 auto" }}>
-            <NoticeShelf notices={notices} floating align="right" />
+            <NoticeShelf notices={notices} floating align="right" onDismiss={dismissNotice} dismissLabel={t("notice.dismiss")} />
           </div>
         </div>
         {/* Scoped to the message list, so selecting in the composer, the file
@@ -1214,7 +1215,13 @@ function ExtensionWidgets({ widgets }: { widgets: Array<{ key: string; lines: st
   );
 }
 
-function NoticeShelf({ notices, floating = false, align = "left" }: { notices: NoticeItem[]; floating?: boolean; align?: "left" | "right" }) {
+function NoticeShelf({ notices, floating = false, align = "left", onDismiss, dismissLabel }: {
+  notices: NoticeItem[];
+  floating?: boolean;
+  align?: "left" | "right";
+  onDismiss?: (id: string) => void;
+  dismissLabel?: string;
+}) {
   if (notices.length === 0) return null;
   return (
     <div
@@ -1239,11 +1246,12 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
             className="notice-shelf-item"
             style={{
               display: "flex",
-              alignItems: "center",
+              // A sticky notice carries text worth reading, so it sizes to its
+              // content instead of the one-line 60px box transient notices use.
+              alignItems: notice.sticky ? "flex-start" : "center",
               gap: 10,
               minHeight: 60,
-              height: 60,
-              maxHeight: 60,
+              ...(notice.sticky ? null : { height: 60, maxHeight: 60 }),
               marginBottom: index === notices.length - 1 ? 0 : 6,
               overflow: "hidden",
               borderRadius: 14,
@@ -1271,11 +1279,30 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
                 borderRadius: "50%",
                 background: color,
                 flexShrink: 0,
+                marginTop: notice.sticky ? 21 : 0,
               }}
             />
-            <span style={{ padding: "14px 0", minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span
+              style={notice.sticky
+                ? { padding: "14px 0", minWidth: 0, maxWidth: "100%", whiteSpace: "normal", wordBreak: "break-word" }
+                : { padding: "14px 0", minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
               {notice.message}
             </span>
+            {notice.sticky && onDismiss ? (
+              <button
+                type="button"
+                className="ui-btn ui-btn--icon ui-btn--dim"
+                onClick={() => onDismiss(notice.id)}
+                title={dismissLabel}
+                aria-label={dismissLabel}
+                style={{ flexShrink: 0, alignSelf: "center", marginRight: -4 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
+                </svg>
+              </button>
+            ) : null}
           </div>
         );
       })}

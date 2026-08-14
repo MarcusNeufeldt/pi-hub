@@ -660,6 +660,7 @@ export const enLocale: LocalePlugin = {
     "task.retry.interval": "Retry interval (minutes)",
     "task.retry.maxAttempts": "Max attempts",
     "task.retry.hint": "When a run fails with a rate-limit/quota error, automatically retry after the interval, up to the max attempts.",
+    "notice.dismiss": "Dismiss",
     "deepseek.pricingUpcoming": "From 16 Aug, DeepSeek’s API charges 2x during {windows} ({zone}).",
     "deepseek.pricingPeak": "DeepSeek API peak pricing until {until} ({zone}) — 2x off-peak rates.",
     "deepseek.pricingOffPeak": "DeepSeek API off-peak until {until} ({zone}). Peak hours {windows} cost 2x.",

@@ -660,6 +660,7 @@ export const zhCNLocale: LocalePlugin = {
     "task.retry.interval": "重试间隔（分钟）",
     "task.retry.maxAttempts": "最大尝试次数",
     "task.retry.hint": "当执行因配额/限额错误失败时，按间隔自动顺延重试，最多重试指定次数。",
+    "notice.dismiss": "关闭",
     "deepseek.pricingUpcoming": "8 月 16 日起，DeepSeek API 在 {windows}（{zone}）期间按 2 倍计费。",
     "deepseek.pricingPeak": "DeepSeek API 高峰计价，持续至 {until}（{zone}）——为非高峰的 2 倍。",
     "deepseek.pricingOffPeak": "DeepSeek API 非高峰计价，持续至 {until}（{zone}）。高峰时段 {windows} 为 2 倍。",

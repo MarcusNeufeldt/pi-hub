@@ -101,6 +101,13 @@ export type NoticeItem = {
   message: string;
   type: NoticeType;
   exiting?: boolean;
+  /**
+   * Stays until dismissed instead of expiring after NOTICE_VISIBLE_MS, and is
+   * allowed to wrap. The default shelf item is one ellipsised line 60px tall,
+   * which is right for "Command failed" and useless for anything a reader has
+   * to actually take in.
+   */
+  sticky?: boolean;
 };
 
 type NoticeState = {
@@ -245,8 +252,13 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Sticky notices are skipped: a shelf at capacity should evict something
+ * transient rather than the one message that was meant to persist. If every
+ * visible notice is sticky, nothing is evicted and new ones queue in `pending`.
+ */
 function markOldestNoticeExiting(notices: NoticeItem[]): NoticeItem[] {
-  const index = notices.findIndex((notice) => !notice.exiting);
+  const index = notices.findIndex((notice) => !notice.exiting && !notice.sticky);
   if (index === -1) return notices;
   return notices.map((notice, i) => (
     i === index ? { ...notice, exiting: true } : notice
@@ -1436,7 +1448,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, []);
 
-  const addNotice = useCallback((notice: { id?: string; message: string; type?: NoticeType }) => {
+  const addNotice = useCallback((notice: {
+    id?: string;
+    message: string;
+    type?: NoticeType;
+    sticky?: boolean;
+  }) => {
     const message = notice.message.trim();
     if (!message) return;
     dispatchNotice({
@@ -1445,8 +1462,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         id: notice.id ?? createNoticeId(),
         message,
         type: notice.type ?? "info",
+        ...(notice.sticky ? { sticky: true } : {}),
       },
     });
+  }, []);
+
+  /** Dismiss a notice now, which is the only way a sticky one goes away. */
+  const dismissNotice = useCallback((id: string) => {
+    dispatchNotice({ type: "remove", id });
   }, []);
 
   const handleExtensionUiRequest = useCallback((request: ExtensionUiRequest) => {
@@ -2890,7 +2913,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }, NOTICE_EXIT_ANIMATION_MS);
       return () => clearTimeout(t);
     }
-    const oldest = noticeState.visible[0];
+    // Time out the oldest *transient* notice. Reading visible[0] would stall the
+    // whole queue behind a sticky one, since it never expires on its own.
+    const oldest = noticeState.visible.find((notice) => !notice.sticky);
     if (!oldest) return;
     const t = setTimeout(() => {
       dispatchNotice({ type: "mark_oldest_exiting" });
@@ -2909,7 +2934,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices: noticeState.visible, addNotice, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
+    notices: noticeState.visible, addNotice, dismissNotice, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
     aborting,

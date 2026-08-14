@@ -29,22 +29,7 @@ npm run dev
 
 Then open [http://127.0.0.1:30141](http://127.0.0.1:30141). Pi Hub listens on `127.0.0.1` by default.
 
-That gets the UI running. To make it actually useful you also want a model
-provider and two extensions — the four commands below, explained with
-verification steps in [docs/agent-setup.md](./docs/agent-setup.md):
-
-```bash
-npm install -g @earendil-works/pi-coding-agent   # the pi CLI itself
-pi install pi-mcp-adapter                        # MCP servers as pi tools
-pi install pi-subagents                          # delegation and multi-agent workflows
-pi auth check --provider openrouter              # verify a provider is connected
-```
-
-**An OpenRouter key is strongly recommended.** One key reaches hundreds of
-models, pi's catalog already carries its model list so nothing needs defining by
-hand, and session search's model-assisted picking requires it. Add it under
-**Models → OpenRouter → API key** in the UI, or from the CLI. Get one at
-[openrouter.ai/keys](https://openrouter.ai/keys).
+That gets the UI running. The three sections below are what make it useful.
 
 For a long-running instance, build first and serve the build:
 
@@ -53,20 +38,82 @@ npx next build   # not `npm run build` — see docs/agent-setup.md
 npm start
 ```
 
-**Options:**
+## The pi CLI
+
+Pi Hub bundles the pi SDK, so the UI runs without a global pi install. You still
+want the CLI: it is how extensions get installed, and it is pi in a terminal.
 
 ```bash
-pi-web --port 8080              # custom port
-pi-web --hostname 0.0.0.0       # expose on a trusted network
-pi-web -p 8080 -H 0.0.0.0       # combine options
-pi-web --no-open                # do not open the browser automatically
-
-PORT=8080 pi-web                # environment variable is also supported
-PI_WEB_HOSTNAME=0.0.0.0 pi-web  # explicit network exposure
-PI_WEB_ALLOWED_HOSTS=pi-web.internal pi-web  # allow an exact proxy/custom hostname
-PI_WEB_PASSWORD='a-long-random-password' pi-web  # require Basic Auth (username: pi)
-PI_WEB_NO_OPEN=1 pi-web         # useful when running as a background service
+npm install -g @earendil-works/pi-coding-agent
+pi --version    # expect 0.84.1 or newer
 ```
+
+## Model provider — OpenRouter strongly recommended
+
+Pi Hub does nothing useful without at least one provider, and **OpenRouter is the
+recommended starting point**:
+
+- One key reaches hundreds of models instead of signing up per vendor.
+- Pi's remote catalog already carries OpenRouter's model list, so models show up
+  in the picker with nothing to define by hand.
+- **Session search's model-assisted picking requires it** — without it, search
+  still matches names and content, but the "Ask the model" step is disabled.
+
+Get a key at [openrouter.ai/keys](https://openrouter.ai/keys), then add it under
+**Models → OpenRouter → API key** in the UI (easiest), or from the CLI. Verify:
+
+```bash
+pi auth check --provider openrouter    # prints: ready
+```
+
+## Recommended pi extensions
+
+Extensions are pi packages. These two are what turn pi from a single assistant
+into something that can drive your tools and delegate work — install both unless
+you have a reason not to:
+
+```bash
+pi install pi-mcp-adapter
+pi install pi-subagents
+pi list                    # both should appear under "User packages:"
+```
+
+| Package | What it gives you |
+| --- | --- |
+| **`pi-mcp-adapter`** | MCP (Model Context Protocol) adapter — exposes your MCP servers to pi as tools. Server definitions live in `~/.pi/agent/mcp.json`; the adapter bridges them, it does not supply any. |
+| **`pi-subagents`** | Single-agent delegation and scripted multi-agent workflows, so a session can hand work to child agents. |
+
+Add `-l` to scope an install to the current project instead of globally, and run
+`pi config` to enable or disable individual resources a package provides. The
+**Plugins** panel in the UI performs the same install / remove / update / enable /
+disable operations.
+
+## Options
+
+From a clone, the launcher is `node bin/pi-web.js` — there is no global `pi-web`
+binary unless you install this package yourself. It serves the production build,
+so run `npx next build` first.
+
+```bash
+node bin/pi-web.js --port 8080         # custom port
+node bin/pi-web.js --hostname 0.0.0.0  # expose on a trusted network
+node bin/pi-web.js -p 8080 -H 0.0.0.0  # combine options
+node bin/pi-web.js --no-open           # do not open the browser automatically
+```
+
+The same settings can come from the environment, which is what a background
+service usually wants:
+
+```bash
+PORT=8080                                  # same as --port
+PI_WEB_HOSTNAME=0.0.0.0                    # same as --hostname
+PI_WEB_NO_OPEN=1                           # same as --no-open
+PI_WEB_ALLOWED_HOSTS=pi-hub.internal       # allow an exact proxy/custom hostname
+PI_WEB_PASSWORD='a-long-random-password'   # require Basic Auth (username: pi)
+```
+
+For development instead, `npm run dev` (127.0.0.1) and `npm run dev:lan`
+(0.0.0.0) are the shortcuts.
 
 Set `PI_WEB_PASSWORD` to protect the web interface and every API endpoint with HTTP Basic Auth. The username is always `pi`. Leaving the variable unset or empty disables authentication.
 
@@ -97,7 +144,11 @@ npx @agegr/pi-web@latest
 
 ## Features
 
+- **Find the session you half-remember**: search every conversation by name or content, then optionally have a cheap long-context model read the top candidates and say which one you meant. Ctrl/Cmd+K, or the magnifier in the top bar.
 - **Pick work back up**: browse previous pi conversations by project without digging through terminal history or session paths.
+- **Work in more than one session at once**: split the chat area into panes, each with its own session, model, and running state.
+- **Pin how OpenRouter routes**: choose which upstream providers may serve a model and whether to optimise for throughput or first token, from the composer.
+- **Run work on a schedule**: define tasks that start sessions unattended and review their runs from the sidebar.
 - **Try different directions safely**: continue from an earlier message or fork a session into a separate route.
 - **Work across branches**: switch Git worktrees from the sidebar so new sessions and the Explorer follow the checkout you choose.
 - **Chat beside the project**: browse files on the left and preview source, docs, images, audio, and PDFs on the right while the agent works.
@@ -107,6 +158,10 @@ npx @agegr/pi-web@latest
 
 ## Notes
 
+- **Local configuration**: put persistent env vars in `.env.local` at the repo root — it is gitignored and Next loads it for both `dev` and `start`. Env vars set only in a shell are lost whenever the server is started by a different parent process, which is the usual reason a setting "stops working" under a background service.
+- **Reaching the dev server by hostname**: `allowedDevOrigins` in `next.config.ts` governs who may fetch Next's dev resources. Wildcards match one label at a time, so `*.ts.net` does **not** cover `machine.tailnet.ts.net`; name such a host in full via `PI_WEB_DEV_ORIGINS` (comma-separated) in `.env.local`. Only affects `npm run dev`.
+- **Always-on server**: see [Always-on server](./docs/pi-hub/always-on-server.md) for running Pi Hub as a background service and the restart sequence a rebuild needs.
+- **Custom and OpenAI-compatible providers**: see [OpenAI-compatible providers](./docs/pi-hub/openai-compatible-providers.md) for adding your own endpoint, and for defining a model pi's catalog does not know yet.
 - **Data directory**: Pi Web reads `~/.pi/agent/sessions` by default. Set `PI_CODING_AGENT_DIR` to point at another pi agent directory.
 - **Session files**: files are stored as `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`.
 - **Model config**: the Models panel reads and writes `models.json` in the pi agent directory. Model lists and defaults come from pi's config.

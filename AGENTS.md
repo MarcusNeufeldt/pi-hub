@@ -1,4 +1,8 @@
-# Pi Web - Development Notes
+# Pi Hub - Development Notes
+
+**Setting up a fresh clone?** This file is about *changing* the code. For getting
+a working install — pi CLI, provider credentials, extensions, how to run and
+verify it — follow [docs/agent-setup.md](./docs/agent-setup.md) first.
 
 ## Quick Start
 
@@ -6,9 +10,22 @@
 npm run dev   # port 30141
 ```
 
-Typecheck: `node_modules/.bin/tsc --noEmit`  
-Lint: `npm run lint`  
+Typecheck: `node_modules/.bin/tsc --noEmit`
+Lint: `npm run lint`
+Test: `npm test` — runs all 111 test files. **6 failures are expected on
+Windows**: 5 in `lib/directory-browser.test.mjs` need elevation to create
+symlinks, and 1 in `modules/telegram/telegram-secret-store.test.mjs` asserts
+POSIX mode `0600` that NTFS reports as `0666`.
+
+Do not run `node --test` bare: its auto-discovery treats any file under a
+directory named `test/` as a test, which picks up `app/api/models-config/test/route.ts`
+and `app/api/integrations/telegram/test/route.ts` — both are API routes, not tests.
+`npm test` passes explicit globs for that reason.
+
 **Never run `next build` during dev** — pollutes `.next/` and breaks `npm run dev`.
+When you do need a build, use `npx next build`, not `npm run build`: the script
+passes `--webpack`, which on Windows walks into the `%USERPROFILE%\Application Data`
+junction and fails with `EPERM`.
 
 ---
 

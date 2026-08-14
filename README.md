@@ -1,8 +1,16 @@
-# Pi Web
+# Pi Hub
 
 [中文文档](./README.zh-CN.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
-Local web UI for the [pi coding agent](https://github.com/badlogic/pi-mono). Pi Web reads your local pi session files and gives you a browser workspace for session browsing, real-time chat, model configuration, skill management, and project file preview.
+Local web UI for the [pi coding agent](https://github.com/badlogic/pi-mono). Pi Hub reads your local pi session files and gives you a browser workspace for session browsing, real-time chat, model configuration, skill management, and project file preview.
+
+> **Setting this up with an agent?** Follow **[docs/agent-setup.md](./docs/agent-setup.md)** —
+> an ordered, verifiable checklist covering Node, the pi CLI, provider
+> credentials, the recommended extensions, and how to run and validate the
+> result. It is written to be executed top to bottom.
+>
+> This fork is **not published to npm**. Run it from a clone; the `npx` commands
+> in upstream's README install a different project.
 
 ![Pi Web shows the same pi session with structured Markdown, tool calls, and project navigation beside the CLI](https://raw.githubusercontent.com/agegr/pi-web/main/docs/screenshot2.png)
 
@@ -10,22 +18,40 @@ The same pi session in CLI and Pi Web: structured tool calls, readable Markdown,
 
 ## Quick Start
 
-Pi Web requires Node.js 22.19.0 or newer. Check your version with `node --version`.
-
-**Run without installing:**
+Requires **Node.js 22.19.0 or newer** (`node --version`).
 
 ```bash
-npx @agegr/pi-web@latest
+git clone https://github.com/MarcusNeufeldt/pi-hub.git
+cd pi-hub
+npm install
+npm run dev
 ```
 
-**Or install globally:**
+Then open [http://127.0.0.1:30141](http://127.0.0.1:30141). Pi Hub listens on `127.0.0.1` by default.
+
+That gets the UI running. To make it actually useful you also want a model
+provider and two extensions — the four commands below, explained with
+verification steps in [docs/agent-setup.md](./docs/agent-setup.md):
 
 ```bash
-npm install -g @agegr/pi-web
-pi-web
+npm install -g @earendil-works/pi-coding-agent   # the pi CLI itself
+pi install pi-mcp-adapter                        # MCP servers as pi tools
+pi install pi-subagents                          # delegation and multi-agent workflows
+pi auth check --provider openrouter              # verify a provider is connected
 ```
 
-Then open [http://127.0.0.1:30141](http://127.0.0.1:30141). The CLI will try to open the browser automatically after the server is ready. Pi Web listens on `127.0.0.1` by default.
+**An OpenRouter key is strongly recommended.** One key reaches hundreds of
+models, pi's catalog already carries its model list so nothing needs defining by
+hand, and session search's model-assisted picking requires it. Add it under
+**Models → OpenRouter → API key** in the UI, or from the CLI. Get one at
+[openrouter.ai/keys](https://openrouter.ai/keys).
+
+For a long-running instance, build first and serve the build:
+
+```bash
+npx next build   # not `npm run build` — see docs/agent-setup.md
+npm start
+```
 
 **Options:**
 

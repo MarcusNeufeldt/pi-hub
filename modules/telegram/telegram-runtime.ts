@@ -524,6 +524,12 @@ function classify(error: unknown): { code: string; message: string } {
     return { code: error.code, message: error.message };
   }
   // Defer to the bot-client classifier; token scrubbing happens there.
+  //
+  // Kept as require() rather than a static import: this function is synchronous
+  // so it cannot await import(), and a top-level import would pull grammY into
+  // every module that touches the runtime, including paths that never use
+  // Telegram. There is no cycle here — bot-client does not import this file.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { classifyGrammyError } = require("./telegram-bot-client") as typeof import("./telegram-bot-client");
   const e = classifyGrammyError(error, "");
   return { code: e.code, message: e.message };

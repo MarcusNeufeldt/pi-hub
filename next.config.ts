@@ -11,7 +11,7 @@ try {
 
 // Extra dev origins for whichever machine this checkout runs on, comma-separated:
 //
-//   PI_WEB_DEV_ORIGINS=vita.example-tailnet.ts.net,other-host.local
+//   PI_WEB_DEV_ORIGINS=machine.example-tailnet.ts.net,other-host.local
 //
 // Kept in .env.local rather than here because a tailnet hostname names a private
 // network, and this file is public. Next calls loadEnvConfig() before it reads

@@ -128,6 +128,49 @@ Set `PI_WEB_PASSWORD` to protect the web interface and every API endpoint with H
 Pi Web can invoke a high-privilege agent. Basic Auth does not encrypt the password in transit, so do not expose plain HTTP to the internet. Use HTTPS through a trusted reverse proxy or a trusted VPN for remote access.
 API requests accept loopback names, IP literals, the selected bind hostname, and exact comma-separated names in `PI_WEB_ALLOWED_HOSTS`. Configure that variable when a trusted reverse proxy uses a different external hostname.
 
+## Remote access over Tailscale
+
+Reaching Pi Hub from a phone or another machine on your tailnet. Three settings,
+and the first one is a security decision rather than a preference.
+
+**Bind to the tailnet address, not `0.0.0.0`.** Find it with `tailscale ip -4` —
+it is a `100.x.y.z` address — and bind to that:
+
+```bash
+PI_WEB_HOSTNAME=100.x.y.z    # reachable over the tailnet only
+```
+
+`-H 0.0.0.0` also works and is what the flags above describe, but it listens on
+*every* interface, including the physical LAN. Pi Hub can run a high-privilege
+agent, so anything that can route to that port has close to shell access on the
+machine. Binding the tailnet address limits reachability to devices in your
+tailnet; `0.0.0.0` does not.
+
+**Using the MagicDNS name instead of the IP? Allow it explicitly.** The API host
+gate accepts loopback names and IP literals automatically, but a DNS name is
+neither, so requests to `machine.tailnet.ts.net` are rejected until you name it:
+
+```bash
+PI_WEB_ALLOWED_HOSTS=machine.tailnet.ts.net
+```
+
+**Set a password.** Even on a tailnet, every device you have joined can reach it:
+
+```bash
+PI_WEB_PASSWORD='a-long-random-password'    # username is always: pi
+```
+
+Put these in `.env.local` rather than a shell, so a background service started by
+a different parent process still sees them.
+
+On the plain-HTTP warning above: traffic between tailnet nodes is encrypted by
+WireGuard, so Basic Auth inside a tailnet is not the exposed-to-the-internet case
+that warning is about. It becomes that case if you publish the port with
+Tailscale Funnel or a public reverse proxy — then terminate HTTPS properly.
+
+For the dev server only, `npm run dev` additionally needs the host named in
+`PI_WEB_DEV_ORIGINS` (see Notes); `npm start` does not.
+
 ## HTTP Proxy
 
 Pi Web reads the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables for server-side model and API requests.

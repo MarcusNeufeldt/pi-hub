@@ -3062,9 +3062,15 @@ span.linenumber {
    without navigating away. */
 .session-search__head {
   display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: 100%;
+  min-width: 0;
+}
+.session-search__query {
+  display: flex;
   gap: var(--sp-3);
   align-items: center;
-  width: 100%;
   min-width: 0;
 }
 .session-search__input {
@@ -3093,9 +3099,8 @@ span.linenumber {
   flex-direction: column;
   gap: var(--sp-2);
   margin: 0;
-  padding: var(--sp-3);
+  padding: 0;
   list-style: none;
-  overflow-y: auto;
 }
 .session-search__item {
   display: flex;
@@ -3212,7 +3217,7 @@ span.linenumber {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  margin: var(--sp-3) var(--sp-3) 0;
+  margin: 0 0 var(--sp-3);
   padding: var(--sp-3);
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent);

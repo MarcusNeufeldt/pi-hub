@@ -197,33 +197,42 @@ export function SessionSearchModal({
       description={t("search.description")}
       width={720}
       height="min(78vh, 640px)"
-      padded={false}
       head={(
-        <div className="session-search__head">
-          <input
-            ref={inputRef}
-            className="session-search__input"
-            type="search"
-            value={query}
-            placeholder={t("search.placeholder")}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void askModel();
-              }
-            }}
-            aria-label={t("search.placeholder")}
-          />
-          <button
-            type="button"
-            className="btn btn--accent session-search__ask"
-            onClick={() => void askModel()}
-            disabled={asking || !results.length || !query.trim() || !picker.available}
-            title={picker.available ? undefined : t("search.askDisabledHint")}
-          >
-            {asking ? t("search.asking") : t("search.ask")}
-          </button>
+        /* Reuses .ui-dialog__head so the panel keeps the shell's padding and
+           heading treatment; a bare div here loses both. */
+        <div className="ui-dialog__head">
+          <div className="session-search__head">
+            <div>
+              <h2 className="ui-dialog__title">{t("search.title")}</h2>
+              <p className="ui-dialog__desc">{t("search.description")}</p>
+            </div>
+            <div className="session-search__query">
+              <input
+                ref={inputRef}
+                className="session-search__input"
+                type="search"
+                value={query}
+                placeholder={t("search.placeholder")}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void askModel();
+                  }
+                }}
+                aria-label={t("search.placeholder")}
+              />
+              <button
+                type="button"
+                className="ui-btn ui-btn--primary session-search__ask"
+                onClick={() => void askModel()}
+                disabled={asking || !results.length || !query.trim() || !picker.available}
+                title={picker.available ? undefined : t("search.askDisabledHint")}
+              >
+                {asking ? t("search.asking") : t("search.ask")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       footer={(
@@ -251,7 +260,7 @@ export function SessionSearchModal({
           {onOpenModels ? (
             <button
               type="button"
-              className="btn btn--ghost session-search__notice-action"
+              className="ui-btn ui-btn--outline session-search__notice-action"
               onClick={() => {
                 onClose();
                 onOpenModels();
@@ -303,7 +312,7 @@ export function SessionSearchModal({
               </button>
               <button
                 type="button"
-                className="btn btn--ghost session-search__link"
+                className="ui-btn ui-btn--outline session-search__link"
                 onClick={() => void copyLink(result.session.id)}
                 title={link}
                 aria-label={t("search.copyLink")}
@@ -314,7 +323,9 @@ export function SessionSearchModal({
           );
         })}
         {!ordered.length && !searching ? (
-          <li className="session-search__empty">{t("search.noResults")}</li>
+          <li className="session-search__empty">
+            {query.trim().length < 2 ? t("search.typeToStart") : t("search.noResults")}
+          </li>
         ) : null}
       </ul>
     </Modal>

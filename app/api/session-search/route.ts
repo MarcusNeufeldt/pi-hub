@@ -125,7 +125,14 @@ export async function GET(req: Request) {
     );
   }
 
-  const scored = scoreSessions(indexedSessions(), query, { limit });
+  /*
+   * An empty query returns nothing rather than the most recent sessions. The
+   * scorer can fall back to recents, but the sidebar already lists those, so
+   * opening this modal to a copy of it just hides the one thing it is for.
+   */
+  const scored = query.trim().length < 2
+    ? []
+    : scoreSessions(indexedSessions(), query, { limit });
 
   // Metadata comes from the session list rather than the index so a rename is
   // reflected even when the transcript itself has not changed.

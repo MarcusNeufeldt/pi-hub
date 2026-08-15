@@ -14,6 +14,7 @@ import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
 import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS } from "./custom-ui-terminal";
+import { findLiveSubagentWork } from "./subagent-activity";
 
 // ============================================================================
 // Types
@@ -294,6 +295,25 @@ export class AgentSessionWrapper {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       if (this.isRunning()) {
+        this.resetIdleTimer();
+        return;
+      }
+      /*
+       * A detached subagent is not "running" by isRunning()'s definition — it is
+       * not a prompt, stream, compaction, or bash call — so a parent that
+       * launches background work and hands control back used to be reaped here
+       * while its children kept going. Shutting down disposes the pi-subagents
+       * extension along with the reconcile loop that delivers the completion
+       * wake, so the run finished into a void and never pinged back.
+       *
+       * findLiveSubagentWork ages out runs that stopped updating, so a wedged
+       * run cannot pin a session forever.
+       */
+      const live = findLiveSubagentWork(this.sessionId);
+      if (live.length > 0) {
+        console.log(
+          `[pi-web] keeping session ${this.sessionId} alive: ${live.length} detached subagent run(s) still live (${live.map((run) => `${run.runId.slice(0, 8)}:${run.state}`).join(", ")})`,
+        );
         this.resetIdleTimer();
         return;
       }

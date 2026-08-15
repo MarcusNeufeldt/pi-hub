@@ -20,17 +20,25 @@ import { join } from "node:path";
  * lately" is exactly the wrong signal.
  */
 
-/** Non-terminal states from pi-subagents' AsyncStatus union. */
-const LIVE_RUN_STATES = new Set(["queued", "running", "paused"]);
+/**
+ * Live states, matching pi-subagents' own `isActiveAsyncState`, which is
+ * `queued || running` and nothing else. "paused" is deliberately excluded: an
+ * interrupted run is finalized as paused, so treating it as live would hold a
+ * session open for a run that has stopped.
+ */
+const LIVE_RUN_STATES = new Set(["queued", "running"]);
 
 /**
- * A run whose status file has not been touched in this long no longer keeps a
- * session alive. Without it, one wedged run would pin a session in memory for
- * as long as the server lives. Live runs rewrite status.json continuously
- * (activity state, tool, turn counts), so a healthy long run stays well inside
- * this window while a dead one ages out.
+ * Fallback staleness window, used only when a run records no usable pid.
+ *
+ * Deliberately generous, because `lastUpdate` is NOT a heartbeat: the runner
+ * advances it in memory every second but only rewrites status.json when the
+ * activity classification changes (`if (changed) writeStatusPayload()`), so a
+ * live run inside one long quiet tool call can leave a stale file on disk.
+ * Treating a short silence as death would reap the session and lose the very
+ * wake this module exists to protect.
  */
-export const DEFAULT_STALE_RUN_MS = 30 * 60 * 1000;
+export const DEFAULT_STALE_RUN_MS = 6 * 60 * 60 * 1000;
 
 function sanitizeTempScopeSegment(value: string): string {
   const sanitized = value
@@ -88,11 +96,13 @@ export function subagentAsyncRunsDir(env?: NodeJS.ProcessEnv): string {
 }
 
 /**
- * status.json records `sessionId` as the parent's session FILE PATH, e.g.
- * `…\sessions\--F--explore--\2026-08-15T08-23-24-564Z_01a00484-….jsonl`, not as
- * the bare session id pi-hub uses. Pull the id back out of the filename so the
- * two can be compared. Child transcripts are plain `session.jsonl` with no id
- * segment and correctly yield undefined.
+ * status.json usually records `sessionId` as the parent's session FILE PATH,
+ * e.g. `…\sessions\--F--explore--\2026-08-15T08-23-24-564Z_01a00484-….jsonl`,
+ * because pi-subagents resolves it as `getSessionFile() ?? getSessionId()`. A
+ * session that is not persisted falls through to a bare id instead, so callers
+ * must accept both forms. Pull the id back out of the filename so the two can be
+ * compared. Child transcripts are plain `session.jsonl` with no id segment and
+ * correctly yield undefined.
  */
 export function sessionIdFromSessionPath(value: unknown): string | undefined {
   if (typeof value !== "string" || !value) return undefined;
@@ -110,7 +120,24 @@ export type LiveSubagentWorkOptions = {
   dir?: string;
   now?: number;
   staleAfterMs?: number;
+  /** Injectable for tests; defaults to a signal-0 liveness probe. */
+  isAlive?: (pid: number) => boolean;
 };
+
+/**
+ * `process.kill(pid, 0)` throws ESRCH when the process is gone and EPERM when it
+ * exists but is owned by someone else — EPERM still means alive. An unexpected
+ * failure is treated as alive, so a probe problem never reaps a session.
+ */
+function isProcessAlive(pid: number, probe?: (pid: number) => boolean): boolean {
+  if (probe) return probe(pid);
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException)?.code !== "ESRCH";
+  }
+}
 
 /**
  * Returns the live detached runs belonging to `sessionId`. Never throws: a
@@ -149,8 +176,16 @@ export function findLiveSubagentWork(
     const state = typeof status.state === "string" ? status.state : "";
     if (!LIVE_RUN_STATES.has(state)) continue;
     const lastUpdate = typeof status.lastUpdate === "number" ? status.lastUpdate : 0;
-    // A status file from the future (clock skew) counts as fresh, not stale.
-    if (now - lastUpdate > staleAfterMs) continue;
+    // Prefer the runner process itself: it is the only signal that stays true
+    // through a long silent tool call. Fall back to the file's age only when no
+    // pid is recorded, and give that a wide window for the same reason.
+    const pid = typeof status.pid === "number" && status.pid > 0 ? status.pid : undefined;
+    if (pid !== undefined) {
+      if (!isProcessAlive(pid, options.isAlive)) continue;
+    } else if (now - lastUpdate > staleAfterMs) {
+      // A status file from the future (clock skew) counts as fresh, not stale.
+      continue;
+    }
     live.push({
       runId: typeof status.runId === "string" ? status.runId : entry,
       state,

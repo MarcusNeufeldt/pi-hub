@@ -721,6 +721,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [activeLeafId, setActiveLeafId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [entryIds, setEntryIds] = useState<string[]>([]);
+  /**
+   * Where the model's context starts within `messages`. Everything before it is
+   * conversation history that a compaction dropped from the context but not from
+   * the session file — pi-hub rebuilds the chat from that file, so without this
+   * the visible history vanished the moment a session was compacted.
+   */
+  const [contextStartIndex, setContextStartIndex] = useState(0);
+  /** Guards against prepending the same history twice for one session/leaf. */
+  const earlierHistoryKeyRef = useRef<string | null>(null);
   const [streamState, dispatch] = useReducer(streamReducer, { isStreaming: false, streamingMessage: null });
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
@@ -1078,6 +1087,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         ),
       ));
       setEntryIds(d.context.entryIds ?? []);
+      setContextStartIndex(0);
+      void loadEarlierHistory(sid, d.leafId, d.context.messages[0]);
       setCurrentModelOverride(null);
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
@@ -1118,6 +1129,47 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, []);
 
+  /**
+   * Pull in the messages a compaction dropped, and prepend them.
+   *
+   * Fetched separately from the session payload so first paint is not held up by
+   * what can be an entire session file. Best-effort by design: if it fails the
+   * chat still shows the model context, which is what it showed before.
+   */
+  const loadEarlierHistory = useCallback(async (
+    sid: string,
+    leafId: string | null,
+    firstMessage: AgentMessage | undefined,
+  ) => {
+    // A leading compaction entry is the only thing that drops earlier messages
+    // from the context, so it is the signal that there is anything to fetch.
+    const isCompacted = firstMessage?.role === "custom"
+      && (firstMessage as { customType?: string }).customType === "compaction";
+    const key = `${sid}:${leafId ?? ""}`;
+    if (!isCompacted) {
+      earlierHistoryKeyRef.current = key;
+      setContextStartIndex(0);
+      return;
+    }
+    if (earlierHistoryKeyRef.current === key) return;
+    earlierHistoryKeyRef.current = key;
+    try {
+      const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
+      if (leafId) params.set("leafId", leafId);
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/history?${params}`);
+      if (!res.ok || sessionIdRef.current !== sid) return;
+      const data = await res.json() as { messages?: AgentMessage[]; entryIds?: string[] };
+      const earlier = data.messages ?? [];
+      if (earlier.length === 0 || sessionIdRef.current !== sid) return;
+      setMessages((current) => [...earlier, ...current]);
+      setEntryIds((current) => [...(data.entryIds ?? []), ...current]);
+      setContextStartIndex(earlier.length);
+    } catch {
+      // Leave the context rendered as-is rather than blanking the chat.
+      earlierHistoryKeyRef.current = null;
+    }
+  }, []);
+
   const loadContext = useCallback(async (sid: string, leafId: string | null) => {
     try {
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
@@ -1135,6 +1187,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         ),
       ));
       setEntryIds(d.context.entryIds ?? []);
+      setContextStartIndex(0);
+      void loadEarlierHistory(sid, leafId, d.context.messages[0]);
     } catch (e) {
       console.error("Failed to load context:", e);
     }
@@ -2753,6 +2807,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // Dismissals are per session: clearing one session's fleet must not hide
     // another's.
     dismissedSubagentIdsRef.current = new Set();
+    earlierHistoryKeyRef.current = null;
+    setContextStartIndex(0);
     if (session) {
       sessionIdRef.current = session.id;
       loadSession(session.id, true, true).then((agentState) => {
@@ -2889,7 +2945,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   return {
     // State
-    data, loading, error, activeLeafId, messages, entryIds, streamState,
+    data, loading, error, activeLeafId, messages, entryIds, contextStartIndex, streamState,
     agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,

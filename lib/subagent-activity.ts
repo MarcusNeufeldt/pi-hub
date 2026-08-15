@@ -11,9 +11,15 @@ import { join } from "node:path";
  * those, so a parent that launches a background run and hands control back gets
  * reaped while its children keep going — they are children of the hub server
  * process, not of the session. Disposing the session also disposes the
- * pi-subagents extension, taking down the reconcile loop that would have
- * delivered the completion wake. The run then finishes into a void: no ping,
- * ever.
+ * pi-subagents extension, taking down the completion notifier that would have
+ * delivered the wake. The run then finishes into a void: no ping, ever.
+ *
+ * The notifier is `registerSubagentNotify` / `sendCompletion`, which listens for
+ * completion events and delivers via `pi.sendMessage`. Session shutdown stops the
+ * result watcher and disposes it. That is a separate path from
+ * `createWaitSubscriptionManager`, which only backs an explicit non-blocking
+ * `subagent_wait` subscription — both die with the session, but the ordinary
+ * wake is the notifier.
  *
  * Keyed off the run files rather than event traffic on purpose — a long, quiet
  * workflow emits almost nothing to the parent, so "have we heard anything

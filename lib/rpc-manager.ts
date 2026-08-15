@@ -303,11 +303,13 @@ export class AgentSessionWrapper {
        * not a prompt, stream, compaction, or bash call — so a parent that
        * launches background work and hands control back used to be reaped here
        * while its children kept going. Shutting down disposes the pi-subagents
-       * extension along with the reconcile loop that delivers the completion
-       * wake, so the run finished into a void and never pinged back.
+       * extension along with the completion notifier that delivers the wake, so
+       * the run finished into a void and never pinged back.
        *
-       * findLiveSubagentWork ages out runs that stopped updating, so a wedged
-       * run cannot pin a session forever.
+       * findLiveSubagentWork keys on the runner process rather than file age,
+       * because status.json is only rewritten when a run's activity
+       * classification changes — a live run in one long quiet tool call leaves a
+       * stale file, and reaping on that would recreate this very bug.
        */
       const live = findLiveSubagentWork(this.sessionId);
       if (live.length > 0) {

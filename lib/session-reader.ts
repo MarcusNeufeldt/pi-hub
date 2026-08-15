@@ -9,6 +9,7 @@ import { normalize as normalizePath } from "path";
 import type { AgentMessage, SessionEntry, SessionHeader, SessionInfo, SessionContext } from "./types";
 import type { SessionEntry as PiSessionEntry, SessionInfo as PiSessionInfo } from "@earendil-works/pi-coding-agent";
 import { normalizeToolCalls } from "./normalize";
+import { buildHistoryFromChain, type SessionHistoryResult } from "./session-history";
 import { sessionPathKey } from "./session-path";
 import { resolveProject, type ProjectInfo } from "./worktree";
 
@@ -199,6 +200,43 @@ export function readSessionHeader(filePath: string): SessionHeader | null {
 export function getSessionEntries(filePath: string): SessionEntry[] {
   const entries = SessionManager.open(filePath).getEntries();
   return entries as unknown as SessionEntry[];
+}
+
+/**
+ * The conversation as it was actually held, which is not the same thing as the
+ * model's context.
+ *
+ * `buildSessionContext` returns what the SDK feeds the model, so after a
+ * compaction it starts at the summary and everything earlier disappears. In a
+ * terminal that is invisible — the scrollback stays on screen — but pi-hub
+ * rebuilds the chat from the file on every load, so compacting used to erase the
+ * visible history even though all of it is still on disk.
+ *
+ * This walks the raw parent chain instead, and reports where the model's context
+ * begins so the UI can mark the boundary rather than pretend it is not there.
+ * The in-context entries are a contiguous suffix of the chain (measured: a
+ * 319-entry session whose 74 context entries occupied positions 245-318), so one
+ * index is enough to describe the split.
+ */
+export type SessionHistory = SessionHistoryResult<AgentMessage>;
+
+export function buildSessionHistory(
+  entries: SessionEntry[],
+  leafId?: string | null,
+  options: { deferThinking?: boolean; deferToolResultImages?: boolean } = {},
+): SessionHistory {
+  const byId = new Map<string, SessionEntry>();
+  for (const e of entries) byId.set(e.id, e);
+
+  const contextIds = new Set(
+    piBuildContextEntries(
+      entries as unknown as PiSessionEntry[],
+      leafId,
+      byId as unknown as Map<string, PiSessionEntry>,
+    ).map((entry) => (entry as unknown as SessionEntry).id),
+  );
+
+  return buildHistoryFromChain(entries, leafId, contextIds, (entry) => entryToUiMessage(entry, options));
 }
 
 export function buildSessionContext(

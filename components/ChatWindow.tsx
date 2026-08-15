@@ -237,7 +237,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
   }, [chatInputRef]);
 
   const {
-    loading, error, messages, entryIds, streamState,
+    loading, error, messages, entryIds, contextStartIndex, streamState,
     agentRunning, aborting, handleForceReset, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats, addNotice, dismissNotice,
@@ -1005,6 +1005,34 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
               const rendered: ReactNode[] = [];
               for (let idx = 0; idx < messages.length;) {
+                // Everything above this point is conversation the model no longer
+                // sees: a compaction replaced it with the summary that follows.
+                // It stays on screen because it is still what was said.
+                if (contextStartIndex > 0 && idx === contextStartIndex) {
+                  rendered.push(
+                    <div
+                      key="context-boundary"
+                      role="separator"
+                      aria-label={`Model context starts here. ${contextStartIndex} earlier messages are shown but were compacted out of the context.`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        margin: "18px 0 10px",
+                        color: "var(--text-dim)",
+                        fontSize: "var(--fs-micro)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                      }}
+                    >
+                      <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                      <span style={{ flexShrink: 0 }}>
+                        {t("chat.contextBoundary", { count: contextStartIndex })}
+                      </span>
+                      <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                    </div>,
+                  );
+                }
                 const msg = messages[idx];
                 if (!isGroupAnchor(msg)) {
                   rendered.push(renderMessage(idx));

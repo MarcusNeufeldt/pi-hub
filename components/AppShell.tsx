@@ -2085,6 +2085,8 @@ export function AppShell() {
             <button
               key={view}
               role="tab"
+              id={`right-panel-tab-${view}`}
+              aria-controls="right-panel-view"
               className={`ui-tab${rightView === view ? " is-active" : ""}`}
               aria-selected={rightView === view}
               onClick={() => {
@@ -2119,7 +2121,14 @@ export function AppShell() {
         )}
 
         {/* Panel content: open file, or active view (review diffs / subagents) */}
-        <div style={{ flex: 1, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div
+          id="right-panel-view"
+          // Labelled by whichever tab is active; a file tab takes over the
+          // region, so it is not a tabpanel for either view.
+          role={activeFileTab?.filePath ? undefined : "tabpanel"}
+          aria-labelledby={activeFileTab?.filePath ? undefined : `right-panel-tab-${rightView}`}
+          style={{ flex: 1, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
           {activeFileTab?.filePath ? (
             <FileViewer
               filePath={activeFileTab.filePath}

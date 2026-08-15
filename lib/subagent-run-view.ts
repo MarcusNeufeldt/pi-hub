@@ -418,10 +418,22 @@ export async function buildSubagentRunView(
   const count = Math.max(results.length, steps.length);
   const children: SubagentRunChildView[] = [];
 
+  // `results` and `steps` describe the same run in the same order. Pairing them
+  // by position is what makes a fanout that repeats one agent line up; matching
+  // on the agent name first gave every repeat the same step, so their transcript
+  // paths and cursors all pointed at the first child's.
+  const claimedSteps = new Set<number>();
   for (let index = 0; index < count; index += 1) {
     const result = results[index];
     const resultAgent = string(result?.agent);
-    const step = steps.find((candidate) => string(candidate.agent) === resultAgent) ?? steps[index];
+    let stepIndex = index < steps.length && !claimedSteps.has(index) ? index : -1;
+    if (stepIndex < 0 && resultAgent !== undefined) {
+      stepIndex = steps.findIndex(
+        (candidate, i) => !claimedSteps.has(i) && string(candidate.agent) === resultAgent,
+      );
+    }
+    if (stepIndex >= 0) claimedSteps.add(stepIndex);
+    const step = stepIndex >= 0 ? steps[stepIndex] : undefined;
     const agent = resultAgent ?? string(step?.agent) ?? string(step?.label) ?? `agent ${index + 1}`;
     const artifacts = record(result?.artifactPaths);
     const outputReference = record(result?.outputReference);

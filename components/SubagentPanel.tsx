@@ -7,12 +7,16 @@ import type { SubagentTimelineEvent } from "@/lib/subagent-run-view";
 import { MarkdownBody } from "./MarkdownBody";
 
 function formatDuration(ms: number | undefined): string {
-  if (!ms || ms < 0) return "–";
+  // `!ms` also caught 0, so a sub-millisecond run rendered as "no duration".
+  if (ms === undefined || ms < 0) return "–";
   const total = Math.floor(ms / 1000);
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
+
+/** Statuses pi-subagents reports for a child that did not finish cleanly. */
+const FAILED_STATUSES = new Set(["failed", "timed_out", "interrupted", "cancelled", "error"]);
 
 function StatusIndicator({ status }: { status: string }) {
   if (status === "running") {
@@ -37,7 +41,18 @@ function StatusIndicator({ status }: { status: string }) {
       </svg>
     );
   }
-  const failed = status !== "completed";
+  // `status` is an open string ("timed_out", "interrupted", "queued", …), so
+  // treating everything non-"completed" as failed painted pending children red.
+  // Only the known-bad states get the cross; anything else stays neutral.
+  const failed = FAILED_STATUSES.has(status);
+  if (!failed && status !== "completed") {
+    return (
+      <span
+        aria-hidden="true"
+        style={{ flexShrink: 0, display: "block", width: 8, height: 8, margin: 2, borderRadius: "50%", border: "1.5px solid var(--text-dim)" }}
+      />
+    );
+  }
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={failed ? "#ef4444" : "#4ade80"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
       {failed ? (
@@ -159,7 +174,7 @@ function ChildCard({ child }: { child: SubagentDelegation["children"][number] })
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
           {child.agent}
         </span>
-        <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: running ? "var(--accent)" : child.status === "completed" ? "#4ade80" : "#ef4444", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: running ? "var(--accent)" : child.status === "completed" ? "#4ade80" : FAILED_STATUSES.has(child.status) ? "#ef4444" : "var(--text-dim)", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
           {child.status}
         </span>
         <span style={{ fontSize: "var(--fs-micro)", fontFamily: "var(--font-mono)", color: "var(--text-dim)", flexShrink: 0 }}>
@@ -369,8 +384,11 @@ export function SubagentsView({
                 )}
               </div>
             )}
-            {d.children.map((c) => (
-              <ChildCard key={`${d.toolCallId}:${c.agent}`} child={c} />
+            {/* Keyed by child id, not agent name: a fanout names every child
+                after the same agent, so names collided and React shuffled each
+                card's expanded/tab state between siblings. */}
+            {d.children.map((c, index) => (
+              <ChildCard key={`${d.toolCallId}:${c.id ?? index}`} child={c} />
             ))}
           </div>
         ))}

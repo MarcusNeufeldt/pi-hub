@@ -17,6 +17,12 @@ import { AgentCommandTimeoutError, sendAgentCommand } from "@/lib/agent-client";
 import { getToolNamesForPreset, type ToolEntry } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { SubagentRunView, SubagentTimelineEvent } from "@/lib/subagent-run-view";
+import {
+  buildSubagentChildren,
+  cleanTaskLabel,
+  createChildClaimer,
+  type SubagentChild,
+} from "@/lib/subagent-children";
 
 export interface SessionData {
   sessionId: string;
@@ -386,34 +392,9 @@ type SlashCommandsResponse = {
   commands?: SlashCommandInfo[];
 };
 
-export interface SubagentChild {
-  agent: string;
-  task?: string;
-  status: string; // "running" | "completed" | "failed" | "timed_out" | ...
-  currentTool?: string;
-  currentToolArgs?: string;
-  recentOutput?: string;
-  recentOutputLines?: string[];
-  recentTools?: Array<{ tool: string; args?: string }>;
-  thinking?: string;
-  toolCount?: number;
-  turnCount?: number;
-  tokens?: number;
-  model?: string;
-  durationMs?: number;
-  exitCode?: number;
-  activityState?: string;
-  events?: SubagentTimelineEvent[];
-  finalOutput?: string;
-  outputPath?: string;
-  /** Authoritative child artifact transcript used after foreground runs/reload. */
-  transcriptPath?: string;
-  sessionFile?: string;
-  timelineSource?: string;
-  timelineCursor?: number;
-  timelineComplete?: boolean;
-  timelineCompletePolls?: number;
-}
+// Re-exported so existing importers (SubagentPanel, AppShell) keep working now
+// that the type lives in lib/ where a plain-node test can reach it.
+export type { SubagentChild };
 
 /** One `subagent` tool call = one delegation, possibly with several children. */
 export interface SubagentDelegation {
@@ -492,71 +473,6 @@ function sessionIdFromArtifactPath(filePath: string | undefined): string | undef
   return name.match(/^.*?_([0-9a-f-]+)\.jsonl$/i)?.[1];
 }
 
-/**
- * Maps pi-subagents `subagent` tool args to panel children, mirroring the
- * extension's execution modes:
- * - single:    { agent, task }
- * - fanout:    { tasks: [{ agent?, task?, label? }] } or { agents: [...] }
- * - workflow:  { workflowScript, agent? } (children arrive via progress snapshots)
- * Management calls ({ action: ... }) are NOT delegations — callers skip them.
- */
-function buildSubagentChildren(args: Record<string, unknown> | undefined): SubagentChild[] {
-  if (!args) return [];
-  const children: SubagentChild[] = [];
-  if (Array.isArray(args.tasks)) {
-    args.tasks.forEach((t, i) => {
-      const item = (t ?? {}) as Record<string, unknown>;
-      const agent =
-        typeof item.agent === "string"
-          ? item.agent
-          : typeof args.agent === "string"
-            ? args.agent
-            : `task ${i + 1}`;
-      const task =
-        typeof item.task === "string"
-          ? cleanTaskLabel(item.task)
-          : typeof item.label === "string"
-            ? item.label
-            : undefined;
-      children.push({ agent, task, status: "running" });
-    });
-    return children;
-  }
-  if (Array.isArray(args.agents)) {
-    args.agents.forEach((a, i) => {
-      const item = (a ?? {}) as Record<string, unknown>;
-      const agent =
-        typeof item === "string" ? item : typeof item.agent === "string" ? item.agent : `agent ${i + 1}`;
-      children.push({
-        agent,
-        task: cleanTaskLabel(typeof item.task === "string" ? item.task : undefined),
-        status: "running",
-      });
-    });
-    return children;
-  }
-  const agent = typeof args.agent === "string" ? args.agent : undefined;
-  const task = cleanTaskLabel(
-    typeof args.task === "string"
-      ? args.task
-      : typeof args.workflowScript === "string"
-        ? args.workflowScript
-        : undefined,
-  );
-  if (agent || task || typeof args.workflowScript === "string") {
-    children.push({
-      agent: agent ?? (typeof args.workflowScript === "string" ? "workflow" : "subagent"),
-      task,
-      status: "running",
-    });
-  }
-  return children;
-}
-
-/**
- * pi-subagents async runs return immediately with detach boilerplate instead
- * of real output — strip it so cards show substance or nothing.
- */
 const DETACH_BOILERPLATE =
   /Async workflow \[[0-9a-f-]+\]|Direct execution was removed|The async run is detached and running in the background|do not run sleep\/polling loops|You are in an interactive session/;
 
@@ -564,21 +480,6 @@ function cleanSubagentOutput(text: string | undefined): string | undefined {
   if (!text) return undefined;
   if (text.length < 700 && DETACH_BOILERPLATE.test(text)) return undefined;
   return text;
-}
-
-/**
- * Task labels get polluted with the workflowScript body ("return runs.run(...)").
- * Strip the script and, when the label IS the script, pull out the quoted task.
- */
-function cleanTaskLabel(task: string | undefined): string | undefined {
-  if (!task) return undefined;
-  const cleaned = task.replace(/\n?return\s+runs\.run\b[\s\S]*$/, "").trim();
-  if (/^return\s+runs\.run\b/.test(cleaned)) {
-    const m = cleaned.match(/task:\s*["']([^"']+)["']/);
-    if (m) return m[1].trim();
-    return undefined;
-  }
-  return cleaned || undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -640,11 +541,12 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
       const prog = Array.isArray(details?.progress) ? (details.progress as Array<Record<string, unknown>>) : [];
       let finalChildren: SubagentChild[];
       if (rrows.length > 0) {
+        const claimResultChild = createChildClaimer(children);
         finalChildren = rrows
-          .map((r) => {
+          .map((r, index) => {
             const agent = typeof r.agent === "string" ? r.agent : undefined;
             if (!agent) return null;
-            const existing = children.find((c) => c.agent === agent);
+            const existing = claimResultChild(agent, index);
             const status =
               r.exitCode === 0
                 ? "completed"
@@ -670,6 +572,7 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
               ?? (typeof artifactPaths?.outputPath === "string" ? artifactPaths.outputPath : undefined);
             return {
               ...existing,
+              id: existing?.id ?? String(index),
               agent,
               task: cleanTaskLabel(
                 typeof r.task === "string" ? r.task : existing?.task ?? task,
@@ -704,11 +607,13 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
           })
           .filter((c): c is SubagentChild => c !== null);
       } else if (prog.length > 0) {
-        finalChildren = prog.map((p) => {
+        const claimProgressChild = createChildClaimer(children);
+        finalChildren = prog.map((p, index) => {
           const agent = typeof p.agent === "string" ? p.agent : "agent";
-          const existing = children.find((c) => c.agent === agent);
+          const existing = claimProgressChild(agent, index);
           return {
             ...existing,
+            id: existing?.id ?? String(index),
             agent,
             task: cleanTaskLabel(existing?.task ?? task),
             status: typeof p.status === "string" ? p.status : "completed",
@@ -750,6 +655,20 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
   return delegations;
 }
 
+/**
+ * Drops delegations the user cleared. The panel is derived from message
+ * history, so without this a rehydrate re-adds everything Clear removed.
+ * Module scope and an explicit set argument keep the callers' `useCallback([])`
+ * dependency lists empty.
+ */
+function keepUndismissedSubagents(
+  delegations: SubagentDelegation[],
+  dismissedToolCallIds: Set<string>,
+): SubagentDelegation[] {
+  if (dismissedToolCallIds.size === 0) return delegations;
+  return delegations.filter((delegation) => !dismissedToolCallIds.has(delegation.toolCallId));
+}
+
 /** Session/context refreshes can race artifact polling. Preserve the enriched
  * timeline/cursor state while applying newly persisted result metadata. */
 function mergeRehydratedSubagents(
@@ -760,7 +679,9 @@ function mergeRehydratedSubagents(
     const current = previous.find((item) => item.toolCallId === next.toolCallId);
     if (!current) return next;
     const children = next.children.map((child, index) => {
-      const existing = current.children.find((item) => item.agent === child.agent)
+      // By id, not agent name — a fanout repeats names, and matching on them
+      // merged every repeat onto the first child's enriched state.
+      const existing = current.children.find((item) => item.id === child.id)
         ?? current.children[index];
       if (!existing) return child;
       return {
@@ -839,7 +760,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
   const [subagents, setSubagents] = useState<SubagentDelegation[]>([]);
   const subagentsPollRef = useRef<SubagentDelegation[]>([]);
-  const clearSubagents = useCallback(() => setSubagents([]), []);
+  /**
+   * Clear used to only empty the state, but the panel is derived from message
+   * history: the next loadSession/loadContext re-derived every delegation and
+   * put them straight back. Remembering what was dismissed is what makes Clear
+   * stick. Reset on session change, so a cleared panel does not follow you into
+   * another session.
+   */
+  const dismissedSubagentIdsRef = useRef<Set<string>>(new Set());
+  const clearSubagents = useCallback(() => {
+    setSubagents((previous) => {
+      for (const delegation of previous) dismissedSubagentIdsRef.current.add(delegation.toolCallId);
+      return [];
+    });
+  }, []);
 
   useEffect(() => {
     subagentsPollRef.current = subagents;
@@ -854,6 +788,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const poll = async () => {
       if (polling || cancelled) return;
+      // Nothing is watching a hidden tab, and cursors mean a paused poll resumes
+      // without losing timeline events.
+      if (typeof document !== "undefined" && document.hidden) return;
       const targets = subagentsPollRef.current.filter((delegation) => {
         const needsAsyncRun = Boolean(delegation.asyncDir) && (
           delegation.running
@@ -918,10 +855,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               }
 
               const children = views.map((view, index) => {
+                // Index first: the server view's `index` is the same key its
+                // timeline cursors use, so it is the authoritative link. Name
+                // matching ran first here and sent every repeated agent in a
+                // fanout to the first child of that name.
                 const existing =
-                  current.children.find((child) => child.agent === view.agent)
-                  ?? current.children[view.index]
-                  ?? current.children[index];
+                  current.children[view.index]
+                  ?? current.children[index]
+                  ?? current.children.find((child) => child.agent === view.agent);
                 const finalOutput = view.finalOutput ?? existing?.finalOutput;
                 const firstOutputLine = finalOutput
                   ?.split("\n")
@@ -935,6 +876,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                 );
                 return {
                   ...existing,
+                  id: existing?.id ?? String(view.index ?? index),
                   agent: view.agent,
                   task: cleanTaskLabel(view.task ?? existing?.task ?? current.task),
                   status: view.status,
@@ -1130,7 +1072,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setMessages(d.context.messages);
       setSubagents((previous) => mergeRehydratedSubagents(
         previous,
-        subagentsFromMessages(d.context.messages),
+        keepUndismissedSubagents(
+          subagentsFromMessages(d.context.messages),
+          dismissedSubagentIdsRef.current,
+        ),
       ));
       setEntryIds(d.context.entryIds ?? []);
       setCurrentModelOverride(null);
@@ -1184,7 +1129,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setMessages(d.context.messages);
       setSubagents((previous) => mergeRehydratedSubagents(
         previous,
-        subagentsFromMessages(d.context.messages),
+        keepUndismissedSubagents(
+          subagentsFromMessages(d.context.messages),
+          dismissedSubagentIdsRef.current,
+        ),
       ));
       setEntryIds(d.context.entryIds ?? []);
     } catch (e) {
@@ -1978,10 +1926,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               };
             }
             const results = typeof partial === "object" ? partial.details?.results ?? [] : [];
-            const children: SubagentChild[] = progress.map((p) => {
+            const claimProgressChild = createChildClaimer(d.children);
+            const children: SubagentChild[] = progress.map((p, index) => {
               const agent = typeof p.agent === "string" ? p.agent : "agent";
-              const existing = d.children.find((c) => c.agent === agent);
-              const result = results.find((r) => r.agent === p.agent);
+              const existing = claimProgressChild(agent, index);
+              // Progress and results are parallel arrays for the same run, so
+              // pair them by position; `find(r.agent === p.agent)` handed every
+              // repeat of an agent the first row of that name.
+              const result = results[index] ?? results.find((r) => r.agent === p.agent);
               const output = contentText ||
                 (Array.isArray(p.recentOutput)
                   ? (p.recentOutput[p.recentOutput.length - 1] as string | undefined)
@@ -1999,6 +1951,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                 : existing?.recentTools;
               const thinking = typeof p.thinking === "string" ? p.thinking : existing?.thinking;
               return {
+                id: existing?.id ?? String(index),
                 agent,
                 task:
                   (typeof result?.task === "string" ? result.task : undefined) ??
@@ -2069,11 +2022,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               const progress = details?.progress ?? [];
               let children: SubagentChild[];
               if (results.length > 0) {
+                const claimResultChild = createChildClaimer(d.children);
                 children = results
-                  .map((r) => {
+                  .map((r, index) => {
                     const agent = typeof r.agent === "string" ? r.agent : undefined;
                     if (!agent) return null;
-                    const existing = d.children.find((c) => c.agent === agent);
+                    const existing = claimResultChild(agent, index);
                     const status =
                       r.exitCode === 0
                         ? "completed"
@@ -2099,6 +2053,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                       ?? (typeof artifactPaths?.outputPath === "string" ? artifactPaths.outputPath : undefined);
                     return {
                       ...existing,
+                      id: existing?.id ?? String(index),
                       agent,
                       task: cleanTaskLabel(
                         typeof r.task === "string" ? r.task : existing?.task ?? d.task,
@@ -2135,11 +2090,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               } else if (progress.length > 0) {
                 // No result rows (e.g. workflowScript runs) — resolve children
                 // from the final progress snapshot instead of placeholder names.
-                children = progress.map((p) => {
+                const claimFinalProgressChild = createChildClaimer(d.children);
+                children = progress.map((p, index) => {
                   const agent = typeof p.agent === "string" ? p.agent : "agent";
-                  const existing = d.children.find((c) => c.agent === agent);
+                  const existing = claimFinalProgressChild(agent, index);
                   return {
                     ...existing,
+                    id: existing?.id ?? String(index),
                     agent,
                     task: cleanTaskLabel(existing?.task ?? d.task),
                     status: typeof p.status === "string" ? p.status : "completed",
@@ -2793,6 +2750,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   // Load session on mount
   useEffect(() => {
+    // Dismissals are per session: clearing one session's fleet must not hide
+    // another's.
+    dismissedSubagentIdsRef.current = new Set();
     if (session) {
       sessionIdRef.current = session.id;
       loadSession(session.id, true, true).then((agentState) => {

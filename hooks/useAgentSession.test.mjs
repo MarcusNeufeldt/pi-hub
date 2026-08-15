@@ -5,6 +5,9 @@ import test from "node:test";
 const source = (await readFile(new URL("./useAgentSession.ts", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 const chatWindowSource = (await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 const cssSource = (await readFile(new URL("../app/globals.css", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+// SubagentChild moved to lib/ so the plain-node runner can import it — see
+// lib/subagent-children.test.mjs, which tests that behaviour directly.
+const subagentChildrenSource = (await readFile(new URL("../lib/subagent-children.ts", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 
 const onErrorSource = source.slice(source.indexOf("es.onerror = () => {"), source.indexOf("eventConnectionAttemptRef.current = { source: es"));
 
@@ -109,8 +112,8 @@ test("builds a durable subagent activity timeline and separate final result", ()
     source.indexOf("const eventSourceRef"),
   );
 
-  assert.match(source, /events\?: SubagentTimelineEvent\[\]/);
-  assert.match(source, /finalOutput\?: string/);
+  assert.match(subagentChildrenSource, /events\?: SubagentTimelineEvent\[\]/);
+  assert.match(subagentChildrenSource, /finalOutput\?: string/);
   assert.match(source, /function mergeSubagentEvents/);
   assert.match(source, /function omitDuplicatedFinalNarration/);
   assert.match(source, /events: omitDuplicatedFinalNarration\(mergedEvents, finalOutput\)/);

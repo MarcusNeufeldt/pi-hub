@@ -4,7 +4,7 @@ import { dirname, join } from "path";
 import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { NextResponse } from "next/server";
 
-import { writePrivateFileAtomicSync } from "@/lib/atomic-file";
+import { writePrivateFileAtomic } from "@/lib/atomic-file";
 import { invalidateModelsCache } from "@/lib/models-cache";
 import {
   applyRoutingToModelsJson,
@@ -29,11 +29,11 @@ function readModelsJson(): Record<string, unknown> {
   }
 }
 
-function writeModelsJson(data: Record<string, unknown>): void {
+async function writeModelsJson(data: Record<string, unknown>): Promise<void> {
   const path = getModelsPath();
   const dir = dirname(path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writePrivateFileAtomicSync(path, JSON.stringify(data, null, 2));
+  await writePrivateFileAtomic(path, JSON.stringify(data, null, 2));
 }
 
 /**
@@ -109,7 +109,7 @@ export async function PUT(request: Request) {
     if (routing !== null && !(await existsInOpenRouterCatalog(modelId))) {
       return NextResponse.json({ error: "Unknown OpenRouter model" }, { status: 400 });
     }
-    writeModelsJson(applyRoutingToModelsJson(readModelsJson(), modelId, routing));
+    await writeModelsJson(applyRoutingToModelsJson(readModelsJson(), modelId, routing));
     // Without this the composed provider keeps serving the previous routing.
     invalidateModelsCache();
     return NextResponse.json({ success: true, routing });

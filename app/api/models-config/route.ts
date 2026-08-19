@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { writePrivateFileAtomicSync } from "@/lib/atomic-file";
+import { writePrivateFileAtomic } from "@/lib/atomic-file";
 import { invalidateModelsCache } from "@/lib/models-cache";
 
 export const dynamic = "force-dynamic";
@@ -21,11 +21,11 @@ function readModelsJson(): Record<string, unknown> {
   }
 }
 
-function writeModelsJson(data: Record<string, unknown>): void {
+async function writeModelsJson(data: Record<string, unknown>): Promise<void> {
   const path = getModelsPath();
   const dir = dirname(path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writePrivateFileAtomicSync(path, JSON.stringify(data, null, 2));
+  await writePrivateFileAtomic(path, JSON.stringify(data, null, 2));
 }
 
 export async function GET() {
@@ -35,7 +35,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   try {
     const body = await req.json() as Record<string, unknown>;
-    writeModelsJson(body);
+    await writeModelsJson(body);
     invalidateModelsCache();
     return NextResponse.json({ success: true });
   } catch (error) {

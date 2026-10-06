@@ -13,6 +13,7 @@ import type {
   ToolResultMessage,
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
+import { isNestedToolExecutionEvent, isSystemMessageEvent, updateToolProgress, type ToolExecutionProgress } from "@/lib/agent-event-wire";
 import { AgentCommandTimeoutError, sendAgentCommand } from "@/lib/agent-client";
 import { getToolNamesForPreset, type ToolEntry } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -200,14 +201,14 @@ const SCROLL_BOTTOM_THRESHOLD = 150;
  * enough that the user is not left guessing. An abort that misses this deadline is
  * not slow — it is waiting on a run loop that will never answer.
  */
-const ABORT_TIMEOUT_MS = 10_000;
+const ABORT_TIMEOUT_MS = 20_000;
 const PROMPT_SETTLE_INITIAL_DELAY_MS = 800;
 const PROMPT_SETTLE_POLL_MS = 600;
 const PROMPT_SETTLE_MAX_MS = 20_000;
 const EVENT_STREAM_IDLE_GRACE_MS = 30_000;
 const AGENT_STATE_RECONCILE_MS = 15_000;
 const BASH_STATE_RECONCILE_MS = 1_000;
-const EVENT_STREAM_CONNECT_TIMEOUT_MS = 5_000;
+const EVENT_STREAM_CONNECT_TIMEOUT_MS = 15_000;
 /**
  * Backoff for re-establishing a dead event stream.
  *
@@ -365,6 +366,7 @@ function readCompactResult(result: unknown, reason: string): CompactResultInfo |
 export interface ChatInputHandle {
   insertText: (text: string) => void;
   insertIfEmpty: (content: string) => void;
+  restoreDraft: (text: string, images?: AttachedImage[]) => void;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
 }
@@ -525,7 +527,7 @@ function subagentsFromMessages(messages: AgentMessage[]): SubagentDelegation[] {
       }
       const resultText = cleanSubagentOutput(
         result.content
-          .filter((b): b is { type: "text"; text: string } => b.type === "text" && b.text)
+          .filter((b): b is { type: "text"; text: string } => b.type === "text" && typeof b.text === "string" && b.text.length > 0)
           .map((b) => b.text)
           .join("\n")
           .trim(),
@@ -730,6 +732,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [contextStartIndex, setContextStartIndex] = useState(0);
   /** Guards against prepending the same history twice for one session/leaf. */
   const earlierHistoryKeyRef = useRef<string | null>(null);
+  const contextRequestRef = useRef(0);
   const [streamState, dispatch] = useReducer(streamReducer, { isStreaming: false, streamingMessage: null });
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
@@ -748,12 +751,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [forkingEntryId, setForkingEntryId] = useState<string | null>(null);
+  const [navigationPending, setNavigationPending] = useState(false);
   const [currentModelOverride, setCurrentModelOverride] = useState<{ provider: string; modelId: string } | null>(null);
   const [pendingModel, setPendingModel] = useState<{ provider: string; modelId: string } | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
   const [compactError, setCompactError] = useState<string | null>(null);
   const [compactResult, setCompactResult] = useState<CompactResultInfo | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
+  const [toolProgress, setToolProgress] = useState<ToolExecutionProgress[]>([]);
   // Stop is in flight. Without this the button looks identical whether the
   // abort is being processed, is slow, or has hung.
   const [aborting, setAborting] = useState(false);
@@ -988,6 +993,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const newSessionModelOverrideRef = useRef<SelectedModel | null>(null);
   const thinkingLevelOverrideRef = useRef<Exclude<ThinkingLevelOption, "auto"> | null>(null);
   const promptRunIdRef = useRef(0);
+  const navigationPendingRef = useRef(false);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
   /** Prompt text of the in-flight run (for completion notifications). */
   const currentRunPromptRef = useRef<string | null>(null);
@@ -1059,11 +1065,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [messages, sessionStatsOverride, contextUsage, data?.filePath, session?.id, session?.name]);
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
+    if (navigationPendingRef.current) return null;
+    const requestId = ++contextRequestRef.current;
     let messagesLoaded = false;
     try {
       if (showLoading) setLoading(true);
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
       const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
+      if (sessionIdRef.current !== sid || contextRequestRef.current !== requestId) return null;
       if (res.status === 404) {
         if (showLoading) {
           setData(null);
@@ -1075,7 +1084,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as SessionData;
-      if (sessionIdRef.current !== sid) return null;
+      if (sessionIdRef.current !== sid || contextRequestRef.current !== requestId) return null;
       setData(d);
       setActiveLeafId(d.leafId);
       setMessages(d.context.messages);
@@ -1103,7 +1112,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const stateRes = await fetch(`/api/sessions/${encodeURIComponent(sid)}/state`);
         if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
         const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse };
-        if (sessionIdRef.current !== sid) return null;
+        if (sessionIdRef.current !== sid || contextRequestRef.current !== requestId) return null;
 
         const liveState = agentState.state;
         if (liveState) {
@@ -1122,10 +1131,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return null;
       }
     } catch (e) {
-      setError(String(e));
+      if (sessionIdRef.current === sid && contextRequestRef.current === requestId) setError(String(e));
       return null;
     } finally {
-      if (showLoading && !messagesLoaded) setLoading(false);
+      if (showLoading && !messagesLoaded && contextRequestRef.current === requestId) setLoading(false);
     }
   }, []);
 
@@ -1145,7 +1154,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // from the context, so it is the signal that there is anything to fetch.
     const isCompacted = firstMessage?.role === "custom"
       && (firstMessage as { customType?: string }).customType === "compaction";
-    const key = `${sid}:${leafId ?? ""}`;
+    const requestId = contextRequestRef.current;
+    const key = `${sid}:${leafId ?? ""}:${requestId}`;
     if (!isCompacted) {
       earlierHistoryKeyRef.current = key;
       setContextStartIndex(0);
@@ -1160,17 +1170,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!res.ok || sessionIdRef.current !== sid) return;
       const data = await res.json() as { messages?: AgentMessage[]; entryIds?: string[] };
       const earlier = data.messages ?? [];
-      if (earlier.length === 0 || sessionIdRef.current !== sid) return;
+      if (earlier.length === 0 || sessionIdRef.current !== sid || contextRequestRef.current !== requestId) return;
       setMessages((current) => [...earlier, ...current]);
       setEntryIds((current) => [...(data.entryIds ?? []), ...current]);
       setContextStartIndex(earlier.length);
     } catch {
-      // Leave the context rendered as-is rather than blanking the chat.
-      earlierHistoryKeyRef.current = null;
+      // A prior branch's failure must not reset the current history request.
+      if (earlierHistoryKeyRef.current === key) earlierHistoryKeyRef.current = null;
     }
   }, []);
 
   const loadContext = useCallback(async (sid: string, leafId: string | null) => {
+    const requestId = contextRequestRef.current + 1;
+    contextRequestRef.current = requestId;
     try {
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
       if (leafId) params.set("leafId", leafId);
@@ -1178,6 +1190,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
+      // A slower response from a prior leaf must not overwrite the newest
+      // branch, even when the session itself is still the same.
+      if (sessionIdRef.current !== sid || contextRequestRef.current !== requestId) return false;
       setMessages(d.context.messages);
       setSubagents((previous) => mergeRehydratedSubagents(
         previous,
@@ -1189,10 +1204,42 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setEntryIds(d.context.entryIds ?? []);
       setContextStartIndex(0);
       void loadEarlierHistory(sid, leafId, d.context.messages[0]);
+      return true;
     } catch (e) {
       console.error("Failed to load context:", e);
+      return false;
     }
   }, []);
+
+  const queueNavigation = useCallback(async (sid: string, leafId: string | null) => {
+    if (navigationPendingRef.current || agentRunningRef.current || bashRunningRef.current || isCompacting) return false;
+    navigationPendingRef.current = true;
+    ++contextRequestRef.current; // Invalidate pending context/history responses now.
+    setNavigationPending(true);
+    try {
+      if (leafId) {
+        const result = await sendAgentCommand<{ cancelled?: boolean }>(sid, {
+          type: "navigate_tree",
+          targetId: leafId,
+        });
+        if (result?.cancelled) return false;
+      }
+      if (sessionIdRef.current !== sid) return false;
+      const loaded = await loadContext(sid, leafId);
+      if (!loaded) throw new Error("Could not load the selected branch. Reload before sending a message.");
+      setActiveLeafId(leafId);
+      setError(null);
+      return true;
+    } catch (e) {
+      // A lost response can leave the backend on the new branch. Do not expose
+      // the old transcript's composer until the user reloads or navigates again.
+      if (sessionIdRef.current === sid) setError(String(e));
+      throw e;
+    } finally {
+      navigationPendingRef.current = false;
+      setNavigationPending(false);
+    }
+  }, [isCompacting, loadContext]);
 
   const loadTools = useCallback(async (sid: string) => {
     try {
@@ -1339,6 +1386,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       };
       const timeout = setTimeout(() => settle("timeout"), EVENT_STREAM_CONNECT_TIMEOUT_MS);
 
+      // EventSource.open is the transport-level readiness signal. Waiting only
+      // for our first data frame can report a false timeout when Chrome has
+      // already received the SSE headers but delays dispatching message events
+      // in a large or busy tab.
+      es.onopen = () => {
+        eventReconnectAttemptsRef.current = 0;
+        settle("connected");
+      };
+
       es.onmessage = (e) => {
         try {
           const event = JSON.parse(e.data) as AgentEvent;
@@ -1411,6 +1467,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const result = await connectEvents(sid);
     if (result.status === "connected" || result.source.readyState === EventSource.OPEN) return;
+    // In very large chats Chrome can receive the stream while its main thread is
+    // still busy rendering history, delaying the onopen task beyond our deadline.
+    // CONNECTING is recoverable and EventSource will keep retrying; let the prompt
+    // proceed and rely on the existing state/history reconciliation rather than
+    // turning client scheduling pressure into a false transport failure.
+    if (result.status === "timeout" && result.source.readyState === EventSource.CONNECTING) return;
     if (eventSourceRef.current === result.source) eventSourceRef.current = null;
     if (eventSourceSessionIdRef.current === sid) eventSourceSessionIdRef.current = null;
     if (eventConnectionAttemptRef.current?.source === result.source) eventConnectionAttemptRef.current = null;
@@ -1530,6 +1592,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunningRef.current = false;
     setAgentRunning(false);
     setAgentPhase(null);
+    setToolProgress((previous) => previous.map((item) => ({
+      ...item,
+      status: item.status === "running" ? "unfinished" : item.status,
+      calls: item.calls?.map((call) => call.status === "running" ? { ...call, status: "unfinished" } : call),
+    })));
     setRetryInfo(null);
     dispatch({ type: "end" });
     return wasRunning;
@@ -1602,6 +1669,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         ) return;
 
         const state = data.state;
+        setIsCompacting(Boolean(data.running && state?.isCompacting));
         const promptActive = Boolean(data.running && state && (state.isStreaming || state.isPromptRunning));
         if (promptActive) {
           eventStreamGraceActiveRef.current = false;
@@ -1671,7 +1739,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (res.ok) {
           const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
           const state = data.state;
-          if (!data.running || !state || (!state.isStreaming && !state.isPromptRunning)) {
+          if (!data.running || !state || (!state.isStreaming && !state.isPromptRunning && !state.isCompacting)) {
             await finishPromptWithoutStream(sid, runId);
             return;
           }
@@ -1717,7 +1785,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // If the server reports idle while we still think it's running, finish
   // through the same settlement path used by non-streaming prompts.
   const reconcileAgentState = useCallback(async (sid: string) => {
-    if (!agentRunningRef.current) return;
+    if (!agentRunningRef.current && !isCompacting) return;
     const runId = promptRunIdRef.current;
     try {
       const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
@@ -1726,7 +1794,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // A slow response can straddle a run boundary (previous run finished
       // and the user already started the next one while this request was in
       // flight) — everything in it is stale, drop it.
-      if (promptRunIdRef.current !== runId) return;
+      if (promptRunIdRef.current !== runId || sessionIdRef.current !== sid) return;
       const state = data.state;
       // Mirror compaction state unconditionally: a missed compaction_end
       // would otherwise leave the "Stop compaction" UI stuck. No state
@@ -1735,7 +1803,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setQueuedMessages(normalizeQueuedMessages(state?.queuedMessages));
       const busy = data.running && state
         && (state.isStreaming || state.isPromptRunning || state.isCompacting);
-      if (busy || !agentRunningRef.current) return;
+      if (busy || (!agentRunningRef.current && !isCompacting)) return;
       if (state) {
         if (state.contextUsage !== undefined) setContextUsage(state.contextUsage ?? null);
         if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
@@ -1746,13 +1814,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch {
       // Network still down — the next poll / visibility / online tick retries.
     }
-  }, [finishPromptWithoutStream]);
+  }, [finishPromptWithoutStream, isCompacting]);
 
-  // Recovery net for missed SSE events: while the agent is running, verify
+  // Recovery net for missed SSE events: while running or compacting, verify
   // against the server periodically and whenever the tab returns to the
   // foreground or the network comes back.
   useEffect(() => {
-    if (!agentRunning) return;
+    if (!agentRunning && !isCompacting) return;
     const reconcile = () => {
       // Read the ref on every tick: for brand-new sessions the id is
       // assigned only after ensure_session returns.
@@ -1770,7 +1838,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", reconcile);
     };
-  }, [agentRunning, reconcileAgentState]);
+  }, [agentRunning, isCompacting, reconcileAgentState]);
 
   useEffect(() => {
     agentRunningRef.current = agentRunning;
@@ -1783,6 +1851,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         sdkAgentActiveRef.current = true;
         agentRunningRef.current = true;
         setAgentRunning(true);
+        setToolProgress([]);
         setAgentPhase({ kind: "waiting_model" });
         dispatch({ type: "start" });
         break;
@@ -1863,7 +1932,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // reconcile) — they would resurrect a ghost streaming bubble.
         if (!agentRunningRef.current) break;
         const msg = event.message as Partial<AgentMessage> | undefined;
-        if (msg?.role === "user") {
+        if (msg?.role === "user" || isSystemMessageEvent(event)) {
           break;
         }
         if (msg) {
@@ -1888,6 +1957,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // appending it again would duplicate it.
         if (!agentRunningRef.current) break;
         const completed = event.message as AgentMessage | undefined;
+        if (isSystemMessageEvent(event)) break;
         if (completed && completed.role === "user") {
           // Delivered steering/follow-up messages surface here as user
           // messages. The run's initial prompt also emits one, but handleSend
@@ -1913,7 +1983,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setAgentPhase({ kind: "waiting_model" });
         break;
       }
+      case "tool_execution_update": {
+        if (!agentRunningRef.current) break;
+        setToolProgress((previous) => updateToolProgress(previous, event));
+        break;
+      }
       case "tool_execution_start": {
+        if (!agentRunningRef.current) break;
+        setToolProgress((previous) => updateToolProgress(previous, event));
+        // A nested execution belongs to its parent, never to the model tool phase or fleet.
+        if (isNestedToolExecutionEvent(event)) break;
         const id = event.toolCallId as string;
         const name = event.toolName as string;
         setAgentPhase((prev) => {
@@ -2033,6 +2112,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         break;
       }
       case "tool_execution_end": {
+        if (!agentRunningRef.current) break;
+        setToolProgress((previous) => updateToolProgress(previous, event));
+        if (isNestedToolExecutionEvent(event)) break;
         const id = event.toolCallId as string;
         const name = event.toolName as string;
         setAgentPhase((prev) => {
@@ -2229,6 +2311,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           setCompactResult(readCompactResult(event.result, (event.reason as string | undefined) ?? "auto"));
           if (sessionIdRef.current) loadSession(sessionIdRef.current);
         }
+        if (sessionIdRef.current && !agentRunningRef.current) {
+          scheduleEventStreamClose(sessionIdRef.current);
+        }
         break;
       case "extension_ui_request":
         handleExtensionUiRequest(event as ExtensionUiRequest);
@@ -2240,7 +2325,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage && !images?.length) return;
-    if (agentRunningRef.current || bashRunningRef.current) return;
+    if (agentRunningRef.current || bashRunningRef.current || navigationPendingRef.current) return;
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
 
     const isBashCommand = !images?.length && trimmedMessage.startsWith("!");
@@ -2253,6 +2338,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
 
     const promptRunId = promptRunIdRef.current + 1;
+    setToolProgress([]);
     cancelEventStreamGrace();
     rpcPromptPendingRef.current = true;
 
@@ -2315,7 +2401,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           ...(piImages?.length ? { images: piImages } : {}),
         });
       }
-      if (isSlashCommandPrompt && sentSessionId) {
+      if (!sentSessionId) throw new Error("No session was available to receive the message.");
+      if (isSlashCommandPrompt) {
         void waitForPromptSettlement(sentSessionId, promptRunId);
       }
     } catch (e) {
@@ -2330,22 +2417,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       rpcPromptPendingRef.current = false;
       agentRunningRef.current = false;
       closeEvents();
-      if (e instanceof EventStreamConnectionError) {
-        const optimisticKey = optimisticUserMessageKeyRef.current;
-        if (optimisticKey) {
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            return last?.role === "user" && userMessageKey(last) === optimisticKey
-              ? prev.slice(0, -1)
-              : prev;
-          });
-        }
-        addNotice({ type: "error", message: e.message });
-        // The prompt never reached the agent, so restore the user's text into
-        // the input instead of losing it. Mirrors the shell-command recovery in
-        // executeBash; insertIfEmpty avoids clobbering anything typed since.
-        if (message) opts.chatInputRef?.current?.insertIfEmpty(message);
+      // No prompt command was sent, so this failure is unambiguous. Roll back
+      // the optimistic bubble and restore both the exact text and attachments;
+      // this covers cold-session startup errors as well as SSE connection errors.
+      const optimisticKey = optimisticUserMessageKeyRef.current;
+      if (optimisticKey) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return last?.role === "user" && userMessageKey(last) === optimisticKey
+            ? prev.slice(0, -1)
+            : prev;
+        });
       }
+      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      opts.chatInputRef?.current?.restoreDraft(message, images);
       optimisticUserMessageKeyRef.current = null;
       setAgentRunning(false);
       setAgentPhase(null);
@@ -2477,24 +2562,26 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [onSessionForked]);
 
   const handleNavigate = useCallback(async (entryId: string) => {
-    if (bashRunningRef.current) return;
+    if (bashRunningRef.current || agentRunningRef.current || navigationPendingRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
-    sendAgentCommand(sid, { type: "navigate_tree", targetId: entryId }).catch(() => {});
-    setActiveLeafId(entryId);
-    await loadContext(sid, entryId);
-  }, [loadContext]);
+    try {
+      await queueNavigation(sid, entryId);
+    } catch (e) {
+      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  }, [addNotice, queueNavigation]);
 
   const handleLeafChange = useCallback(async (leafId: string | null) => {
-    if (bashRunningRef.current) return;
-    setActiveLeafId(leafId);
+    if (bashRunningRef.current || agentRunningRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
-    await loadContext(sid, leafId);
-    if (leafId) {
-      sendAgentCommand(sid, { type: "navigate_tree", targetId: leafId }).catch(() => {});
+    try {
+      await queueNavigation(sid, leafId);
+    } catch (e) {
+      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, [loadContext]);
+  }, [addNotice, queueNavigation]);
 
   const handleModelChange = useCallback(async (provider: string, modelId: string) => {
     if (isNew) {
@@ -2826,6 +2913,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               void waitForPromptSettlement(session.id);
             }
           }
+          // Compaction can outlive a prompt. Reopening it still needs SSE so
+          // the completion and any resumed agent turn reach this tab.
+          if (agentState.state?.isCompacting && !agentState.state.isStreaming && !agentState.state.isPromptRunning) {
+            void connectEvents(session.id);
+          }
           if (agentState.state?.isBashRunning) {
             bashRunningRef.current = true;
             setBashRunning(true);
@@ -2946,13 +3038,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, contextStartIndex, streamState,
-    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    agentRunning, navigationPending, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices: noticeState.visible, addNotice, dismissNotice, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
-    agentPhase,
+    agentPhase, toolProgress,
     aborting,
     handleForceReset,
     subagents,

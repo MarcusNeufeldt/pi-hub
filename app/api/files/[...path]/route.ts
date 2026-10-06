@@ -19,7 +19,6 @@ import {
   getImageMime,
 } from "@/lib/file-types";
 import { resolveDirentIsDirectory } from "@/lib/file-dirent";
-import { isFilePathReferencedBySession } from "@/lib/session-file-references";
 import { isApiRequestAllowed } from "@/lib/request-security";
 import {
   inspectUploadTargets,
@@ -296,11 +295,18 @@ function getContentDisposition(filePath: string, asDownload = false): string {
 }
 
 function streamFile(filePath: string, stat: fs.Stats, contentType: string, rangeHeader: string | null, asDownload = false): Response {
+  // SVG is an active document when navigated directly. Never expose it as an
+  // inline same-origin document; callers can still download the original bytes.
+  const forceDownload = contentType === "image/svg+xml";
   const headers = {
     "Content-Type": contentType,
     "Cache-Control": "no-cache",
     "Accept-Ranges": "bytes",
-    "Content-Disposition": getContentDisposition(filePath, asDownload),
+    "Content-Disposition": getContentDisposition(filePath, asDownload || forceDownload),
+    ...(forceDownload ? {
+      "Content-Security-Policy": "sandbox; default-src 'none'",
+      "X-Content-Type-Options": "nosniff",
+    } : {}),
   };
 
   if (!rangeHeader) {
@@ -423,15 +429,12 @@ export async function GET(
     if (!type) {
       return NextResponse.json({ error: "Invalid file request type" }, { status: 400 });
     }
-    const sessionId = request.nextUrl.searchParams.get("sessionId");
-
     const allowedRoots = await getAllowedFileRoots();
     const allowedByRoot = isFilePathAllowed(filePath, allowedRoots);
-    const allowedBySessionReference =
-      !allowedByRoot &&
-      type !== "list" &&
-      await isFilePathReferencedBySession(filePath, sessionId);
-    if (!allowedByRoot && !allowedBySessionReference) {
+    // Conversation text is not an authorization grant. Outside-root links use
+    // the dedicated, provenance-checked endpoint (e.g. bash-output); the file
+    // browser itself only serves roots explicitly allowed by the server.
+    if (!allowedByRoot) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
@@ -442,7 +445,7 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    if (!allowedBySessionReference && !isExistingFilePathAllowed(filePath, allowedRoots)) {
+    if (!isExistingFilePathAllowed(filePath, allowedRoots)) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 

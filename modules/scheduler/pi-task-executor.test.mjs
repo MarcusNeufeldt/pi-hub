@@ -210,6 +210,121 @@ test("executeRun resume without model override: no set_model sent", async () => 
   }
 });
 
+test("executeRun forwards omitted defaults and explicit empty tool selections", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pihub-exec-tools-"));
+  try {
+    const run = makeRun({ cwd: dir });
+    const optionsByRun = [];
+    const fake = makeFakeSession();
+    const startSession = async (tempKey, file, cwd, options) => {
+      optionsByRun.push(options);
+      return fake;
+    };
+    const progress = makeProgress();
+
+    await executeRun(run, { startSession, progress });
+    assert.deepEqual(optionsByRun[0].toolNames, [], "explicit [] must disable tools");
+
+    run.executionOptionsSnapshotJson = JSON.stringify({
+      provider: null,
+      modelId: null,
+      thinkingLevel: null,
+      timeoutSeconds: 7200,
+      notifyOnSuccess: false,
+      notifyOnFailure: true,
+    });
+    await executeRun(run, { startSession, progress: makeProgress() });
+    assert.equal(optionsByRun[1].toolNames, undefined, "omitted selection must keep SDK defaults");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("executeRun force-finishes when session startup hangs", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pihub-exec-hang-"));
+  try {
+    const run = makeRun({ cwd: dir });
+    run.executionOptionsSnapshotJson = JSON.stringify({
+      provider: null,
+      modelId: null,
+      thinkingLevel: null,
+      toolNames: [],
+      timeoutSeconds: 1,
+      notifyOnSuccess: false,
+      notifyOnFailure: true,
+    });
+    const progress = makeProgress();
+    const startSession = () => new Promise(() => {}); // never settles
+    const began = Date.now();
+    await executeRun(run, { startSession, progress });
+    const finish = progress.getFinish();
+    assert.equal(finish.status, "failed");
+    assert.equal(finish.errorCode, "TASK_TIMEOUT");
+    assert.match(finish.errorMessage, /startup timed out/i);
+    assert.ok(Date.now() - began < 30_000, "deadline must break the hang quickly");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("executeRun gate: skips without starting a session when the gate exits non-zero", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pihub-exec-gate-"));
+  try {
+    const run = makeRun({ cwd: dir });
+    run.executionOptionsSnapshotJson = JSON.stringify({
+      provider: null,
+      modelId: null,
+      thinkingLevel: null,
+      toolNames: [],
+      timeoutSeconds: 7200,
+      gateCommand: 'node -e "process.exit(1)"',
+      notifyOnSuccess: false,
+      notifyOnFailure: true,
+    });
+    const progress = makeProgress();
+    const startSession = async () => {
+      throw new Error("should not start a session");
+    };
+    const began = Date.now();
+    await executeRun(run, { startSession, progress });
+    const finish = progress.getFinish();
+    assert.equal(finish.status, "success");
+    assert.match(finish.resultExcerpt, /Gate skip/);
+    assert.ok(Date.now() - began < 30_000, "gate skip must be fast");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("executeRun gate: proceeds into the normal flow when the gate exits 0", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pihub-exec-gate-pass-"));
+  try {
+    const run = makeRun({ cwd: dir });
+    run.executionOptionsSnapshotJson = JSON.stringify({
+      provider: null,
+      modelId: null,
+      thinkingLevel: null,
+      toolNames: [],
+      timeoutSeconds: 7200,
+      gateCommand: 'node -e "process.exit(0)"',
+      notifyOnSuccess: false,
+      notifyOnFailure: true,
+    });
+    const fake = makeFakeSession();
+    const startCalls = [];
+    const startSession = async (tempKey, file, cwd) => {
+      startCalls.push({ cwd });
+      return fake;
+    };
+    const progress = makeProgress();
+    await executeRun(run, { startSession, progress });
+    assert.equal(startCalls.length, 1);
+    assert.equal(progress.getFinish().status, "success");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("executeRun new-session: creates a fresh session (sessionFile='')", async () => {
   const dir = mkdtempSync(join(tmpdir(), "pihub-exec-"));
   try {

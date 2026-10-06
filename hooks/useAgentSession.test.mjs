@@ -48,6 +48,53 @@ test("resets the reconnect budget on a live stream and per session, never per at
   assert.match(connectSource, /eventReconnectAttemptsRef\.current = 0;/);
 });
 
+test("accepts the native EventSource open signal before the first data frame", () => {
+  const connectSource = source.slice(
+    source.indexOf("const connectEvents = useCallback"),
+    source.indexOf("es.onmessage = (e) => {"),
+  );
+
+  assert.match(connectSource, /es\.onopen = \(\) => \{/);
+  assert.match(connectSource, /eventReconnectAttemptsRef\.current = 0;/);
+  assert.match(connectSource, /settle\("connected"\)/);
+});
+
+test("allows cold Windows AgentSession startup without a false stream timeout", () => {
+  assert.match(source, /const EVENT_STREAM_CONNECT_TIMEOUT_MS = 15_000;/);
+  const ensureSource = source.slice(
+    source.indexOf("const ensureEventsConnected = useCallback"),
+    source.indexOf("const respondToExtensionUi = useCallback"),
+  );
+  assert.match(
+    ensureSource,
+    /result\.status === "timeout" && result\.source\.readyState === EventSource\.CONNECTING/,
+  );
+});
+
+test("allows abort to wait through bounded cold AgentSession startup", () => {
+  assert.match(source, /const ABORT_TIMEOUT_MS = 20_000;/);
+});
+
+test("serializes branch navigation and ignores stale context responses", () => {
+  assert.match(source, /navigationPendingRef\.current = true/);
+  assert.match(source, /\+\+contextRequestRef\.current/);
+  assert.match(source, /finally \{\s*navigationPendingRef\.current = false/);
+  assert.match(source, /contextRequestRef\.current !== requestId/);
+  assert.match(source, /await queueNavigation\(sid, leafId\)/);
+  assert.match(source, /navigationPendingRef\.current\) return;/);
+});
+
+test("recovers the full draft for every pre-POST startup failure", () => {
+  const sendSource = source.slice(
+    source.indexOf("const handleSend = useCallback"),
+    source.indexOf("const executeBash = useCallback"),
+  );
+  assert.match(sendSource, /promptRequestStarted && sentSessionId/);
+  assert.match(sendSource, /opts\.chatInputRef\?\.current\?\.restoreDraft\(message, images\)/);
+  assert.match(sendSource, /addNotice\(\{ type: "error", message: e instanceof Error \? e\.message : String\(e\) \}\)/);
+  assert.match(sendSource, /if \(promptRequestStarted && sentSessionId\)[\s\S]*?return;/);
+});
+
 test("abandons a superseded socket instead of reconnecting it", () => {
   // closeEvents() or a newer connect replaced the current EventSource; retrying
   // this one would race a live connection.

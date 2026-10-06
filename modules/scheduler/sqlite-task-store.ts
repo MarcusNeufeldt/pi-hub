@@ -16,6 +16,7 @@ import type {
 
 import { SchedulerError, SchedulerErrorCode } from "./errors";
 import { migrate } from "./schema-migrations";
+import { normalizeToolNames } from "../../lib/tool-names";
 import type {
   CreateTaskRow,
   InsertRunRow,
@@ -66,6 +67,7 @@ interface TaskRow {
   revision: number;
   resume_json: string | null;
   retry_on_rate_limit_json: string | null;
+  gate_command: string | null;
   attempt_count: number;
 }
 
@@ -114,8 +116,11 @@ function rowToTask(r: TaskRow): TaskDefinition {
       provider: r.provider,
       modelId: r.model_id,
       thinkingLevel: r.thinking_level,
-      toolNames: r.tool_names_json ? (JSON.parse(r.tool_names_json) as string[]) : [],
+      toolNames: r.tool_names_json
+        ? normalizeToolNames(JSON.parse(r.tool_names_json) as string[])
+        : undefined,
       timeoutSeconds: r.timeout_seconds,
+      gateCommand: r.gate_command ?? null,
       notifyOnSuccess: r.notify_on_success === 1,
       notifyOnFailure: r.notify_on_failure === 1,
     },
@@ -228,6 +233,7 @@ export class SqliteTaskStore implements TaskStore {
           provider, model_id, thinking_level, tool_names_json,
           resume_json,
           retry_on_rate_limit_json,
+          gate_command,
           status, overlap_policy, misfire_policy, misfire_grace_seconds, timeout_seconds,
           notify_on_success, notify_on_failure,
           last_run_at, created_at, updated_at, revision
@@ -237,6 +243,7 @@ export class SqliteTaskStore implements TaskStore {
           @provider, @model_id, @thinking_level, @tool_names_json,
           @resume_json,
           @retry_on_rate_limit_json,
+          @gate_command,
           @status, @overlap_policy, @misfire_policy, @misfire_grace_seconds, @timeout_seconds,
           @notify_on_success, @notify_on_failure,
           NULL, @created_at, @updated_at, 1
@@ -255,11 +262,14 @@ export class SqliteTaskStore implements TaskStore {
         provider: row.execution.provider,
         model_id: row.execution.modelId,
         thinking_level: row.execution.thinkingLevel,
-        tool_names_json: JSON.stringify(row.execution.toolNames),
+        tool_names_json: row.execution.toolNames === undefined
+          ? null
+          : JSON.stringify(row.execution.toolNames),
         resume_json: row.resume ? JSON.stringify(row.resume) : null,
         retry_on_rate_limit_json: row.retryOnRateLimit
           ? JSON.stringify(row.retryOnRateLimit)
           : null,
+        gate_command: row.execution.gateCommand ?? null,
         status: row.status,
         overlap_policy: "skip",
         misfire_policy: row.misfirePolicy,
@@ -328,6 +338,7 @@ export class SqliteTaskStore implements TaskStore {
           tool_names_json = @tool_names_json,
           resume_json = @resume_json,
           retry_on_rate_limit_json = @retry_on_rate_limit_json,
+          gate_command = @gate_command,
           status = @status,
           timeout_seconds = @timeout_seconds,
           notify_on_success = @notify_on_success, notify_on_failure = @notify_on_failure,
@@ -348,11 +359,14 @@ export class SqliteTaskStore implements TaskStore {
         provider: next.execution.provider,
         model_id: next.execution.modelId,
         thinking_level: next.execution.thinkingLevel,
-        tool_names_json: JSON.stringify(next.execution.toolNames),
+        tool_names_json: next.execution.toolNames === undefined
+          ? null
+          : JSON.stringify(next.execution.toolNames),
         resume_json: next.resume ? JSON.stringify(next.resume) : null,
         retry_on_rate_limit_json: next.retryOnRateLimit
           ? JSON.stringify(next.retryOnRateLimit)
           : null,
+        gate_command: next.execution.gateCommand ?? null,
         status: next.status,
         timeout_seconds: next.execution.timeoutSeconds,
         notify_on_success: next.execution.notifyOnSuccess ? 1 : 0,
@@ -585,8 +599,10 @@ export class SqliteTaskStore implements TaskStore {
       params.heartbeat_at = fields.heartbeatAt;
     }
     if (sets.length === 0) return;
+    // Enforce cancellation at the write boundary too: another web process may
+    // cancel after the executor's last status read but before this update.
     this.db
-      .prepare(`UPDATE task_runs SET ${sets.join(", ")} WHERE id = @id`)
+      .prepare(`UPDATE task_runs SET ${sets.join(", ")} WHERE id = @id AND status != 'cancelled'`)
       .run(params);
   }
 

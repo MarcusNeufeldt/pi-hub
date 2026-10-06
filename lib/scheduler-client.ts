@@ -25,7 +25,8 @@ export interface ExecutionDto {
   provider: string | null;
   modelId: string | null;
   thinkingLevel: string | null;
-  toolNames: string[];
+  /** Omitted means SDK defaults; [] explicitly disables tools. */
+  toolNames?: string[];
   timeoutSeconds: number;
   notifyOnSuccess: boolean;
   notifyOnFailure: boolean;

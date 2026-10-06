@@ -1,13 +1,14 @@
 import {
   SessionManager,
-  buildContextEntries as piBuildContextEntries,
-  buildSessionContext as piBuildSessionContext,
+  buildSessionProjection as piBuildSessionProjection,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
+import { spawn } from "child_process";
 import { closeSync, openSync, readSync } from "fs";
-import { normalize as normalizePath } from "path";
-import type { AgentMessage, SessionEntry, SessionHeader, SessionInfo, SessionContext } from "./types";
-import type { SessionEntry as PiSessionEntry, SessionInfo as PiSessionInfo } from "@earendil-works/pi-coding-agent";
+import { readFile } from "fs/promises";
+import { join, normalize as normalizePath } from "path";
+import type { AgentMessage, SessionEntry, SessionHeader, SessionInfo, SessionContext, SessionMessage } from "./types";
+import type { SessionEntry as PiSessionEntry } from "@earendil-works/pi-coding-agent";
 import { normalizeToolCalls } from "./normalize";
 import { buildHistoryFromChain, type SessionHistoryResult } from "./session-history";
 import { sessionPathKey } from "./session-path";
@@ -15,8 +16,67 @@ import { resolveProject, type ProjectInfo } from "./worktree";
 
 export { getAgentDir };
 
-async function loadAllSessions(): Promise<SessionInfo[]> {
-  const piSessions: PiSessionInfo[] = await SessionManager.listAll();
+interface IndexedSessionInfo {
+  path: string;
+  id: string;
+  cwd: string;
+  name?: string;
+  created: string;
+  modified: string;
+  messageCount: number;
+  firstMessage: string;
+  parentSessionPath?: string;
+}
+
+interface PersistedSessionIndex {
+  version: number;
+  files: Record<string, { session: IndexedSessionInfo | null }>;
+}
+
+const SESSION_INDEX_VERSION = 1;
+const SESSION_INDEX_CACHE_PATH = join(getAgentDir(), "pi-hub-session-index-v1.json");
+const SESSION_INDEXER_PATH = join(process.cwd(), "bin", "pi-hub-session-indexer.mjs");
+
+async function readPersistedSessionIndex(): Promise<IndexedSessionInfo[] | null> {
+  try {
+    const index = JSON.parse(await readFile(SESSION_INDEX_CACHE_PATH, "utf8")) as PersistedSessionIndex;
+    if (index.version !== SESSION_INDEX_VERSION || !index.files || typeof index.files !== "object") return null;
+    return Object.values(index.files)
+      .map((record) => record?.session)
+      .filter((session): session is IndexedSessionInfo => Boolean(session));
+  } catch {
+    return null;
+  }
+}
+
+async function refreshPersistedSessionIndex(): Promise<IndexedSessionInfo[]> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, [
+      SESSION_INDEXER_PATH,
+      join(getAgentDir(), "sessions"),
+      SESSION_INDEX_CACHE_PATH,
+    ], {
+      windowsHide: true,
+      shell: false,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => {
+      if (stderr.length < 8_000) stderr += String(chunk);
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Session indexer exited with ${signal ?? code}: ${stderr.trim()}`));
+    });
+  });
+
+  const sessions = await readPersistedSessionIndex();
+  if (!sessions) throw new Error("Session indexer completed without a readable cache");
+  return sessions;
+}
+
+async function enrichSessions(piSessions: IndexedSessionInfo[]): Promise<SessionInfo[]> {
   const pathToId = new Map<string, string>();
   for (const s of piSessions) pathToId.set(sessionPathKey(s.path), s.id);
 
@@ -36,8 +96,8 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       id: s.id,
       cwd: s.cwd,
       name: s.name,
-      created: s.created instanceof Date ? s.created.toISOString() : String(s.created),
-      modified: s.modified instanceof Date ? s.modified.toISOString() : String(s.modified),
+      created: s.created,
+      modified: s.modified,
       messageCount: s.messageCount,
       firstMessage: s.firstMessage || "(no messages)",
       parentSessionId: s.parentSessionPath ? pathToId.get(sessionPathKey(s.parentSessionPath)) : undefined,
@@ -47,27 +107,25 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
   });
 }
 
-export async function listAllSessions(): Promise<SessionInfo[]> {
+async function loadAllSessions(): Promise<SessionInfo[]> {
+  return enrichSessions(await refreshPersistedSessionIndex());
+}
+
+function startSessionListRefresh(): Promise<SessionInfo[]> {
   const generation = globalThis.__piSessionListGeneration ?? 0;
-
-  // Return cached result if still fresh (avoids re-scanning session files
-  // and re-spawning git processes on every page load).
-  if (globalThis.__piSessionListCache && Date.now() - globalThis.__piSessionListCache.ts < SESSION_LIST_CACHE_TTL_MS) {
-    return globalThis.__piSessionListCache.data;
-  }
-
-  // Coalescing dedup: concurrent callers share the same in-flight promise
-  // only while it belongs to the current cache generation.
-  if (globalThis.__piSessionListPromise && globalThis.__piSessionListPromiseGeneration === generation) {
-    return globalThis.__piSessionListPromise;
-  }
-
-  const loadPromise = loadAllSessions().then((data) => {
-    // An invalidation may happen while the scan is in flight. Do not let that
-    // older result repopulate the cache after a session mutation.
-    if ((globalThis.__piSessionListGeneration ?? 0) === generation) {
-      globalThis.__piSessionListCache = { data, ts: Date.now() };
+  if (globalThis.__piSessionListPromise) {
+    if (globalThis.__piSessionListPromiseGeneration === generation) {
+      return globalThis.__piSessionListPromise;
     }
+    // Serialize indexer processes, but never reuse a scan started before the
+    // mutation this caller needs to see.
+    return globalThis.__piSessionListPromise.then(() => startSessionListRefresh());
+  }
+  const loadPromise = loadAllSessions().then((data) => {
+    globalThis.__piSessionListCache = {
+      data,
+      ts: (globalThis.__piSessionListGeneration ?? 0) === generation ? Date.now() : 0,
+    };
     return data;
   });
   const trackedPromise = loadPromise.finally(() => {
@@ -76,10 +134,35 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
       globalThis.__piSessionListPromiseGeneration = undefined;
     }
   });
-
-  globalThis.__piSessionListPromise = trackedPromise;
   globalThis.__piSessionListPromiseGeneration = generation;
+  globalThis.__piSessionListPromise = trackedPromise;
   return trackedPromise;
+}
+
+export async function listAllSessions(): Promise<SessionInfo[]> {
+  if (globalThis.__piSessionListCache && Date.now() - globalThis.__piSessionListCache.ts < SESSION_LIST_CACHE_TTL_MS) {
+    return globalThis.__piSessionListCache.data;
+  }
+
+  // Serve stale catalogue data immediately while a hidden child process updates
+  // the persistent per-file index. Large JSONL files must never block Next's
+  // event loop or make the watchdog mistake a busy scan for a dead server.
+  if (globalThis.__piSessionListCache) {
+    void startSessionListRefresh().catch((error) => {
+      console.error("[pi-hub] Session index refresh failed:", error);
+    });
+    return globalThis.__piSessionListCache.data;
+  }
+
+  const persisted = await readPersistedSessionIndex();
+  if (!persisted) return startSessionListRefresh();
+
+  const data = await enrichSessions(persisted);
+  globalThis.__piSessionListCache = { data, ts: 0 };
+  void startSessionListRefresh().catch((error) => {
+    console.error("[pi-hub] Session index refresh failed:", error);
+  });
+  return data;
 }
 
 // ============================================================================
@@ -98,7 +181,7 @@ const SESSION_LIST_CACHE_TTL_MS = 30_000;
 
 export function invalidateSessionListCache(): void {
   globalThis.__piSessionListGeneration = (globalThis.__piSessionListGeneration ?? 0) + 1;
-  globalThis.__piSessionListCache = undefined;
+  if (globalThis.__piSessionListCache) globalThis.__piSessionListCache.ts = 0;
 }
 
 function getPathCache(): Map<string, string> {
@@ -111,12 +194,24 @@ function getPathToIdCache(): Map<string, string> {
   return globalThis.__piPathToSessionIdCache;
 }
 
+export async function refreshSessionListForPathLookup(
+  refresh: () => Promise<unknown> = startSessionListRefresh,
+): Promise<void> {
+  // A mutation can invalidate the catalogue while the scan is in flight. Do
+  // not return the older scan's miss; wait for one refresh from the current
+  // generation before consulting the path cache.
+  for (;;) {
+    const generation = globalThis.__piSessionListGeneration ?? 0;
+    await refresh();
+    if ((globalThis.__piSessionListGeneration ?? 0) === generation) return;
+  }
+}
+
 export async function resolveSessionPath(sessionId: string): Promise<string | null> {
   const cached = getPathCache().get(sessionId);
   if (cached) return cached;
 
-  // Cache miss: scan all sessions to populate cache, then retry
-  await listAllSessions();
+  await refreshSessionListForPathLookup();
   return getPathCache().get(sessionId) ?? null;
 }
 
@@ -125,7 +220,7 @@ export async function resolveSessionIdByPath(filePath: string): Promise<string |
   const cached = getPathToIdCache().get(pathKey);
   if (cached) return cached;
 
-  await listAllSessions();
+  await refreshSessionListForPathLookup();
   return getPathToIdCache().get(pathKey);
 }
 
@@ -228,17 +323,27 @@ export function buildSessionHistory(
   const byId = new Map<string, SessionEntry>();
   for (const e of entries) byId.set(e.id, e);
 
+  // Find the first raw history row still contributing to effective context.
+  // This existing single boundary cannot describe removals inside the history.
+  const projection = piBuildSessionProjection(
+    entries as unknown as PiSessionEntry[],
+    leafId,
+    byId as unknown as Map<string, PiSessionEntry>,
+  );
   const contextIds = new Set(
-    piBuildContextEntries(
-      entries as unknown as PiSessionEntry[],
-      leafId,
-      byId as unknown as Map<string, PiSessionEntry>,
-    ).map((entry) => (entry as unknown as SessionEntry).id),
+    projection.entries
+      .filter((projected) => projected.messages.length > 0)
+      .map((projected) => (projected.sourceEntry as unknown as SessionEntry).id),
   );
 
   return buildHistoryFromChain(entries, leafId, contextIds, (entry) => entryToUiMessage(entry, options));
 }
 
+/**
+ * Render the SDK's effective context while retaining source IDs for navigation.
+ * Raw history is built separately. Edited thinking stays inline because deferred
+ * blocks are fetched from the original entry by block index.
+ */
 export function buildSessionContext(
   entries: SessionEntry[],
   leafId?: string | null,
@@ -247,33 +352,44 @@ export function buildSessionContext(
   const byId = new Map<string, SessionEntry>();
   for (const e of entries) byId.set(e.id, e);
 
-  const piEntries = entries as unknown as PiSessionEntry[];
-  const piCtx = piBuildSessionContext(piEntries, leafId, byId as unknown as Map<string, PiSessionEntry>);
-
-  const contextEntries = piBuildContextEntries(
-    piEntries,
+  const projection = piBuildSessionProjection(
+    entries as unknown as PiSessionEntry[],
     leafId,
     byId as unknown as Map<string, PiSessionEntry>,
   );
 
-  // Convert the SDK-selected context entries and their IDs together. This keeps
-  // fork/navigation targets aligned while preserving pi's compaction ordering.
+  const editedIds = new Set<string>();
+  for (const { sourceEntry } of projection.entries) {
+    if (sourceEntry.type === "context_edit") editedIds.add(sourceEntry.targetId);
+  }
+
   const messages: AgentMessage[] = [];
   const entryIds: string[] = [];
-  for (const entry of contextEntries) {
-    const localEntry = entry as unknown as SessionEntry;
-    const m = entryToUiMessage(localEntry, options);
+  for (const projected of projection.entries) {
+    if (projected.messages.length === 0) continue;
+    const source = projected.sourceEntry as unknown as SessionEntry;
+    const message = projected.messages[0];
+    // Projected content can differ from the raw entry; keep all other metadata.
+    const effectiveEntry: SessionEntry = source.type === "message"
+      ? { ...source, message: message as unknown as SessionMessage }
+      : source.type === "custom_message" && message.role === "custom"
+        ? { ...source, content: message.content as typeof source.content }
+        : source;
+    // Compaction's recorded system message is provider input, not a chat row.
+    const m = entryToUiMessage(effectiveEntry, editedIds.has(source.id)
+      ? { ...options, deferThinking: false }
+      : options);
     if (m) {
       messages.push(m);
-      entryIds.push(localEntry.id);
+      entryIds.push(source.id);
     }
   }
 
   return {
     messages,
     entryIds,
-    thinkingLevel: piCtx.thinkingLevel,
-    model: piCtx.model,
+    thinkingLevel: projection.thinkingLevel,
+    model: projection.model,
   };
 }
 
@@ -341,6 +457,9 @@ function entryToUiMessage(
   // normalizeToolCalls is a secondary guard (returns non-assistant messages as-is).
   switch (entry.type) {
     case "message": {
+      // Transcript system messages carry the prompt and tool loadout (Pi >= 0.86).
+      // They are provider input, not conversation, so they never render.
+      if (entry.message.role === "system") return null;
       const base = options.deferToolResultImages
         ? omitToolResultBase64Images(normalizeToolCalls(entry.message))
         : normalizeToolCalls(entry.message);

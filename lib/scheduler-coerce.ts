@@ -7,6 +7,7 @@
  */
 
 import { validationError } from "@/modules/scheduler";
+import { normalizeToolNames } from "./tool-names";
 import type {
   ExecutionOptions,
   ResumeTarget,
@@ -23,11 +24,19 @@ export function coerceSchedule(raw: unknown): ScheduleInput {
     time?: unknown;
     localDateTime?: unknown;
     intervalHours?: unknown;
+    intervalMinutes?: unknown;
     minute?: unknown;
     timezone?: unknown;
   };
-  if (s.type !== "daily" && s.type !== "once" && s.type !== "hourly") {
-    throw validationError('schedule.type must be "daily", "once", or "hourly"');
+  if (
+    s.type !== "daily" &&
+    s.type !== "once" &&
+    s.type !== "hourly" &&
+    s.type !== "minutes"
+  ) {
+    throw validationError(
+      'schedule.type must be "daily", "once", "hourly", or "minutes"',
+    );
   }
   if (typeof s.timezone !== "string") {
     throw validationError("schedule.timezone is required");
@@ -52,6 +61,18 @@ export function coerceSchedule(raw: unknown): ScheduleInput {
       timezone: s.timezone,
     };
   }
+  if (s.type === "minutes") {
+    if (typeof s.intervalMinutes !== "number") {
+      throw validationError(
+        'schedule.intervalMinutes is required for "minutes"',
+      );
+    }
+    return {
+      type: "minutes",
+      intervalMinutes: s.intervalMinutes,
+      timezone: s.timezone,
+    };
+  }
   if (typeof s.localDateTime !== "string") {
     throw validationError('schedule.localDateTime is required for "once"');
   }
@@ -66,6 +87,7 @@ export function coercePartialExecution(raw: unknown): Partial<ExecutionOptions> 
     thinkingLevel?: unknown;
     toolNames?: unknown;
     timeoutSeconds?: unknown;
+    gateCommand?: unknown;
     notifyOnSuccess?: unknown;
     notifyOnFailure?: unknown;
   };
@@ -80,12 +102,18 @@ export function coercePartialExecution(raw: unknown): Partial<ExecutionOptions> 
     out.thinkingLevel = typeof e.thinkingLevel === "string" ? e.thinkingLevel : null;
   }
   if (Array.isArray(e.toolNames)) {
-    out.toolNames = e.toolNames.filter(
+    out.toolNames = normalizeToolNames(e.toolNames.filter(
       (t): t is string => typeof t === "string",
-    );
+    ));
   }
   if (typeof e.timeoutSeconds === "number") {
     out.timeoutSeconds = e.timeoutSeconds;
+  }
+  if (e.gateCommand !== undefined) {
+    out.gateCommand =
+      typeof e.gateCommand === "string" && e.gateCommand.trim()
+        ? e.gateCommand.trim()
+        : null;
   }
   if (e.notifyOnSuccess !== undefined) {
     out.notifyOnSuccess = Boolean(e.notifyOnSuccess);
@@ -101,7 +129,6 @@ export function coerceExecution(raw: unknown): ExecutionOptions {
     provider: null,
     modelId: null,
     thinkingLevel: null,
-    toolNames: [],
     timeoutSeconds: 7200,
     notifyOnSuccess: false,
     notifyOnFailure: true,

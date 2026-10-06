@@ -964,7 +964,10 @@ function CreateTaskView({
   const [provider, setProvider] = useState(editing?.execution.provider ?? "");
   const [modelId, setModelId] = useState(editing?.execution.modelId ?? "");
   const [thinking, setThinking] = useState(editing?.execution.thinkingLevel ?? "");
-  const [tools, setTools] = useState<string[]>(editing?.execution.toolNames ?? []);
+  // Keep omitted toolNames distinct from an explicit [] (all tools disabled).
+  const [tools, setTools] = useState<string[] | undefined>(
+    editing?.execution.toolNames,
+  );
   const [timeoutSeconds, setTimeoutSeconds] = useState(
     editing?.execution.timeoutSeconds ?? 7200,
   );
@@ -1010,7 +1013,7 @@ function CreateTaskView({
     }
   }, [resumeMode, selectedSession]);
 
-  const AVAILABLE_TOOLS = ["Read", "Bash", "Edit", "Write"];
+  const AVAILABLE_TOOLS = ["read", "bash", "edit", "write"];
   const TIMEZONES = [
     "Europe/Berlin",
     "Asia/Singapore",
@@ -1051,9 +1054,12 @@ function CreateTaskView({
   }, [scheduleType, time, localDateTime, timezone, intervalHours, hourMinute]);
 
   function toggleTool(tool: string) {
-    setTools((prev) =>
-      prev.includes(tool) ? prev.filter((x) => x !== tool) : [...prev, tool],
-    );
+    setTools((prev) => {
+      const current = prev ?? [];
+      return current.includes(tool)
+        ? current.filter((x) => x !== tool)
+        : [...current, tool];
+    });
   }
 
   async function handleSubmit() {
@@ -1063,7 +1069,7 @@ function CreateTaskView({
       provider: provider.trim() || null,
       modelId: modelId.trim() || null,
       thinkingLevel: thinking.trim() || null,
-      toolNames: tools,
+      ...(tools === undefined ? {} : { toolNames: tools }),
       timeoutSeconds,
       notifyOnSuccess: notifySuccess,
       notifyOnFailure: notifyFailure,
@@ -1377,11 +1383,16 @@ function CreateTaskView({
             </label>
             <div>
               <FieldCaption>{t("task.create.tools")}</FieldCaption>
+              <CheckboxOption
+                checked={tools === undefined}
+                onClick={() => setTools((current) => current === undefined ? [] : undefined)}
+                label={t("chat.thinkingUseDefault")}
+              />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
                 {AVAILABLE_TOOLS.map((tool) => (
                   <CheckboxOption
                     key={tool}
-                    checked={tools.includes(tool)}
+                    checked={tools?.includes(tool) ?? false}
                     onClick={() => toggleTool(tool)}
                     label={tool}
                   />

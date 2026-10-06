@@ -81,6 +81,7 @@ interface Props {
 export interface ChatInputHandle {
   insertText: (text: string) => void;
   insertIfEmpty: (text: string) => void;
+  restoreDraft: (text: string, images?: AttachedImage[]) => void;
   /**
    * Attach selected transcript text as context for the next message and focus the
    * composer. Deliberately not an insert: the quote is prefixed at send time, so
@@ -509,6 +510,30 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
+        ta.style.height = "auto";
+        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+      });
+    },
+    restoreDraft(text: string, images: AttachedImage[] = []) {
+      const ta = textareaRef.current;
+      // Startup can fail after the user has begun typing a follow-up. Keep
+      // that work as well as the failed message, including both image sets.
+      const current = ta ? ta.value : valueRef.current;
+      const restoredText = current ? `${text}\n\n${current}` : text;
+      const draftImages = images.map(imageToDraftImage);
+      const restoredImages = draftImagesToAttachedImages(draftImages);
+      setValue(restoredText);
+      setAtQuery(null);
+      setHistoryMenuOpen(false);
+      setAttachedImages((prev) => [...restoredImages, ...prev]);
+      if (draftKeyRef.current) setDraft(draftKeyRef.current, {
+        value: restoredText,
+        images: [...draftImages, ...attachedImagesRef.current.map(imageToDraftImage)],
+      });
+      requestAnimationFrame(() => {
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(restoredText.length, restoredText.length);
         ta.style.height = "auto";
         ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
       });
@@ -1292,8 +1317,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         // env() resolves to 0 where there is no inset, so this is inert elsewhere.
         paddingTop: 0,
         paddingLeft: "calc(16px + env(safe-area-inset-left))",
-        // desktop: 16px base + 36px for ChatMinimap alignment
-        paddingRight: isMobile ? "calc(16px + env(safe-area-inset-right))" : 52,
+        paddingRight: "calc(16px + env(safe-area-inset-right))",
         paddingBottom: "calc(var(--sp-6) + env(safe-area-inset-bottom))",
       }}
     >
@@ -1362,6 +1386,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             {queuedMessages?.followUp.map((text, i) => (
               <QueuedMessageRow key={`followup-${i}`} kind="follow-up" text={text} />
             ))}
+          </div>
+        )}
+        {isCompacting && (
+          <div role="status" aria-live="polite" style={{
+            marginBottom: 8, padding: "7px 10px", borderRadius: 6,
+            background: "var(--bg-hover)", color: "var(--text)", fontSize: "var(--fs-meta)",
+          }}>
+            {t("chat.compacting")}
           </div>
         )}
         {/* Retry banner */}
@@ -2390,7 +2422,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             )}
 
-            {!isStreaming && onCompact && (
+            {(!isStreaming || isCompacting) && onCompact && (
               <div>
                 <button
                   onClick={isCompacting ? onAbortCompaction : onCompact}

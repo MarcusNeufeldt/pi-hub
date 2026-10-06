@@ -11,6 +11,16 @@ const jiti = createJiti(import.meta.url, {
 const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canRestoreUserMessage, filterModelOptions, getUserMessageText, getUserMessageDraftImages } = await jiti.import("./ChatInput.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
+test("does not reserve desktop composer space for the removed minimap", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(I18nProvider, null, React.createElement(ChatInput, {
+      onSend() {}, isStreaming: false, modelList: [], modelNames: {},
+    })),
+  );
+  assert.ok(html.includes("padding-right:calc(16px + env(safe-area-inset-right))"));
+  assert.ok(!html.includes("padding-right:52px"));
+});
+
 test("renders the upstream model error", () => {
   const html = renderToStaticMarkup(
     React.createElement(ModelErrorBanner, {
@@ -58,6 +68,28 @@ test("keeps the model selector visible when a model error leaves no options", ()
 
   assert.match(html, />No models</);
   assert.match(html, /title="No available models"/);
+});
+
+test("announces compaction during an active run and after reopening", () => {
+  for (const isStreaming of [true, false]) {
+    const html = renderToStaticMarkup(
+      React.createElement(I18nProvider, null, React.createElement(ChatInput, {
+        onSend() {}, onAbort() {}, onCompact() {}, onAbortCompaction() {},
+        isStreaming, isCompacting: true, modelList: [], modelNames: {},
+      })),
+    );
+    assert.match(html, /role="status" aria-live="polite"[^>]*>Compacting/);
+    assert.match(html, /aria-label="Stop compaction"/);
+  }
+});
+
+test("does not announce compaction after it ends", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(I18nProvider, null, React.createElement(ChatInput, {
+      onSend() {}, isStreaming: false, isCompacting: false, modelList: [], modelNames: {},
+    })),
+  );
+  assert.doesNotMatch(html, /role="status" aria-live="polite"[^>]*>Compacting/);
 });
 
 test("filters model options by name and id", () => {

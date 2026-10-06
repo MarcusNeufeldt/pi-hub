@@ -4,9 +4,8 @@ import { errorResponse, runToDto } from "@/lib/scheduler-dto";
 import { getServiceOrError } from "@/lib/scheduler-service-access";
 
 /**
- * Cancels a queued or running run. Queued runs are cancelled immediately;
- * running runs are marked for cancellation and finalized by the executor
- * once the abort takes effect (design doc §18.2).
+ * Cancels a queued or running run. Running executors receive an abort signal;
+ * the persisted cancellation marker is terminal even if completion races it.
  */
 export async function POST(
   _req: Request,

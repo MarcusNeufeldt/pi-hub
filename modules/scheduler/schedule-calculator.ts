@@ -16,6 +16,7 @@ import { SchedulerError, SchedulerErrorCode } from "./errors";
 import type {
   DailyScheduleInput,
   HourlyScheduleInput,
+  MinutesScheduleInput,
   OnceScheduleInput,
   PersistedSchedule,
   ScheduleInput,
@@ -105,6 +106,20 @@ function assertValidHourly(input: HourlyScheduleInput): void {
   }
 }
 
+function assertValidMinutes(input: MinutesScheduleInput): void {
+  assertValidTimezone(input.timezone);
+  if (
+    !Number.isInteger(input.intervalMinutes) ||
+    input.intervalMinutes < 1 ||
+    input.intervalMinutes > 59
+  ) {
+    throw new SchedulerError(
+      SchedulerErrorCode.INVALID_SCHEDULE,
+      `Invalid minute interval: ${input.intervalMinutes} (expected 1-59)`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Local-time → epoch conversion
 // ---------------------------------------------------------------------------
@@ -163,6 +178,12 @@ export function cronFromHourly(intervalHours: number, minute: number): string {
   return `${minute} */${intervalHours} * * *`;
 }
 
+// Cron-style expression for a sub-hourly task: "* /N * * *" (e.g. "* /10 * * *"
+// for every 10 minutes). Uses the task timezone like the other recurrences.
+export function cronFromMinutes(intervalMinutes: number): string {
+  return `*/${intervalMinutes} * * * *`;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -194,6 +215,18 @@ export function resolveSchedule(input: ScheduleInput): ResolvedSchedule {
     assertValidHourly(input);
     const cron = cronFromHourly(input.intervalHours, input.minute);
     const next = nextHourlyRun(input.intervalHours, input.minute, input.timezone, Date.now());
+    return {
+      scheduleType: "recurring",
+      cronExpression: cron,
+      executeAt: null,
+      timezone: input.timezone,
+      nextRunAt: next,
+    };
+  }
+  if (input.type === "minutes") {
+    assertValidMinutes(input);
+    const cron = cronFromMinutes(input.intervalMinutes);
+    const next = nextMinutesRun(input.intervalMinutes, input.timezone, Date.now());
     return {
       scheduleType: "recurring",
       cronExpression: cron,
@@ -320,6 +353,24 @@ export function nextHourlyRun(
 }
 
 /**
+ * Computes the next UTC epoch ms a "every N minutes in zone" recurrence
+ * fires, strictly after `afterMs`. Simplified DST handling: the zone offset
+ * is read once for `afterMs`; a boundary landing inside a DST shift may be
+ * one hour off — acceptable for sub-hourly maintenance cadences.
+ */
+export function nextMinutesRun(
+  intervalMinutes: number,
+  timezone: string,
+  afterMs: number,
+): number {
+  const offset = offsetMinutesForZone(afterMs, timezone);
+  const step = intervalMinutes * 60_000;
+  const localMs = afterMs + offset * 60_000;
+  const nextLocal = (Math.floor(localMs / step) + 1) * step;
+  return nextLocal - offset * 60_000;
+}
+
+/**
  * Computes the next run for an already-persisted task, at or strictly after
  * `afterMs`. For once-tasks returns `executeAt` (which may be in the past).
  */
@@ -330,8 +381,28 @@ export function calculateNextRun(
   if (schedule.scheduleType === "once") {
     return schedule.executeAt ?? afterMs;
   }
-  // recurring: parse "M H * * *" (daily) or "M */N * * *" (hourly).
+
+  // recurring: parse "M H * * *" (daily), "M */N * * *" (hourly), or
+  // "*/N * * *" (minutes).
   const parts = (schedule.cronExpression ?? "").split(/\s+/);
+  const hourField = parts[1] ?? "";
+  const minuteStep = /^\*\/(\d{1,2})$/.exec(parts[0]);
+  if (minuteStep) {
+    if (parts.length !== 5 || parts.slice(1).some((p) => p !== "*")) {
+      throw new SchedulerError(
+        SchedulerErrorCode.INVALID_CRON,
+        `Unsupported cron expression: ${schedule.cronExpression}`,
+      );
+    }
+    const interval = Number(minuteStep[1]);
+    if (!Number.isInteger(interval) || interval < 1 || interval > 59) {
+      throw new SchedulerError(
+        SchedulerErrorCode.INVALID_CRON,
+        `Unsupported cron expression: ${schedule.cronExpression}`,
+      );
+    }
+    return nextMinutesRun(interval, schedule.timezone, afterMs);
+  }
   const minuteRaw = Number(parts[0]);
   if (
     parts.length !== 5 ||
@@ -345,7 +416,6 @@ export function calculateNextRun(
       `Unsupported cron expression: ${schedule.cronExpression}`,
     );
   }
-  const hourField = parts[1] ?? "";
   const hourly = /^\*\/(\d{1,2})$/.exec(hourField);
   if (hourly) {
     const interval = Number(hourly[1]);

@@ -15,6 +15,8 @@ import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-ty
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
 import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS } from "./custom-ui-terminal";
 import { findLiveSubagentWork } from "./subagent-activity";
+import { normalizeToolNames } from "./tool-names";
+import { enforceDisabledToolLoadout, hubRuntimeExtensions, toolsForPreset, type RuntimeToolPolicy } from "./runtime-tool-policy";
 
 // ============================================================================
 // Types
@@ -88,13 +90,11 @@ export interface RpcSessionStartOptions {
   thinkingLevel?: ThinkingLevel;
 }
 
-const CODING_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
-
 // Extensions require a complete Theme, while the web UI applies its own styling.
 class PlainTextTheme extends Theme {
   constructor() {
     super(
-      { thinkingXhigh: "" } as ConstructorParameters<typeof Theme>[0],
+      { thinkingXhigh: "", muted: "", text: "" } as ConstructorParameters<typeof Theme>[0],
       { selectedBg: "" } as ConstructorParameters<typeof Theme>[1],
       "truecolor",
     );
@@ -118,16 +118,8 @@ class PlainTextTheme extends Theme {
 const PLAIN_TEXT_THEME = new PlainTextTheme();
 const CUSTOM_UI_KEYBINDINGS = new TuiKeybindingsManager(TUI_KEYBINDINGS);
 
-function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
-  if (toolNames.length === 0) return [];
-
-  const codingToolNames = new Set(CODING_TOOL_NAMES);
-  const extensionToolNames = session
-    .getAllTools()
-    .map((t) => t.name)
-    .filter((name) => !codingToolNames.has(name));
-
-  return [...new Set([...toolNames, ...extensionToolNames])];
+function withExtensionTools(session: AgentSessionLike, toolNames: string[], resumedActive: string[] = []): string[] {
+  return toolsForPreset(session, normalizeToolNames(toolNames) ?? [], resumedActive);
 }
 
 // ============================================================================
@@ -146,14 +138,22 @@ export class AgentSessionWrapper {
   private extensionsBound = false;
   private extensionBindingPromise: Promise<void> | null = null;
   private extensionBindingError: unknown = null;
-  private forceEmptySystemPrompt = false;
   private unsubscribe: (() => void) | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
-  private onDestroyCallback: (() => void) | null = null;
+  private onDestroyCallbacks = new Set<() => void>();
   private shutdownPromise: Promise<void> | null = null;
   private _alive = true;
+  private suspendedTools: string[];
 
-  constructor(public readonly inner: AgentSessionLike) {}
+  constructor(
+    public readonly inner: AgentSessionLike,
+    private readonly toolPolicy: RuntimeToolPolicy = { toolsDisabled: false },
+  ) {
+    this.suspendedTools = inner.getActiveToolNames?.() ?? [];
+    if (inner.agent?.state && "tools" in inner.agent.state) {
+      enforceDisabledToolLoadout(inner.agent.state, toolPolicy);
+    }
+  }
 
   get sessionId(): string {
     return this.inner.sessionId;
@@ -189,7 +189,8 @@ export class AgentSessionWrapper {
   }
 
   setForceEmptySystemPrompt(force: boolean): void {
-    this.forceEmptySystemPrompt = force;
+    if (force && !this.toolPolicy.toolsDisabled) this.suspendedTools = this.inner.getActiveToolNames();
+    this.toolPolicy.toolsDisabled = force;
     this.applyForcedEmptySystemPrompt();
   }
 
@@ -204,7 +205,7 @@ export class AgentSessionWrapper {
   }
 
   private ensureExtensionsBound(options: ExtensionBindingOptions = {}): Promise<void> {
-    if (options.forceEmptySystemPrompt) this.forceEmptySystemPrompt = true;
+    if (options.forceEmptySystemPrompt) this.toolPolicy.toolsDisabled = true;
     if (this.extensionsBound) {
       this.applyForcedEmptySystemPrompt();
       return Promise.resolve();
@@ -282,9 +283,9 @@ export class AgentSessionWrapper {
   }
 
   private applyForcedEmptySystemPrompt(): void {
-    if (this.forceEmptySystemPrompt && this.inner.agent.state) {
-      this.inner.agent.state.systemPrompt = "";
-    }
+    // Pi 1.x derives prompt state from the transcript. The host extension uses
+    // before_agent_start's supported forceSystemPrompt instead of mutating it.
+    if (this.toolPolicy.toolsDisabled) this.inner.setActiveToolsByName([]);
   }
 
   private emit(event: AgentEvent): void {
@@ -354,8 +355,13 @@ export class AgentSessionWrapper {
     };
   }
 
-  onDestroy(cb: () => void): void {
-    this.onDestroyCallback = cb;
+  onDestroy(cb: () => void): () => void {
+    if (!this._alive) {
+      cb();
+      return () => {};
+    }
+    this.onDestroyCallbacks.add(cb);
+    return () => this.onDestroyCallbacks.delete(cb);
   }
 
   async send(command: Record<string, unknown>): Promise<unknown> {
@@ -427,7 +433,7 @@ export class AgentSessionWrapper {
           contextUsage: contextUsage
             ? { percent: contextUsage.percent, contextWindow: contextUsage.contextWindow, tokens: contextUsage.tokens }
             : null,
-          systemPrompt: this.inner.agent.state?.systemPrompt ?? "",
+          systemPrompt: this.toolPolicy.toolsDisabled ? "" : this.inner.systemPrompt ?? this.inner.agent.state?.systemPrompt ?? "",
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
           extensionStatuses: this.getExtensionStatuses(),
           extensionWidgets: this.getExtensionWidgets(),
@@ -486,8 +492,8 @@ export class AgentSessionWrapper {
       }
 
       case "navigate_tree": {
-        if (this.inner.isBashRunning) {
-          throw new Error("Cannot navigate while a shell command is running");
+        if (this.inner.isBashRunning || this.promptRunning || this.inner.isStreaming || this.inner.isCompacting) {
+          throw new Error("Cannot navigate while the session is busy");
         }
         const result = await this.inner.navigateTree(command.targetId as string, {});
         return { cancelled: result.cancelled };
@@ -598,9 +604,10 @@ export class AgentSessionWrapper {
       }
 
       case "set_tools": {
-        const toolNames = command.toolNames as string[];
+        const toolNames = normalizeToolNames(command.toolNames as string[] | undefined) ?? [];
+        const resumedActive = this.toolPolicy.toolsDisabled ? this.suspendedTools : [];
         this.setForceEmptySystemPrompt(toolNames.length === 0);
-        this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames));
+        this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames, resumedActive));
         this.applyForcedEmptySystemPrompt();
         return null;
       }
@@ -684,7 +691,10 @@ export class AgentSessionWrapper {
       this.inner.dispose();
     } finally {
       try {
-        this.onDestroyCallback?.();
+        for (const callback of this.onDestroyCallbacks) {
+          try { callback(); } catch { /* cleanup observers must not block destroy */ }
+        }
+        this.onDestroyCallbacks.clear();
       } finally {
         notifyRunningChange();
       }
@@ -1061,6 +1071,7 @@ declare global {
   var __piStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
   var __piStartingSessionCwds: Map<string, number> | undefined;
   var __piRunningListeners: Set<(ids: string[]) => void> | undefined;
+  var __piSessionAvailabilityListeners: Map<string, Set<(session: AgentSessionWrapper) => void>> | undefined;
 }
 
 function getRegistry(): Map<string, AgentSessionWrapper> {
@@ -1106,6 +1117,52 @@ function trackStartingSession(cwd: string): () => void {
 
 export function getRpcSession(sessionId: string): AgentSessionWrapper | undefined {
   return getRegistry().get(sessionId);
+}
+
+function getSessionAvailabilityListeners(): Map<string, Set<(session: AgentSessionWrapper) => void>> {
+  if (!globalThis.__piSessionAvailabilityListeners) globalThis.__piSessionAvailabilityListeners = new Map();
+  return globalThis.__piSessionAvailabilityListeners;
+}
+
+/**
+ * Subscribe to an AgentSession becoming available without starting it.
+ *
+ * Idle browser EventSource reconnects use this so reopening a tab after a
+ * watchdog restart cannot boot every extension merely by reconnecting SSE.
+ * The callback is synchronous when the wrapper is registered, before the
+ * command that started it can send its first prompt event.
+ */
+export function subscribeRpcSessionAvailability(
+  sessionId: string,
+  listener: (session: AgentSessionWrapper) => void,
+): () => void {
+  const existing = getRpcSession(sessionId);
+  if (existing?.isAlive()) {
+    listener(existing);
+    return () => {};
+  }
+
+  const listenersBySession = getSessionAvailabilityListeners();
+  let listeners = listenersBySession.get(sessionId);
+  if (!listeners) {
+    listeners = new Set();
+    listenersBySession.set(sessionId, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners?.delete(listener);
+    if (listeners?.size === 0) listenersBySession.delete(sessionId);
+  };
+}
+
+function notifyRpcSessionAvailable(sessionId: string, session: AgentSessionWrapper): void {
+  const listenersBySession = getSessionAvailabilityListeners();
+  const listeners = listenersBySession.get(sessionId);
+  if (!listeners) return;
+  listenersBySession.delete(sessionId);
+  for (const listener of listeners) {
+    try { listener(session); } catch { /* one SSE listener must not block startup */ }
+  }
 }
 
 export function hasBusyRpcSessionForCwd(cwd: string): boolean {
@@ -1212,7 +1269,8 @@ export async function startRpcSession(
   cwd: string | undefined,
   options: RpcSessionStartOptions = {},
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
-  const { toolNames, initialModel, thinkingLevel } = options;
+  const { initialModel, thinkingLevel } = options;
+  const toolNames = normalizeToolNames(options.toolNames);
   const registry = getRegistry();
   const locks = getLocks();
 
@@ -1236,28 +1294,19 @@ export async function startRpcSession(
     initTheme();
     const agentDir = getAgentDir();
 
-    // Determine which tools to pass based on requested toolNames.
-    // Since v0.68.0, session creation expects string[] tool names instead of Tool[] instances.
-    let toolsOption: string[] | undefined;
-    if (toolNames !== undefined) {
-      // toolNames === [] -> "all off" (an empty allow-list disables every tool).
-      // Otherwise DO NOT pass a builtin-only allow-list: passing CODING_TOOL_NAMES
-      // set allowedToolNames to coding builtins only, which filtered every
-      // extension/package-provided tool (e.g. subagents, web access) out of the
-      // tool registry — so they were unavailable in Pi Web sessions even though the
-      // `pi` CLI keeps them. Leaving the allow-list unset lets the SDK register all
-      // tools (and activate extension tools); we narrow the ACTIVE set below.
-      toolsOption = toolNames.length === 0 ? [] : undefined;
-    }
+    // Keep the registry available for later preset changes. All-off is enforced
+    // by the host policy and active loadout, not a permanent empty SDK allowlist.
 
     // Build services first so extension-registered providers are available
     // before the SDK restores the saved model from the session file.
     // Gate untrusted project extensions so opening a repository does not run
     // its .pi/extensions code automatically (see lib/project-trust.ts, #236).
     const trustReloadOptions = projectTrustReloadOptions(sessionCwd, agentDir);
+    const toolPolicy: RuntimeToolPolicy = { toolsDisabled: toolNames?.length === 0 };
     const services = await createAgentSessionServices({
       cwd: sessionCwd,
       agentDir,
+      resourceLoaderOptions: { extensionFactories: hubRuntimeExtensions(toolPolicy) },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });
     const scope = await resolveVisibleModels(
@@ -1282,7 +1331,6 @@ export async function startRpcSession(
       ...(initial.model ? { model: initial.model } : {}),
       ...(initial.thinkingLevel ? { thinkingLevel: initial.thinkingLevel } : {}),
       ...(initial.scopedModels.length > 0 ? { scopedModels: initial.scopedModels } : {}),
-      ...(toolsOption !== undefined ? { tools: toolsOption } : {}),
     });
 
     const persistedPreferences = await persistExplicitStartupPreferences(
@@ -1301,14 +1349,13 @@ export async function startRpcSession(
     );
     if (persistedPreferences.modelDefaultChanged) invalidateModelsCache();
 
-    // If specific tool names were requested (non-empty), set the active tools to the
-    // requested builtin coding tools PLUS all extension/package tools, so installed
-    // extensions stay usable in Pi Web just like in the `pi` CLI.
+    // Preserve active extensions and the user's code-mode choice without
+    // activating every registered deferred or default-inactive tool.
     if (toolNames && toolNames.length > 0) {
       inner.setActiveToolsByName(withExtensionTools(inner, toolNames));
     }
 
-    const wrapper = new AgentSessionWrapper(inner);
+    const wrapper = new AgentSessionWrapper(inner, toolPolicy);
     // When all tools are disabled, clear the system prompt entirely.
     // pi's buildSystemPrompt always produces a non-empty prompt even with no tools;
     // keep this forced after extension resource discovery and reloads as well.
@@ -1323,6 +1370,8 @@ export async function startRpcSession(
 
     wrapper.onDestroy(() => registry.delete(realSessionId));
     registry.set(realSessionId, wrapper);
+    notifyRpcSessionAvailable(realSessionId, wrapper);
+    if (realSessionId !== sessionId) notifyRpcSessionAvailable(sessionId, wrapper);
     wrapper.beginExtensionBinding({ forceEmptySystemPrompt: toolNames?.length === 0 });
 
     return { session: wrapper, realSessionId };

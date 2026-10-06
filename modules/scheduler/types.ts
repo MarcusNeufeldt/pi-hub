@@ -67,7 +67,15 @@ export interface HourlyScheduleInput {
   timezone: string;
 }
 
-export type ScheduleInput = DailyScheduleInput | OnceScheduleInput | HourlyScheduleInput;
+export type ScheduleInput = DailyScheduleInput | OnceScheduleInput | HourlyScheduleInput | MinutesScheduleInput;
+
+/** Sub-hourly schedule input: every N minutes, timezone-aware. */
+export interface MinutesScheduleInput {
+  type: "minutes";
+  /** Run every N minutes (1-59). */
+  intervalMinutes: number;
+  timezone: string;
+}
 
 /** Persisted schedule representation (mirrors scheduled_tasks columns). */
 export interface PersistedSchedule {
@@ -88,10 +96,22 @@ export interface ExecutionOptions {
   provider: string | null;
   modelId: string | null;
   thinkingLevel: string | null;
-  /** Allowed tool names; empty = tools disabled. */
-  toolNames: string[];
+  /**
+   * Allowed tool names; undefined = use SDK defaults, empty = tools disabled.
+   * The distinction is intentional: omitted settings must not turn into an
+   * empty allow-list when a task is created through the API.
+   */
+  toolNames?: string[];
   /** Maximum run duration in seconds. */
   timeoutSeconds: number;
+  /**
+   * Optional deterministic pre-flight gate. Before a Pi session is started,
+   * the command runs in the task cwd; exit 0 proceeds, any other exit skips
+   * the run (recorded as success with the gate output as excerpt). Used to
+   * avoid spawning sessions for no-op work (e.g. a rename task that only
+   * acts when unnamed sessions exist).
+   */
+  gateCommand?: string | null;
   notifyOnSuccess: boolean;
   notifyOnFailure: boolean;
 }

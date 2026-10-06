@@ -143,6 +143,30 @@ const MIGRATIONS: { version: number; up: string }[] = [
       ALTER TABLE scheduled_tasks ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    // Older executors treated [] as SDK defaults, including API omissions.
+    // Preserve that behavior for existing tasks; new [] selections mean off.
+    version: 4,
+    up: `
+      UPDATE scheduled_tasks
+      SET tool_names_json = NULL, revision = revision + 1
+      WHERE CASE WHEN json_valid(tool_names_json) THEN json(tool_names_json) END = '[]';
+
+      UPDATE task_runs
+      SET execution_options_snapshot_json = json_remove(execution_options_snapshot_json, '$.toolNames')
+      WHERE status = 'queued'
+        AND CASE WHEN json_valid(execution_options_snapshot_json)
+          THEN json_extract(execution_options_snapshot_json, '$.toolNames') END = '[]';
+    `,
+  },
+  {
+    // Optional deterministic pre-flight gate per task (skips a run without
+    // spawning a Pi session when the gate exits non-zero).
+    version: 5,
+    up: `
+      ALTER TABLE scheduled_tasks ADD COLUMN gate_command TEXT;
+    `,
+  },
 ];
 
 /** Configures a fresh database connection with the recommended PRAGMAs. */

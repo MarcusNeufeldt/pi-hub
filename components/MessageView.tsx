@@ -10,6 +10,7 @@ import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { formatDuration, getAssistantErrorMessage, isEmptyThinkingBlock, modelDisplayLabel } from "@/lib/message-display";
 import { buildDisplayRows, parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { skillExpansionToCommand } from "@/lib/slash-display";
+import type { ToolExecutionProgress } from "@/lib/agent-event-wire";
 import type {
   AgentMessage,
   UserMessage,
@@ -23,6 +24,37 @@ import type {
   ToolCallContent,
   ThinkingContent,
 } from "@/lib/types";
+
+/** Bounded execution status, separate from model-authored transcript/tool-call blocks. */
+export function ToolExecutionProgressView({ progress }: { progress: ToolExecutionProgress[] }) {
+  if (progress.length === 0) return null;
+  const statusLabel = (status: string) => status === "ok" ? "Completed" : status === "error" ? "Error" : status === "cancelled" ? "Cancelled" : status === "unfinished" ? "Unfinished" : "Running";
+  return (
+    <details style={{ marginBottom: 12, fontSize: "var(--fs-meta)", color: "var(--text-muted)" }}>
+      <summary>Tool progress: {progress[progress.length - 1].name}, {statusLabel(progress[progress.length - 1].status)}{progress.some((item) => item.status === "error" || item.calls?.some((call) => call.status === "error")) ? " (errors)" : ""}</summary>
+      <div role="status" aria-live="polite" style={{ maxHeight: 240, overflow: "auto", padding: "6px 10px", fontFamily: "var(--font-mono)" }}>
+        {progress.map((item) => {
+          const parent = progress.find((candidate) => candidate.id === item.parentToolCallId);
+          // SDK snapshots and native nested events can describe the same call.
+          const calls = (item.calls ?? []).filter((call) => !progress.some((candidate) => candidate.id === call.id
+            || (call.id.endsWith("/?") && candidate.parentToolCallId === item.id && candidate.name === call.name)));
+          return (
+            <div key={item.id} data-tool-call-id={item.id} data-parent-tool-call-id={item.parentToolCallId}
+              style={{ marginLeft: item.parentToolCallId ? 12 : 0, color: item.status === "error" ? "var(--danger)" : undefined }}>
+              <span title={item.parentToolCallId ? `Parent: ${item.parentToolCallId}` : item.id}>
+                {item.parentToolCallId ? `${parent?.name ?? item.parentToolCallId} / ` : ""}{item.name}: {statusLabel(item.status)}
+              </span>
+              {item.error && <div role="alert">{item.error}</div>}
+              {item.text && <pre style={{ margin: "4px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.text}</pre>}
+              {calls.map((call, index) => <div key={`${call.id}-${index}`} style={{ marginLeft: 12 }}>{call.name}: {statusLabel(call.status)}{call.error ? `: ${call.error}` : ""}</div>)}
+              {Boolean(item.omittedCalls) && <div>{item.omittedCalls} earlier calls omitted</div>}
+            </div>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
 
 const MAX_THINKING_CACHE_ENTRIES = 100;
 const thinkingContentCache = new Map<string, Promise<string>>();

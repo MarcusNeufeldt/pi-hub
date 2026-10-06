@@ -44,7 +44,6 @@ function defaultExecution(): ExecutionOptions {
     provider: null,
     modelId: null,
     thinkingLevel: null,
-    toolNames: [],
     timeoutSeconds: 7200,
     notifyOnSuccess: false,
     notifyOnFailure: true,
@@ -92,6 +91,14 @@ function validateExecution(e: ExecutionOptions): void {
       SchedulerErrorCode.VALIDATION_ERROR,
       `timeoutSeconds must be between ${MIN_TIMEOUT_SECONDS} and ${MAX_TIMEOUT_SECONDS}`,
     );
+  }
+  if (e.gateCommand != null) {
+    if (typeof e.gateCommand !== "string" || e.gateCommand.trim().length > 500) {
+      throw new SchedulerError(
+        SchedulerErrorCode.VALIDATION_ERROR,
+        "gateCommand must be a command line of at most 500 characters",
+      );
+    }
   }
 }
 
@@ -141,7 +148,10 @@ function validateRetryOnRateLimit(r: RetryOnRateLimit): void {
 }
 
 export class TaskService {
-  constructor(private readonly store: TaskStore) {}
+  constructor(
+    private readonly store: TaskStore,
+    private readonly abortRunningRun?: (id: string) => void,
+  ) {}
 
   // ---- reads --------------------------------------------------------------
 
@@ -364,8 +374,16 @@ export class TaskService {
         errorMessage: "Cancelled by user before execution started",
       });
     } else if (run.status === "running") {
-      // Signal cancellation; runtime observes and finalizes as cancelled.
-      this.store.updateRun(id, { errorCode: "TASK_CANCELLED" });
+      // Make cancellation terminal in storage first so a completion race cannot
+      // turn a user-cancelled run back into success. The runtime aborts the
+      // executor immediately after this marker is durable.
+      this.store.updateRun(id, {
+        status: "cancelled",
+        finishedAt: Date.now(),
+        errorCode: "TASK_CANCELLED",
+        errorMessage: "Cancelled by user while running",
+      });
+      this.abortRunningRun?.(id);
     } else {
       throw new SchedulerError(
         SchedulerErrorCode.RUN_NOT_CANCELLABLE,

@@ -24,7 +24,7 @@ import { ensureHubHome, getDbPath, getDbPathDisplay } from "./paths";
 import { TaskService } from "./task-service";
 import { SchedulerErrorCode } from "./errors";
 import type { TaskStore } from "./task-store";
-import type { SchedulerRuntimeStatus, TaskDefinition, TaskRun } from "./types";
+import type { SchedulerRuntimeStatus, TaskDefinition, TaskRun, ExecutionOptions } from "./types";
 
 const LEASE_NAME = "scheduler";
 const LEASE_MS = 15_000; // lease validity
@@ -168,7 +168,7 @@ export class SchedulerRuntime {
 
     ensureHubHome();
     const store = options?.store ?? SqliteTaskStore.open(getDbPath());
-    const service = new TaskService(store);
+    const service = new TaskService(store, (runId) => this.abortRun(runId));
     const notifier = options?.notifier ?? new NoopTaskNotifier();
 
     // Stale-run recovery: any 'running' run whose heartbeat is stale belonged
@@ -253,6 +253,20 @@ export class SchedulerRuntime {
         error: null,
       };
     }
+    if (inner.error) {
+      return {
+        running: false,
+        leader: false,
+        ownerId: null,
+        lastTickAt: null,
+        nextTickAt: null,
+        queuedRuns: 0,
+        runningRuns: 0,
+        maxConcurrency: MAX_CONCURRENCY,
+        databasePath: getDbPathDisplay(),
+        error: inner.error,
+      };
+    }
     const queuedRuns = inner.store.countRuns({ status: "queued" });
     const runningRuns = inner.store.countRuns({ status: "running" });
     return {
@@ -272,8 +286,8 @@ export class SchedulerRuntime {
   /** Service accessor for API routes. */
   getTaskService(): TaskService {
     const inner = this.inner;
-    if (!inner) {
-      throw new Error("Scheduler runtime not started");
+    if (!inner || inner.error || !inner.service) {
+      throw new Error(inner?.error ?? "Scheduler runtime not started");
     }
     return inner.service;
   }
@@ -281,6 +295,10 @@ export class SchedulerRuntime {
   /** Store accessor (file-access root registration, tests). */
   getStore(): TaskStore | null {
     return this.inner?.store ?? null;
+  }
+
+  private abortRun(runId: string): void {
+    this.inner?.active.get(runId)?.abort();
   }
 
   // ---- internal ------------------------------------------------------------
@@ -305,6 +323,21 @@ export class SchedulerRuntime {
     if (!inner.leader) return; // only the leader scans/executes
 
     try {
+      // Reap zombie runs on every leader tick, not only at startup. An
+      // executor lost to a process restart can never finish its run; if the
+      // restart happened within HEARTBEAT_TIMEOUT_MS of the last heartbeat,
+      // startup recovery leaves the row 'running' and it blocks the task
+      // forever (TASK_ALREADY_RUNNING skips, observed 2026-09-14).
+      const reaped = inner.store.markStaleRunningAsInterrupted(
+        Date.now(),
+        HEARTBEAT_TIMEOUT_MS,
+      );
+      if (reaped > 0) {
+        console.warn(
+          `[pi-hub:scheduler] reaped ${reaped} stale run(s) as interrupted`,
+        );
+      }
+
       // Also process any queued runs (e.g. manual triggers) up to concurrency.
       this.drainQueued(inner);
       const { claimed, skipped } = scanOnce(inner.store, Date.now());
@@ -338,6 +371,7 @@ export class SchedulerRuntime {
   }
 
   private async execute(inner: RuntimeInternals, run: TaskRun): Promise<void> {
+    if (inner.store.getRun(run.id)?.status !== "queued") return;
     // Overlap guard: same task already running → skip this run.
     if (run.taskId) {
       const conflict = inner.store
@@ -368,14 +402,41 @@ export class SchedulerRuntime {
       taskName: refreshed.taskNameSnapshot,
     });
 
+    // Hard watchdog (§19): executeRun enforces its own deadline, but a hung
+    // call must never keep a run "running" forever — that blocked every
+    // later fire of the task (TASK_ALREADY_RUNNING skips). Force-finish at
+    // deadline + grace, whatever the executor is doing.
+    let executionTimeoutMs = 0;
+    try {
+      const executionOptions = JSON.parse(
+        refreshed.executionOptionsSnapshotJson ?? "{}",
+      ) as ExecutionOptions;
+      if (Number.isFinite(executionOptions.timeoutSeconds) && executionOptions.timeoutSeconds > 0) {
+        executionTimeoutMs = executionOptions.timeoutSeconds * 1000;
+      }
+    } catch { /* no watchdog; the executor's own deadline still applies */ }
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    if (executionTimeoutMs > 0) {
+      watchdog = setTimeout(() => {
+        this.forceFinishTimedOutRun(inner, run.id, controller, executionTimeoutMs);
+      }, executionTimeoutMs + 60_000);
+    }
+
     const progress: RunProgress = {
       onSessionStarted: (sessionId) => {
         inner.store.updateRun(run.id, { sessionId, heartbeatAt: Date.now() });
       },
       onHeartbeat: () => {
-        inner.store.updateRun(run.id, { heartbeatAt: Date.now() });
+        // A different web process may have handled the cancel request.
+        if (inner.store.getRun(run.id)?.status === "cancelled") controller.abort();
+        else inner.store.updateRun(run.id, { heartbeatAt: Date.now() });
       },
       onFinish: (result) => {
+        // cancelRun() marks the row before aborting the executor. If the
+        // prompt completes during that small window, keep the user-visible
+        // cancellation terminal instead of overwriting it with success.
+        const existing = inner.store.getRun(run.id);
+        if (existing?.status === "cancelled") return;
         const finalStatus = result.status;
         inner.store.updateRun(run.id, {
           status: finalStatus,
@@ -424,16 +485,47 @@ export class SchedulerRuntime {
         isSessionInUse: inner.isSessionInUse,
       });
     } catch (error) {
-      // executeRun is not supposed to throw, but guard the queue anyway.
-      inner.store.updateRun(run.id, {
-        status: "failed",
-        errorCode: "PROMPT_FAILED",
-        errorMessage: error instanceof Error ? error.message : String(error),
-        finishedAt: Date.now(),
-      });
+      // executeRun is not supposed to throw, but guard the queue anyway. Do
+      // not replace a cancellation that was already persisted by the API.
+      if (inner.store.getRun(run.id)?.status !== "cancelled") {
+        inner.store.updateRun(run.id, {
+          status: "failed",
+          errorCode: "PROMPT_FAILED",
+          errorMessage: error instanceof Error ? error.message : String(error),
+          finishedAt: Date.now(),
+        });
+      }
     } finally {
+      if (watchdog) clearTimeout(watchdog);
       inner.active.delete(run.id);
     }
+  }
+
+  /** Force-finish a run still "running" past its deadline + grace (§19). */
+  private forceFinishTimedOutRun(
+    inner: RuntimeInternals,
+    runId: string,
+    controller: AbortController,
+    timeoutMs: number,
+  ): void {
+    const current = inner.store.getRun(runId);
+    if (!current || current.status !== "running") return;
+    console.warn(
+      `[pi-hub:scheduler] run ${runId} exceeded its ${Math.round(timeoutMs / 1000)}s timeout; force-finishing`,
+    );
+    controller.abort();
+    // Grace for the executor to persist its own outcome after the abort.
+    setTimeout(() => {
+      const final = inner.store.getRun(runId);
+      if (!final || final.status !== "running") return;
+      inner.store.updateRun(runId, {
+        status: "failed",
+        errorCode: SchedulerErrorCode.TASK_TIMEOUT,
+        errorMessage: `Run exceeded its ${Math.round(timeoutMs / 1000)}s timeout; forced finish`,
+        finishedAt: Date.now(),
+      });
+      inner.active.delete(runId);
+    }, 60_000);
   }
 
   /**

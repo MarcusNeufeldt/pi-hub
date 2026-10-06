@@ -38,6 +38,20 @@ export interface ThinkingContent {
   deferred?: boolean;
 }
 
+/**
+ * Prompt and tool loadout carried by the session transcript (Pi >= 0.86). The
+ * leading one holds the base prompt; later ones patch `sections` by name and
+ * list tool changes. Never a chat message: the UI hides it everywhere.
+ */
+export interface SystemMessage {
+  role: "system";
+  content: string | TextContent[];
+  sections?: Record<string, string | null>;
+  toolsAdded?: unknown[];
+  toolsRemoved?: Array<{ name: string }>;
+  timestamp?: number;
+}
+
 export interface ToolCallContent {
   type: "toolCall";
   toolCallId: string;
@@ -74,19 +88,7 @@ export interface AssistantMessage {
    * across; live streaming messages have no entry yet and leave this undefined.
    */
   endedAt?: number;
-  usage?: {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-    cost: {
-      input: number;
-      output: number;
-      cacheRead: number;
-      cacheWrite: number;
-      total: number;
-    };
-  };
+  usage?: AgentUsage;
 }
 
 export interface ToolResultMessage {
@@ -108,6 +110,21 @@ export interface CustomMessage {
   timestamp?: number;
 }
 
+/** Token/cost accounting shared by messages, compactions and usage entries. */
+export interface AgentUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+}
+
 export interface BashExecutionMessage {
   role: "bashExecution";
   command: string;
@@ -121,6 +138,9 @@ export interface BashExecutionMessage {
 }
 
 export type AgentMessage = UserMessage | AssistantMessage | ToolResultMessage | CustomMessage | BashExecutionMessage;
+
+/** Any message a `message` entry can store, including transcript system messages. */
+export type SessionMessage = AgentMessage | SystemMessage;
 
 export type ExtensionUiRequest =
   | {
@@ -219,7 +239,7 @@ export interface ExtensionWidgetItem {
 
 export interface SessionMessageEntry extends SessionEntryBase {
   type: "message";
-  message: AgentMessage;
+  message: SessionMessage;
 }
 
 export interface ThinkingLevelChangeEntry extends SessionEntryBase {
@@ -233,6 +253,16 @@ export interface ModelChangeEntry extends SessionEntryBase {
   modelId: string;
 }
 
+/** Model usage outside the conversation, such as prompt-cache warming (`kind: "cache_warm"`). */
+export interface UsageEntry extends SessionEntryBase {
+  type: "usage";
+  kind: string;
+  provider: string;
+  model: string;
+  usage: AgentUsage;
+  note?: string;
+}
+
 export interface CompactionEntry extends SessionEntryBase {
   type: "compaction";
   summary: string;
@@ -240,6 +270,7 @@ export interface CompactionEntry extends SessionEntryBase {
   tokensBefore: number;
   details?: unknown;
   fromHook?: boolean;
+  usage?: AgentUsage;
 }
 
 export interface BranchSummaryEntry extends SessionEntryBase {
@@ -248,6 +279,7 @@ export interface BranchSummaryEntry extends SessionEntryBase {
   summary: string;
   details?: unknown;
   fromHook?: boolean;
+  usage?: AgentUsage;
 }
 
 export interface CustomEntry extends SessionEntryBase {
@@ -262,6 +294,20 @@ export interface CustomMessageEntry extends SessionEntryBase {
   content: string | (TextContent | ImageContent)[];
   details?: unknown;
   display: boolean;
+}
+
+/** Content that an append-only context edit may replace without changing message metadata. */
+export type ContextEditableContent = UserMessage["content"] | AssistantMessage["content"] | ToolResultMessage["content"] | CustomMessage["content"];
+
+/**
+ * Append-only edit of an earlier entry's model context. Raw history, usage
+ * and this entry's own metadata are unaffected: `replacement: null` omits the
+ * target from future provider requests, a value replaces only its content.
+ */
+export interface ContextEditEntry extends SessionEntryBase {
+  type: "context_edit";
+  targetId: string;
+  replacement: { content: ContextEditableContent } | null;
 }
 
 export interface LabelEntry extends SessionEntryBase {
@@ -279,10 +325,12 @@ export type SessionEntry =
   | SessionMessageEntry
   | ThinkingLevelChangeEntry
   | ModelChangeEntry
+  | UsageEntry
   | CompactionEntry
   | BranchSummaryEntry
   | CustomEntry
   | CustomMessageEntry
+  | ContextEditEntry
   | LabelEntry
   | SessionInfoEntry;
 

@@ -11,9 +11,8 @@ import { isDeepSeekModel, localDayKey, peakWindowsLocal, pricingStateAt, shouldR
 const DEEPSEEK_REMINDER_KEY = "pi-deepseek-pricing-reminder";
 /** Same gate for this page load, shared across the ChatWindow each pane mounts. */
 let deepSeekReminderDay: string | null = null;
-import { MessageView } from "./MessageView";
+import { MessageView, ToolExecutionProgressView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
-import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { LoadingState } from "./LoadingState";
 import { SelectionActions } from "./SelectionActions";
 import { Collapse } from "./ui/Collapse";
@@ -25,7 +24,6 @@ import { useAudio } from "@/hooks/useAudio";
 import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { notifyTelegramManualRun } from "@/lib/telegram-client";
 import { useDragDrop } from "@/hooks/useDragDrop";
-import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import {
   captureScrollDistance,
@@ -68,9 +66,7 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
   return null;
 }
 
-const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
-const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
@@ -191,7 +187,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
   // enabled state or flip it, and nothing left to gate on whether Telegram is
   // configured. The dispatch below still reads the stored preference.
   const { notifyEnabledRef } = useTelegramNotify();
-  const isMobile = useIsMobile();
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
   // wrapping handleAgentEventRef because useAgentSession overwrites that ref
@@ -238,13 +233,13 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   const {
     loading, error, messages, entryIds, contextStartIndex, streamState,
-    agentRunning, aborting, handleForceReset, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
+    agentRunning, navigationPending, aborting, handleForceReset, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats, addNotice, dismissNotice,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
-    agentPhase,
+    agentPhase, toolProgress,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
     lastUserMsgRef, promptAnchorActive,
@@ -260,7 +255,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
     onPromptFinished: wrappedOnPromptFinished,
   });
-  const sessionBusy = agentRunning || bashRunning;
+  const sessionBusy = agentRunning || bashRunning || navigationPending;
 
   // When the current turn started, so the loader's elapsed time survives the
   // re-renders streaming causes. Reading Date.now() at mount of the indicator
@@ -351,8 +346,8 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   // Register the abort handler for the global Esc shortcut
   useEffect(() => {
-    registerAbortHandler(sessionBusy ? handleAbort : null);
-  }, [sessionBusy, handleAbort]);
+    registerAbortHandler(agentRunning || bashRunning ? handleAbort : null);
+  }, [agentRunning, bashRunning, handleAbort]);
 
   // --- Lazy-load historical messages ---
   // Only render the last N messages initially. When the user scrolls to the
@@ -435,7 +430,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
-  const visibleMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
   // Stable Map identity: `messages` doesn't change during streaming updates
   // (the streaming message lives in streamState), so memoized MessageViews
   // skip re-rendering on every message_update event. An inline `new Map()`
@@ -461,11 +455,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     }
     return history.reverse();
   }, [messages]);
-  const messageRefs = useMessageRefs(visibleMessages.length);
-  const revealHistoryForMinimap = useCallback(() => {
-    setVisibleCount((current) => Math.max(current, messages.length * 2));
-  }, [messages.length]);
-
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const bottomComposerRef = useRef<HTMLDivElement | null>(null);
@@ -552,7 +541,9 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
         Math.ceil(targetTop - maxScrollTopWithoutAnchor),
       );
 
-      if (nextPromptAnchorSpacerHeight !== promptAnchorSpacerHeightRef.current) {
+      // scrollHeight rounds to integer CSS pixels. At fractional zoom it can
+      // jitter by 1px, so exact equality makes this layout effect loop forever.
+      if (Math.abs(nextPromptAnchorSpacerHeight - promptAnchorSpacerHeightRef.current) > 1) {
         const needsInitialScroll = promptAnchorSpacerHeightRef.current === 0
           && nextPromptAnchorSpacerHeight > 0;
         promptAnchorSpacerHeightRef.current = nextPromptAnchorSpacerHeight;
@@ -646,6 +637,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     : null;
 
   const chatInputElement = (
+    <fieldset disabled={navigationPending} aria-busy={navigationPending} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
     <ChatInput
       ref={chatInputRef}
       onSend={handleSend}
@@ -655,7 +647,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       onSteer={agentRunning ? handleSteer : undefined}
       onFollowUp={agentRunning ? handleFollowUp : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehavior : undefined}
-      isStreaming={sessionBusy}
+      isStreaming={agentRunning || bashRunning}
       model={displayModelValue}
       isAutoModelSelection={isAutoModelSelection}
       modelNames={modelNames}
@@ -688,6 +680,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       draftKey={session?.id ?? (newSessionCwd ? `new:${newSessionCwd}` : undefined)}
       cwd={session?.cwd ?? newSessionCwd}
     />
+    </fieldset>
   );
 
   const aboveEditorWidgets = extensionWidgets.filter((widget) => widget.placement !== "belowEditor");
@@ -894,7 +887,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
             position: "absolute",
             top: 12,
             left: 0,
-            right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
+            right: 0,
             zIndex: 40,
             padding: `0 ${CHAT_COLUMN_PADDING}px`,
             pointerEvents: "none",
@@ -939,19 +932,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                 if (isGroupAnchor(messages[i])) { lastAnchorIdx = i; break; }
               }
 
-              const visibleRefIndexByMessage = new Map<number, number>();
-              let refIdx = 0;
-              messages.forEach((msg, idx) => {
-                if (msg.role === "user" || msg.role === "assistant") {
-                  visibleRefIndexByMessage.set(idx, refIdx++);
-                }
-              });
-
-              const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
-                messageRefs.current[refIndex] = el;
-                if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
-              };
-
               const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; meta?: "full" | "model" | "none" } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
@@ -959,7 +939,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                     ? entryIds[idx - 1]
                     : undefined;
                 const isVisible = msg.role === "user" || msg.role === "assistant";
-                const currentRefIdx = visibleRefIndexByMessage.get(idx);
                 const keyPrefix = options.keyPrefix ?? "message";
                 let showTimestamp = false;
                 if (msg.role === "assistant") {
@@ -995,9 +974,9 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                   />
                 );
-                if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
+                if (!isVisible || options.attachRef === false) return view;
                 return (
-                  <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
+                  <div key={`${keyPrefix}-${idx}`} ref={idx === lastUserIdx ? lastUserMsgRef : undefined}>
                     {view}
                   </div>
                 );
@@ -1081,10 +1060,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
                 const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
                 if (processCount > 0) {
-                  const processRefIdx = visibleProcessIndices
-                    .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
-                    .find((value): value is number => typeof value === "number")
-                    ?? (finalAnswerMessage ? undefined : visibleRefIndexByMessage.get(finalAssistantIdx));
                   const processEntries = [
                     ...visibleProcessIndices.map((processIdx) => ({ message: messages[processIdx], countCost: true })),
                     ...(finalProcessMessage ? [{ message: finalProcessMessage, countCost: false }] : []),
@@ -1117,7 +1092,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
                   rendered.push(
                     <div
                       key={`process-group-${userIdx}-${finalAssistantIdx}`}
-                      ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
                     >
                       {processGroup}
                     </div>,
@@ -1157,6 +1131,8 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
               </div>
             )}
 
+            <ToolExecutionProgressView progress={toolProgress} />
+
             {bashRunning && !pendingBash && (
               <div className="py-2 text-[13px] text-text-muted">
                  <span className="animate-[pulse_1.5s_infinite]">{t("chat.runningCommand")}</span>
@@ -1186,22 +1162,12 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
             </div>
           </div>
         </div>
-        {isMobile ? null : (
-          <ChatMinimap
-            messages={messages}
-            streamingMessage={streamState.streamingMessage}
-            scrollContainer={scrollContainerRef}
-            messageRefs={messageRefs}
-            onRevealHistory={revealHistoryForMinimap}
-          />
-        )}
       </div>
 
       <div ref={bottomComposerRef} className="composer-dock">
         <div
           style={{
             padding: `0 ${CHAT_COLUMN_PADDING}px`,
-            paddingRight: isMobile ? CHAT_COLUMN_PADDING : CHAT_INPUT_RIGHT_PADDING,
           }}
         >
           <div style={{ maxWidth: 820, margin: "0 auto" }}>

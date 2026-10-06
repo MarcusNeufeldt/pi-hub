@@ -16,6 +16,8 @@
  */
 
 import { existsSync, realpathSync } from "fs";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 
 import { SchedulerError, SchedulerErrorCode } from "./errors";
 import {
@@ -62,6 +64,40 @@ export type SessionStarter = (
 ) => Promise<RpcSession>;
 
 const MAX_EXCERPT = 4000;
+/** Hard cap for the pre-flight gate; stays well under the 90s run-heartbeat
+ *  window so a slow gate cannot get the run reaped. */
+const GATE_TIMEOUT_MS = 60_000;
+const execAsync = promisify(exec);
+
+/**
+ * Rejects with TASK_TIMEOUT once `deadline` passes even if `promise` never
+ * settles. The prompt waiter enforces its own timeout, but session startup
+ * and setup sends had none — a hung call there kept the run "running"
+ * forever and every later fire skipped (TASK_ALREADY_RUNNING).
+ */
+function withDeadline<T>(promise: Promise<T>, deadline: number, label: string): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    return Promise.reject(
+      new SchedulerError(SchedulerErrorCode.TASK_TIMEOUT, `${label} timed out`),
+    );
+  }
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(
+        new SchedulerError(
+          SchedulerErrorCode.TASK_TIMEOUT,
+          `${label} timed out after ${Math.round(remaining / 1000)}s`,
+        ),
+      ),
+      remaining,
+    );
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
 
 /** Builds the unattended-execution prompt envelope (design doc §16.3). */
 export function buildPrompt(userPrompt: string): string {
@@ -124,9 +160,18 @@ export async function executeRun(
   },
 ): Promise<void> {
   const { startSession, progress, signal, isSessionInUse } = options;
+  if (signal?.aborted) {
+    progress.onFinish({
+      status: "failed", resultExcerpt: null, errorCode: SchedulerErrorCode.TASK_CANCELLED,
+      errorMessage: "Cancelled before session startup", warnings: [],
+    });
+    return;
+  }
   const execution = JSON.parse(
     run.executionOptionsSnapshotJson,
   ) as ExecutionOptions;
+  // Overall budget for the whole run (startup + prompt + teardown).
+  const deadline = Date.now() + execution.timeoutSeconds * 1000;
 
   // Resume target: when set, continue an existing session instead of creating
   // a fresh one (docs/pi-hub/scheduled-execution-resume-design.zh-CN.md).
@@ -188,28 +233,79 @@ export async function executeRun(
     }
   }
 
+  // 2.5 Optional deterministic gate: skip the run without starting Pi when
+  //     the gate exits non-zero. Exit 0 = proceed; spawn errors/timeouts fail
+  //     the run loudly so a broken gate never silently disables the task.
+  if (execution.gateCommand && !signal?.aborted) {
+    try {
+      const gate = await execAsync(execution.gateCommand, {
+        cwd,
+        timeout: GATE_TIMEOUT_MS,
+        windowsHide: true,
+      });
+      void gate; // exit 0 → proceed
+    } catch (error) {
+      // promisified exec rejects on non-zero exit with a numeric .code, and
+      // on spawn/timeout failures with a string code (ENOENT) or .killed.
+      const err = error as NodeJS.ErrnoException & {
+        killed?: boolean;
+        stdout?: string | Buffer;
+        stderr?: string | Buffer;
+      };
+      if (typeof err.code !== "number" || err.killed) {
+        const detail = error instanceof Error ? error.message : String(error);
+        progress.onFinish({
+          status: "failed",
+          resultExcerpt: null,
+          errorCode: SchedulerErrorCode.PROMPT_FAILED,
+          errorMessage: `Gate command failed: ${detail}`,
+          warnings: [],
+        });
+        return;
+      }
+      const output = `${err.stdout ?? ""}${err.stderr ?? ""}`.trim();
+      progress.onFinish({
+        status: "success",
+        resultExcerpt: `Gate skip (exit ${err.code}): ${output.slice(0, 200)}`,
+        errorCode: null,
+        errorMessage: null,
+        warnings: [],
+      });
+      return;
+    }
+  }
+
   // 3. Start (new) or resume (open) the Pi Session.
-  let session: RpcSession;
+  const heartbeat = setInterval(() => progress.onHeartbeat(), 30_000);
+  let session: RpcSession | undefined;
+  const startPromise = startSession(
+    `__scheduled_task__${run.id}`,
+    resume?.sessionFile ?? "",
+    cwd,
+    {
+      ...(execution.toolNames !== undefined ? { toolNames: execution.toolNames } : {}),
+      ...(execution.provider && execution.modelId
+        ? { initialModel: { provider: execution.provider, modelId: execution.modelId } }
+        : {}),
+      ...(execution.thinkingLevel
+        ? { thinkingLevel: execution.thinkingLevel as never }
+        : {}),
+    },
+  );
   try {
-    session = await startSession(
-      `__scheduled_task__${run.id}`,
-      resume?.sessionFile ?? "",
-      cwd,
-      {
-        ...(execution.toolNames.length ? { toolNames: execution.toolNames } : {}),
-        ...(execution.provider && execution.modelId
-          ? { initialModel: { provider: execution.provider, modelId: execution.modelId } }
-          : {}),
-        ...(execution.thinkingLevel
-          ? { thinkingLevel: execution.thinkingLevel as never }
-          : {}),
-      },
-    );
+    session = await withDeadline(startPromise, deadline, "Pi session startup");
   } catch (error) {
+    clearInterval(heartbeat);
+    // If the session arrives late anyway, shut it down so a hung startup
+    // cannot leak a live Pi process.
+    void startPromise.then((late) => {
+      void withDeadline(late.shutdown(), Date.now() + 10_000, "Late session shutdown")
+        .catch(() => undefined);
+    }).catch(() => undefined);
     progress.onFinish({
       status: "failed",
       resultExcerpt: null,
-      errorCode: SchedulerErrorCode.PROMPT_FAILED,
+      errorCode: error instanceof SchedulerError ? error.code : SchedulerErrorCode.PROMPT_FAILED,
       errorMessage: `Failed to create Pi session: ${
         error instanceof Error ? error.message : String(error)
       }`,
@@ -220,17 +316,14 @@ export async function executeRun(
 
   progress.onSessionStarted(session.sessionId);
 
-  // Heartbeat interval for stale-run detection (§19). Stopped in finally.
-  const heartbeat = setInterval(() => progress.onHeartbeat(), 30_000);
-
   try {
     // 4. Name NEW sessions only — resume mode keeps the original session name.
-    if (!resume) {
+    if (!resume && !signal?.aborted) {
       try {
-        await session.send({
+        await withDeadline(session.send({
           type: "set_session_name",
           name: buildSessionName(run.taskNameSnapshot, run.scheduledFor),
-        });
+        }), deadline, "set_session_name");
       } catch {
         // Non-fatal — naming is cosmetic.
       }
@@ -238,25 +331,26 @@ export async function executeRun(
 
     // 5. Resume mode: override the model. startRpcSession ignores initialModel
     //    for sessions with existing messages (resume §10), so set it explicitly.
-    if (resume?.provider && resume?.modelId) {
+    if (resume?.provider && resume?.modelId && !signal?.aborted) {
       try {
-        await session.send({
+        await withDeadline(session.send({
           type: "set_model",
           provider: resume.provider,
           modelId: resume.modelId,
-        });
+        }), deadline, "set_model");
       } catch {
         // Non-fatal — fall back to the session's saved model.
       }
     }
 
-    // 6. Prompt + wait. The waiter handles extension auto-cancel + timeout.
+    // 6. Prompt + wait. The waiter handles extension auto-cancel + timeout;
+    // give it the remaining budget so the total run cannot exceed the deadline.
     const result = await runPromptAndWait(
       session as WaiterSession,
       resume
         ? buildResumePrompt(run.promptSnapshot)
         : buildPrompt(run.promptSnapshot),
-      execution.timeoutSeconds * 1000,
+      Math.max(1000, deadline - Date.now()),
       { signal },
     );
 
@@ -264,9 +358,9 @@ export async function executeRun(
     let excerpt: string | null = null;
     if (result.ok) {
       try {
-        const res = (await session.send({
+        const res = (await withDeadline(session.send({
           type: "get_last_assistant_text",
-        })) as { text?: string } | undefined;
+        }), deadline, "Reading result text")) as { text?: string } | undefined;
         if (res?.text) {
           excerpt = res.text.length > MAX_EXCERPT ? res.text.slice(0, MAX_EXCERPT) : res.text;
         }
@@ -297,7 +391,8 @@ export async function executeRun(
   } finally {
     clearInterval(heartbeat);
     try {
-      await session.shutdown();
+      // A hung shutdown must not keep the run (and the queue slot) hostage.
+      await withDeadline(session.shutdown(), Date.now() + 10_000, "Session shutdown");
     } catch {
       // Swallow — we've already recorded the outcome.
     }

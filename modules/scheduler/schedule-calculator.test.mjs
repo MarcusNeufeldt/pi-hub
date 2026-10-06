@@ -198,3 +198,60 @@ test("hourly: rejects invalid interval and minute", () => {
     SchedulerError,
   );
 });
+
+// Minutes: "*/10 * * * *" in Europe/Berlin → next run strictly after now.
+
+test("minutes: resolves to a minute-step cron and the next interval boundary", () => {
+  const resolved = resolveSchedule({
+    type: "minutes",
+    intervalMinutes: 10,
+    timezone: "Europe/Berlin",
+  });
+  assert.equal(resolved.scheduleType, "recurring");
+  assert.equal(resolved.cronExpression, "*/10 * * * *");
+  const next = calculateNextRun(
+    {
+      scheduleType: "recurring",
+      cronExpression: resolved.cronExpression,
+      executeAt: null,
+      timezone: "Europe/Berlin",
+    },
+    Date.UTC(2026, 7, 8, 11, 7, 21, 0),
+  );
+  assert.equal(new Date(next).toISOString(), "2026-08-08T11:10:00.000Z");
+  // Exactly on a boundary → strictly after.
+  const next2 = calculateNextRun(
+    {
+      scheduleType: "recurring",
+      cronExpression: resolved.cronExpression,
+      executeAt: null,
+      timezone: "Europe/Berlin",
+    },
+    Date.UTC(2026, 7, 8, 11, 20, 0),
+  );
+  assert.equal(new Date(next2).toISOString(), "2026-08-08T11:30:00.000Z");
+});
+
+test("minutes: rejects invalid intervals and cron shapes", () => {
+  assert.throws(
+    () => resolveSchedule({ type: "minutes", intervalMinutes: 0, timezone: "UTC" }),
+    SchedulerError,
+  );
+  assert.throws(
+    () => resolveSchedule({ type: "minutes", intervalMinutes: 60, timezone: "UTC" }),
+    SchedulerError,
+  );
+  assert.throws(
+    () =>
+      calculateNextRun(
+        {
+          scheduleType: "recurring",
+          cronExpression: "*/10 9 * * *",
+          executeAt: null,
+          timezone: "UTC",
+        },
+        Date.now(),
+      ),
+    SchedulerError,
+  );
+});

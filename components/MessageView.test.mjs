@@ -8,7 +8,7 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { MessageView, replaceUserMessageText } = await jiti.import("./MessageView.tsx");
+const { MessageView, ToolExecutionProgressView, replaceUserMessageText } = await jiti.import("./MessageView.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
 function renderMessage(message) {
@@ -94,4 +94,19 @@ test("keeps attached images when restoring a compact command for editing", () =>
     { type: "text", text: "/skill:review src/main.ts" },
     image,
   ]);
+});
+
+test("execution progress renders parent identity, bounded snapshot status and errors without model/tool-call blocks", () => {
+  const html = renderToStaticMarkup(React.createElement(ToolExecutionProgressView, { progress: [
+    { id: "p", name: "codemode", status: "ok", calls: [{ id: "p/1", name: "read", status: "error" }, { id: "p/models/1", name: "models.classify", status: "ok" }], omittedCalls: 12 },
+    { id: "p/1", name: "read", parentToolCallId: "p", status: "error", error: "Nested <failure>" },
+  ] }));
+  assert.match(html, /data-parent-tool-call-id="p"/);
+  assert.match(html, /codemode \/ read: Error/);
+  assert.match(html, /codemode: Completed/);
+  assert.match(html, /models.classify: Completed/);
+  assert.match(html, /12 earlier calls omitted/);
+  assert.match(html, /Nested &lt;failure&gt;/);
+  assert.equal((html.match(/read: Error/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /tool-block|turn-meta__model/);
 });

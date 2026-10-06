@@ -65,9 +65,13 @@ function collectStrings(value: unknown, out: string[]): void {
 }
 
 export function isFilePathReferencedByEntries(filePath: string, entries: SessionEntry[]): boolean {
+  // User/assistant prose is not proof that a trusted tool accessed a file. If
+  // this helper is used by a provenance-aware caller, only inspect persisted
+  // tool results; the general file browser separately requires an allowed root.
   for (const entry of entries) {
+    if (entry.type !== "message" || entry.message.role !== "toolResult") continue;
     const strings: string[] = [];
-    collectStrings(entry, strings);
+    collectStrings(entry.message.content, strings);
     if (strings.some((text) => containsExactPathReference(text, filePath))) return true;
   }
   return false;
